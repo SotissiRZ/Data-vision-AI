@@ -1,3 +1,18 @@
+# Validation — DataVision AI v2.0.0
+
+```text
+Backend pytest   : 23 passed
+Python compileall: OK
+TSX syntax       : OK via TypeScript transpileModule
+api.ts syntax    : OK via TypeScript transpileModule
+CSS braces       : OK
+Ports            : 3005 / 8005
+```
+
+Nouveaux parcours couverts : couche sémantique, métriques certifiées, NLQ avec synonymes et agrégation explicite, Trust Center, grounding sémantique d'AI Analyst, Decision Lab what-if et sensibilité.
+
+Le build `next build` complet n'est pas déclaré validé dans l'environnement de génération : l'installation npm a dépassé le délai disponible. La validation finale Docker reste effectuée sur la machine cible.
+
 # Validation — DataVision AI v1.3.0
 
 - Backend : 20 tests passent.

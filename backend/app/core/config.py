@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     ai_provider: str = "disabled"
     ai_model: str = ""
     ai_api_key: str = ""
+    auth_secret: str = "change-me-in-production-please-32chars-min"
+    access_token_minutes: int = 480
+    metadata_fallback_sqlite: bool = True
+    worker_poll_seconds: int = 5
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

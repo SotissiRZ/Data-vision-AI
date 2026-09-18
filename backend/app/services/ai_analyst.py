@@ -30,6 +30,7 @@ class AnalystContext:
     group: str | None = None
     horizon: int = 12
     mode: str = "auto"
+    semantic_model: dict[str, Any] | None = None
 
 
 def _now() -> str:
@@ -86,6 +87,45 @@ def _mentioned_columns(question: str, df: pd.DataFrame) -> list[str]:
     return [c for _, c in found]
 
 
+
+
+def _semantic_matches(question: str, semantic: dict[str, Any] | None, df: pd.DataFrame) -> list[str]:
+    if not semantic:
+        return []
+    q = _norm(question)
+    found: list[tuple[int, str]] = []
+    def add_terms(column: str, terms: list[str]):
+        if column not in df.columns:
+            return
+        positions=[]
+        for term in terms:
+            t=_norm(str(term).strip())
+            if not t:
+                continue
+            pos=q.find(t)
+            if pos >= 0:
+                positions.append(pos)
+        if positions:
+            found.append((min(positions), column))
+    for m in semantic.get("metrics", []):
+        add_terms(str(m.get("column") or ""), [m.get("id", ""), m.get("name", ""), m.get("label", ""), *(m.get("synonyms") or [])])
+    for d in semantic.get("dimensions", []):
+        add_terms(str(d.get("column") or ""), [d.get("column", ""), d.get("label", ""), *(d.get("synonyms") or [])])
+    found.sort(key=lambda x: x[0])
+    out=[]
+    for _, col in found:
+        if col not in out:
+            out.append(col)
+    return out
+
+
+def _resolved_columns(question: str, df: pd.DataFrame, semantic: dict[str, Any] | None = None) -> list[str]:
+    out=[]
+    for col in [*_semantic_matches(question, semantic, df), *_mentioned_columns(question, df)]:
+        if col not in out:
+            out.append(col)
+    return out
+
 def _looks_identifier(series: pd.Series, name: str) -> bool:
     n = max(int(series.notna().sum()), 1)
     ratio = float(series.nunique(dropna=True)) / n
@@ -97,7 +137,7 @@ def _select_target(df: pd.DataFrame, ctx: AnalystContext, *, numeric_required: b
     if ctx.target and ctx.target in df.columns:
         if not numeric_required or pd.api.types.is_numeric_dtype(df[ctx.target]):
             return ctx.target
-    mentioned = _mentioned_columns(ctx.question, df)
+    mentioned = _resolved_columns(ctx.question, df, ctx.semantic_model)
     for c in mentioned:
         if not numeric_required or pd.api.types.is_numeric_dtype(df[c]):
             return c
@@ -112,7 +152,7 @@ def _select_group(df: pd.DataFrame, ctx: AnalystContext, exclude: set[str] | Non
     exclude = exclude or set()
     if ctx.group and ctx.group in df.columns and ctx.group not in exclude:
         return ctx.group
-    mentioned = _mentioned_columns(ctx.question, df)
+    mentioned = _resolved_columns(ctx.question, df, ctx.semantic_model)
     cats = set(_categorical_columns(df))
     for c in mentioned:
         if c in cats and c not in exclude:
@@ -126,7 +166,7 @@ def _select_group(df: pd.DataFrame, ctx: AnalystContext, exclude: set[str] | Non
 def _select_date(df: pd.DataFrame, ctx: AnalystContext) -> str | None:
     if ctx.date_column and ctx.date_column in df.columns:
         return ctx.date_column
-    mentioned = set(_mentioned_columns(ctx.question, df))
+    mentioned = set(_resolved_columns(ctx.question, df, ctx.semantic_model))
     dates = _date_columns(df)
     for c in dates:
         if c in mentioned:
@@ -254,6 +294,14 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
     executions: list[dict[str, Any]] = []
     artifacts: dict[str, Any] = {}
     plan: list[dict[str, Any]] = []
+    semantic_matches = _semantic_matches(question, ctx.semantic_model, df)
+    if ctx.semantic_model:
+        artifacts["semantic_context"] = {
+            "status": ctx.semantic_model.get("status"),
+            "version": ctx.semantic_model.get("version"),
+            "matched_columns": semantic_matches,
+            "certified_metrics": [m.get("id") for m in ctx.semantic_model.get("metrics", []) if m.get("certified")],
+        }
 
     def execute(step: str, tool: str, fn: Callable[[], Any]) -> Any:
         plan.append({"step": len(plan) + 1, "action": step, "tool": tool})
@@ -274,7 +322,7 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
     findings.extend(_overview_findings(profile, quality))
 
     if intent in {"overview", "correlation"}:
-        variables = [c for c in (ctx.variables or _mentioned_columns(question, df)) if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
+        variables = [c for c in (ctx.variables or _resolved_columns(question, df, ctx.semantic_model)) if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
         if len(variables) < 2:
             variables = _numeric_columns(df)[:8]
         if len(variables) >= 2:
@@ -299,7 +347,7 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
                 findings.append(_finding(action.get("priority", "info"), "Action recommandée", action.get("action", ""), "decision_support", {"evidence": action.get("evidence"), "automatic_decision": False}))
 
     elif intent == "anomaly":
-        variables = [c for c in (ctx.variables or _mentioned_columns(question, df)) if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
+        variables = [c for c in (ctx.variables or _resolved_columns(question, df, ctx.semantic_model)) if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
         if not variables:
             variables = _numeric_columns(df)[:8]
         anomalies = execute("Détecter les anomalies sur les variables numériques sélectionnées", "anomalies", lambda: detect_anomalies(df, variables, "auto", 0.05, 3.5)) if variables else None
@@ -322,7 +370,7 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
         target = _select_target(df, ctx, numeric_required=True)
         if not target:
             raise ValueError("Aucune variable numérique n'est disponible comme variable dépendante")
-        mentioned = [c for c in _mentioned_columns(question, df) if c != target]
+        mentioned = [c for c in _resolved_columns(question, df, ctx.semantic_model) if c != target]
         independents = [c for c in (ctx.variables or mentioned) if c in df.columns and c != target]
         if not independents:
             independents = [str(c) for c in df.columns if str(c) != target and not _looks_identifier(df[c], str(c))][:8]
@@ -344,7 +392,7 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
             findings.append(_finding("high" if row.get("p_value") is not None and row["p_value"] < 0.05 else "info", "Comparaison des groupes", f"ANOVA {response} ~ {factor}: F={row.get('f'):.3f}, p={row.get('p_value'):.4g}.", "anova", {"response": response, "factor": factor, "f": row.get("f"), "p_value": row.get("p_value")}))
 
     elif intent == "clustering":
-        variables = [c for c in (ctx.variables or _mentioned_columns(question, df)) if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
+        variables = [c for c in (ctx.variables or _resolved_columns(question, df, ctx.semantic_model)) if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
         if len(variables) < 2:
             variables = [c for c in _numeric_columns(df) if not _looks_identifier(df[c], c)][:6]
         if len(variables) < 2:
@@ -396,5 +444,8 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
             "tools_executed": successful_tools,
             "calculation_policy": "deterministic_tools_only",
             "llm_used_for_numeric_calculation": False,
+            "semantic_grounding": bool(ctx.semantic_model),
+            "semantic_model_version": (ctx.semantic_model or {}).get("version"),
+            "semantic_matches": semantic_matches,
         },
     }

@@ -83,7 +83,33 @@ def save_dataframe_version(parent_id: str, df: pd.DataFrame, operation: dict) ->
         "operation": operation,
         "schema": schema,
     }
+    try:
+        from app.services.tenant_access import current_access_context, inherited_policies
+        ctx = current_access_context()
+        if ctx is not None:
+            policies = inherited_policies(parent_id, ctx)
+            meta["governance_materialization"] = {
+                "workspace_id": ctx.workspace_id,
+                "role": ctx.role,
+                "row_security_materialized": True,
+                "policy_versions": [
+                    {"id": p.get("id"), "updated_at": p.get("updated_at")}
+                    for p in policies if p.get("id")
+                ],
+            }
+    except PermissionError:
+        raise
+    except Exception:
+        pass
     _write_meta(meta)
+    try:
+        from app.services.tenant_access import bind_derived_dataset
+        bind_derived_dataset(parent_id, dataset_id)
+    except PermissionError:
+        raise
+    except Exception:
+        # Metadata persistence is authoritative; local mode and migrations must remain usable.
+        pass
     return meta
 
 
@@ -144,6 +170,15 @@ def list_dataset_catalog() -> list[dict]:
             "created_at": meta.get("created_at"),
             "operation": meta.get("operation"),
         })
+    try:
+        from app.services.tenant_access import governed_catalog_ids
+        visible_roots = governed_catalog_ids()
+    except PermissionError:
+        raise
+    except Exception:
+        visible_roots = None
+    if visible_roots is not None:
+        rows = [row for row in rows if str(row.get("root_id") or row.get("id")) in visible_roots]
     rows.sort(key=lambda x: x.get("created_at") or "", reverse=True)
     return rows
 
@@ -194,4 +229,11 @@ def load_dataframe(dataset_id: str) -> pd.DataFrame:
         df = pd.read_parquet(path)
     else:
         raise ValueError(f"Format non supporté: {ext}")
-    return _restore_schema(df, meta.get("schema"))
+    df = _restore_schema(df, meta.get("schema"))
+    try:
+        from app.services.tenant_access import current_access_context, govern_dataframe
+        if current_access_context() is not None:
+            df, _ = govern_dataframe(dataset_id, df)
+    except PermissionError:
+        raise
+    return df

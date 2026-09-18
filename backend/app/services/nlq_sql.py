@@ -35,12 +35,70 @@ def _numeric(df: pd.DataFrame, column: str) -> bool:
     return column in df.columns and pd.api.types.is_numeric_dtype(df[column])
 
 
-def translate_nlq(df: pd.DataFrame, question: str, limit: int = 200) -> dict[str, Any]:
+def translate_nlq(df: pd.DataFrame, question: str, limit: int = 200, semantic: dict[str, Any] | None = None) -> dict[str, Any]:
     raw = (question or "").strip()
     if not raw:
         raise ValueError("La question est vide")
     q = _norm(raw)
-    mentioned = _mentioned(raw, df)
+    semantic = semantic or {}
+    semantic_metric = None
+    semantic_dimension = None
+    for metric in semantic.get("metrics", []):
+        terms = [metric.get("id"), metric.get("name"), metric.get("label"), *(metric.get("synonyms") or [])]
+        if any(_norm(str(t)) in q for t in terms if t and len(_norm(str(t))) >= 2):
+            semantic_metric = metric
+            break
+    for dim in semantic.get("dimensions", []):
+        if dim.get("hidden"):
+            continue
+        terms = [dim.get("column"), dim.get("label"), *(dim.get("synonyms") or [])]
+        if any(_norm(str(t)) in q for t in terms if t and len(_norm(str(t))) >= 2):
+            semantic_dimension = dim.get("column")
+            break
+    if semantic_metric:
+        explicit_agg_map = [
+            (("moyenne", "moyen", "average", "avg"), "AVG", "mean"),
+            (("somme", "total", "sum"), "SUM", "sum"),
+            (("minimum", "min ", "plus petit"), "MIN", "min"),
+            (("maximum", "max ", "plus grand"), "MAX", "max"),
+            (("mediane", "median"), "MEDIAN", "median"),
+        ]
+        explicit = next(((sql, key) for words, sql, key in explicit_agg_map if any(w in q for w in words)), None)
+        semantic_agg = str(semantic_metric.get("aggregation", "mean")).lower()
+        if explicit:
+            agg_sql, semantic_agg = explicit
+        else:
+            agg_sql = {"sum":"SUM","mean":"AVG","min":"MIN","max":"MAX","count":"COUNT","nunique":"COUNT(DISTINCT","median":"MEDIAN"}.get(semantic_agg,"AVG")
+        column = str(semantic_metric.get("column"))
+        metric_name = str(semantic_metric.get("label") or semantic_metric.get("name") or semantic_metric.get("id"))
+        assumptions=[]
+        if semantic_agg == "median":
+            # DuckDB supports MEDIAN, but the SQLite fallback used in some local test environments does not.
+            agg_sql = "AVG"
+            assumptions.append("La médiane est approximée par AVG dans le traducteur SQL portable; utilisez l'évaluation sémantique dédiée pour une médiane exacte.")
+        if agg_sql == "COUNT(DISTINCT":
+            expr=f"COUNT(DISTINCT {_q(column)})"
+        elif agg_sql == "COUNT":
+            expr=f"COUNT({_q(column)})"
+        else:
+            expr=f"{agg_sql}({_q(column)})"
+        alias=_q(str(semantic_metric.get("id") or "metric"))
+        if semantic_dimension:
+            sql=f"SELECT {_q(str(semantic_dimension))}, {expr} AS {alias} FROM dataset GROUP BY {_q(str(semantic_dimension))} ORDER BY {alias} DESC LIMIT {max(1,min(int(limit),5000))}"
+            reasoning=f"Métrique gouvernée {metric_name} ventilée par {semantic_dimension}."
+        else:
+            sql=f"SELECT {expr} AS {alias} FROM dataset"
+            reasoning=f"Métrique gouvernée {metric_name}."
+        return {"sql":sql,"reasoning":reasoning,"assumptions":assumptions,"confidence":"high","mentioned_columns":[column]+([semantic_dimension] if semantic_dimension else []),"semantic_grounding":{"metric_id":semantic_metric.get("id"),"dimension":semantic_dimension,"certified":bool(semantic_metric.get("certified"))}}
+    augmented = raw
+    for dim in semantic.get("dimensions", []):
+        column=str(dim.get("column") or "")
+        if not column: continue
+        for term in [dim.get("label"), *(dim.get("synonyms") or [])]:
+            if term and _norm(str(term)) in q:
+                augmented += f" {column}"
+                break
+    mentioned = _mentioned(augmented, df)
     numeric = [c for c in mentioned if _numeric(df, c)]
     non_numeric = [c for c in mentioned if not _numeric(df, c)]
     limit = max(1, min(int(limit), 5000))
@@ -113,7 +171,7 @@ def translate_nlq(df: pd.DataFrame, question: str, limit: int = 200) -> dict[str
     }
 
 
-def run_nlq(df: pd.DataFrame, question: str, limit: int = 200) -> dict[str, Any]:
-    translation = translate_nlq(df, question, limit)
+def run_nlq(df: pd.DataFrame, question: str, limit: int = 200, semantic: dict[str, Any] | None = None) -> dict[str, Any]:
+    translation = translate_nlq(df, question, limit, semantic)
     result = run_sql(df, translation["sql"], limit)
     return {"question": question, **translation, "result": result}

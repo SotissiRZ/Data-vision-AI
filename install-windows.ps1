@@ -1,15 +1,35 @@
 $ErrorActionPreference = "Stop"
-Write-Host "DataVision AI v1.0 — installation locale" -ForegroundColor Cyan
+Write-Host "DataVision AI v2.2 — installation locale" -ForegroundColor Cyan
+
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
   throw "Docker n'est pas disponible. Installez Docker Desktop puis relancez ce script."
 }
+
 docker version | Out-Null
-if (-not (Test-Path ".env")) { Copy-Item ".env.example" ".env" }
+
+if (-not (Test-Path ".env")) {
+  Copy-Item ".env.example" ".env"
+}
+
+# Ne jamais conserver le secret d'exemple lors d'une installation locale neuve.
+$envContent = Get-Content ".env" -Raw
+if ($envContent -match "AUTH_SECRET=change-") {
+  $generatedSecret = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+  $envContent = [regex]::Replace($envContent, "AUTH_SECRET=.*", "AUTH_SECRET=$generatedSecret")
+  Set-Content ".env" $envContent -Encoding UTF8
+  Write-Host "Secret d'authentification local généré." -ForegroundColor Green
+}
+
 Write-Host "Construction des images (cache BuildKit activé)..." -ForegroundColor Yellow
 docker compose build
-Write-Host "Démarrage des services..." -ForegroundColor Yellow
+
+Write-Host "Démarrage de PostgreSQL, Redis, API, worker et interface..." -ForegroundColor Yellow
 docker compose up -d
+
+Write-Host "" 
 Write-Host "DataVision: http://localhost:3005" -ForegroundColor Green
 Write-Host "API:       http://localhost:8005" -ForegroundColor Green
 Write-Host "OpenAPI:   http://localhost:8005/docs" -ForegroundColor Green
+Write-Host "" 
+Write-Host "Ouvrez Gouverner pour initialiser le premier compte Enterprise." -ForegroundColor Cyan
 Start-Process "http://localhost:3005"

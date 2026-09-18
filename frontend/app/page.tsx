@@ -1,41 +1,39 @@
 'use client';
 
-import { Fragment, useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import {
-  getColumnAnalysis, getDataset, getDecision, getPreview, getProfile, getQuality, getVersions,
+  getColumnAnalysis, getDataset, getDatasetAccessContext, getDecision, getPreview, getProfile, getQuality, getVersions,
   predictModel, runAnova, runClustering, runPca, runRegression, transformDataset,
   trainModel, uploadDataset, getDatasetCatalog, combineDataset, getPipelines, savePipeline, runPipeline,
   runCorrelations, runStatisticalTest, getTestAdvice, getEngineInfo, runSql, recommendVisualizations, buildVisualization, runAutoML,
   runForecast, runAnomalyDetection, getModelDiagnostics, explainModelPrediction, getAIAnalystCapabilities, runAIAnalysis,
   runNaturalLanguageQuery, getAIHistory, getAIHistoryItem, getReports, createReport, downloadReport, getDashboard, saveVisualization, getSavedVisualizations,
   getDashboards, getDashboardDefinition, saveDashboardDefinition, deleteDashboardDefinition, previewDashboard,
+  getSemanticModel, saveSemanticModel, evaluateSemanticMetric, getMetricPulse, getTrustCenter, runModelWhatIf, runModelSensitivity,
+  bootstrapEnterprise, loginEnterprise, getEnterpriseSession, getEnterpriseStatus, createEnterpriseWorkspace, getEnterpriseWorkspace, addWorkspaceMember, bindWorkspaceDataset, saveWorkspacePolicy, getAuditEvents, getEnterpriseJobs, submitEnterpriseJob, cancelEnterpriseJob, getGovernedPreview,
 } from '../lib/api';
 
 type AnyObj = Record<string, any>;
-type View = 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'dashboard' | 'report';
+type View = 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'governance';
+type AreaKey = 'overview'|'data'|'analyze'|'model'|'decide'|'publish'|'governance';
 
-const nav: { key: View; label: string; icon: string; group: 'Explorer'|'Analyser'|'Modéliser'|'Partager'; status?: 'partial' | 'planned' }[] = [
-  { key: 'home', label: 'Accueil', icon: '⌂', group: 'Explorer' },
-  { key: 'data', label: 'Données', icon: '▦', group: 'Explorer' },
-  { key: 'stats', label: 'Statistiques descriptives', icon: '▤', group: 'Explorer' },
-  { key: 'quality', label: 'Qualité des données', icon: '✓', group: 'Explorer' },
-  { key: 'prepare', label: 'Préparation', icon: '⌘', group: 'Explorer' },
-  { key: 'tests', label: 'Tests & corrélations', icon: '∑', group: 'Analyser' },
-  { key: 'visual', label: 'Visualisation Studio', icon: '▥', group: 'Analyser' },
-  { key: 'sql', label: 'SQL Workspace', icon: '⌗', group: 'Analyser' },
-  { key: 'regression', label: 'Régression', icon: '↗', group: 'Analyser' },
-  { key: 'anova', label: 'ANOVA', icon: '≋', group: 'Analyser' },
-  { key: 'pca', label: 'ACP', icon: '◔', group: 'Analyser' },
-  { key: 'cluster', label: 'Clustering', icon: '◫', group: 'Analyser' },
-  { key: 'model', label: 'Modélisation', icon: '◆', group: 'Modéliser' },
-  { key: 'forecast', label: 'Forecasting', icon: '⌁', group: 'Modéliser' },
-  { key: 'anomaly', label: 'Anomalies', icon: '⚠', group: 'Modéliser' },
-  { key: 'xai', label: 'Explicabilité XAI', icon: '◇', group: 'Modéliser' },
-  { key: 'predict', label: 'Prédictions', icon: '◎', group: 'Modéliser' },
-  { key: 'ai', label: 'AI Analyst', icon: '✦', group: 'Modéliser' },
-  { key: 'dashboard', label: 'Dashboards', icon: '▦', group: 'Partager' },
-  { key: 'report', label: 'Rapports', icon: '▧', group: 'Partager' },
+const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; views:View[] }[] = [
+  {key:'overview',label:'Vue d’ensemble',icon:'⌂',defaultView:'home',views:['home']},
+  {key:'data',label:'Données',icon:'▦',defaultView:'data',views:['data','quality','prepare','stats']},
+  {key:'analyze',label:'Analyser',icon:'∑',defaultView:'visual',views:['visual','tests','sql','regression','anova','pca','cluster']},
+  {key:'model',label:'Modéliser',icon:'◆',defaultView:'model',views:['model','forecast','anomaly','xai','predict']},
+  {key:'decide',label:'Décider',icon:'✦',defaultView:'ai',views:['ai','semantic','decision','trust']},
+  {key:'publish',label:'Publier',icon:'▧',defaultView:'dashboard',views:['dashboard','report']},
+  {key:'governance',label:'Gouverner',icon:'⌾',defaultView:'governance',views:['governance']},
 ];
+const viewLabels: Record<View,string> = {
+  home:'Vue d’ensemble',data:'Aperçu des données',quality:'Qualité',prepare:'Préparation',stats:'Statistiques descriptives',
+  visual:'Visualisation',tests:'Tests & corrélations',sql:'SQL',regression:'Régression',anova:'ANOVA',pca:'ACP',cluster:'Clustering',
+  model:'AutoML',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',predict:'Prédictions',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',governance:'Gouvernance'
+};
+const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',ai:'✦',semantic:'◈',decision:'⇄',trust:'✓',dashboard:'▦',report:'▧',governance:'⌾'};
+function areaForView(view:View){ return areaConfig.find(a=>a.views.includes(view)) ?? areaConfig[0]; }
 
 function formatNumber(value: unknown, digits = 3) {
   if (typeof value !== 'number') return value == null ? '—' : String(value);
@@ -46,10 +44,10 @@ function formatNumber(value: unknown, digits = 3) {
 function pText(v: unknown) { return typeof v === 'number' ? (v < 0.001 ? '< 0,001' : formatNumber(v, 4)) : '—'; }
 function isNumeric(c: AnyObj) { return /int|float|double|decimal/i.test(c.dtype); }
 function isLikelyIdentifier(c: AnyObj, rows = 0) { const n=String(c?.name??'').toLowerCase(); const byName=/^(id|index|row|record|patient_id|customer_id|user_id)$/.test(n)||/_id$/.test(n); const unique=Number(c?.unique??0); const highUnique=rows>20&&unique/Math.max(rows,1)>.98; const idToken=/(uuid|identifier|identifiant|code|key|numero|number|record_no|record_number)/.test(n); return byName||(highUnique&&idToken); }
-function Stat({ label, value, detail }: { label: string; value: React.ReactNode; detail?: React.ReactNode }) {
+function Stat({ label, value, detail }: { label: string; value: ReactNode; detail?: ReactNode }) {
   return <div className="metric-card"><span>{label}</span><strong>{value}</strong>{detail && <small>{detail}</small>}</div>;
 }
-function Panel({ title, children, action }: { title: string; children: React.ReactNode; action?: React.ReactNode }) {
+function Panel({ title, children, action }: { title: string; children: ReactNode; action?: ReactNode }) {
   return <section className="panel"><header className="panel-head"><h3>{title}</h3>{action}</header><div className="panel-body">{children}</div></section>;
 }
 function EmptyState({ title, text }: { title: string; text: string }) {
@@ -57,6 +55,12 @@ function EmptyState({ title, text }: { title: string; text: string }) {
 }
 function RunButton({ busy, label, busyLabel, onClick }: { busy: boolean; label: string; busyLabel: string; onClick: () => void }) {
   return <button className="primary-btn real-button" disabled={busy} onClick={onClick}>{busy ? busyLabel : `▶ ${label}`}</button>;
+}
+
+function CommandPalette({query,setQuery,items,onClose,onNavigate,onAsk}:{query:string;setQuery:(s:string)=>void;items:{key:View;label:string;area:string;icon:string}[];onClose:()=>void;onNavigate:(v:View)=>void;onAsk:(q:string)=>void}){
+  const q=query.trim().toLowerCase();
+  const filtered=items.filter(x=>!q||`${x.label} ${x.area}`.toLowerCase().includes(q)).slice(0,12);
+  return <div className="command-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)onClose()}}><div className="command-palette"><div className="command-search"><span>⌕</span><input autoFocus value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&query.trim())onAsk(query.trim())}} placeholder="Rechercher un module ou poser une question aux données…"/><kbd>Esc</kbd></div><div className="command-results"><small>NAVIGATION</small>{filtered.map(x=><button key={x.key} onClick={()=>onNavigate(x.key)}><span>{x.icon}</span><div><b>{x.label}</b><small>{x.area}</small></div><i>↵</i></button>)}{q&&<><small>ANALYSE</small><button className="ask-command" onClick={()=>onAsk(query.trim())}><span>✦</span><div><b>Demander à AI Analyst</b><small>{query}</small></div><i>↵</i></button></>}</div></div></div>;
 }
 
 export default function Home() {
@@ -74,14 +78,20 @@ export default function Home() {
   const [predictionText, setPredictionText] = useState('[\n  {}\n]');
   const [prediction, setPrediction] = useState<AnyObj | null>(null);
   const [predicting, setPredicting] = useState(false);
+  const [paletteOpen,setPaletteOpen]=useState(false);
+  const [paletteQuery,setPaletteQuery]=useState('');
+  const [trustSummary,setTrustSummary]=useState<AnyObj|null>(null);
+  const [aiSeed,setAiSeed]=useState('');
+  const [enterpriseBadge,setEnterpriseBadge]=useState<AnyObj|null>(null);
+  const previousSecurityScope=useRef('local');
 
   async function activateDataset(id: string, nextView?: View) {
     setBusy(true); setError(''); setModel(null); setPrediction(null); setColumnAnalysis(null);
     try {
-      const [dataset, profile, quality, decision, preview, versions] = await Promise.all([
-        getDataset(id), getProfile(id), getQuality(id), getDecision(id), getPreview(id, 25), getVersions(id),
+      const [dataset, profile, quality, decision, preview, versions, access] = await Promise.all([
+        getDataset(id), getProfile(id), getQuality(id), getDecision(id), getPreview(id, 25), getVersions(id), getDatasetAccessContext(id),
       ]);
-      const complete = { dataset, profile, quality, decision, preview, versions };
+      const complete = { dataset, profile, quality, decision, preview, versions, access };
       setResult(complete);
       const firstNumeric = profile.columns.find((c: AnyObj) => isNumeric(c) && !isLikelyIdentifier(c, profile.rows))?.name ?? profile.columns.find((c:AnyObj)=>isNumeric(c))?.name ?? profile.columns[0]?.name ?? '';
       setSelectedColumn(firstNumeric);
@@ -103,13 +113,18 @@ export default function Home() {
   }
 
   function acceptTransformed(next: AnyObj) {
-    const complete = { dataset: next.dataset, profile: next.profile, quality: next.quality, decision: next.decision, preview: next.preview, versions: next.versions };
+    const complete = { dataset: next.dataset, profile: next.profile, quality: next.quality, decision: next.decision, preview: next.preview, versions: next.versions, access: next.access };
     setResult(complete);
     setModel(null); setPrediction(null); setColumnAnalysis(null);
     const firstNumeric = next.profile.columns.find((c: AnyObj) => isNumeric(c) && !isLikelyIdentifier(c, next.profile.rows))?.name ?? next.profile.columns.find((c:AnyObj)=>isNumeric(c))?.name ?? next.profile.columns[0]?.name ?? '';
     setSelectedColumn(firstNumeric);
     setTarget([...next.profile.columns].reverse().find((c:AnyObj)=>!isLikelyIdentifier(c, next.profile.rows))?.name ?? next.profile.columns[next.profile.columns.length - 1]?.name ?? '');
   }
+
+  useEffect(()=>{ const handler=(e:KeyboardEvent)=>{ if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setPaletteOpen(v=>!v);} if(e.key==='Escape')setPaletteOpen(false); }; window.addEventListener('keydown',handler); return()=>window.removeEventListener('keydown',handler); },[]);
+  useEffect(()=>{ const refresh=()=>{ if(typeof window==='undefined')return; const t=localStorage.getItem('dv_enterprise_token')||''; if(!t){setEnterpriseBadge(null);return;} getEnterpriseSession(t).then(s=>{const preferred=localStorage.getItem('dv_enterprise_workspace')||s.workspaces?.[0]?.id||''; const ws=s.workspaces?.find((x:AnyObj)=>x.id===preferred)??s.workspaces?.[0]??null; setEnterpriseBadge({user:s.user,workspace:ws});}).catch(()=>setEnterpriseBadge(null)); }; refresh(); window.addEventListener('datavision-enterprise-session',refresh); return()=>window.removeEventListener('datavision-enterprise-session',refresh); },[]);
+  useEffect(()=>{ const scope=enterpriseBadge?.workspace?.id?`workspace:${enterpriseBadge.workspace.id}`:'local'; if(previousSecurityScope.current!==scope){ setResult(null); setModel(null); setPrediction(null); setColumnAnalysis(null); setTrustSummary(null); previousSecurityScope.current=scope; } },[enterpriseBadge?.workspace?.id]);
+  useEffect(()=>{ if(!result){setTrustSummary(null);return;} let cancelled=false; getTrustCenter(result.dataset.id).then(x=>{if(!cancelled)setTrustSummary(x)}).catch(()=>{if(!cancelled)setTrustSummary(null)}); return()=>{cancelled=true}; },[result?.dataset?.id]);
 
   useEffect(() => {
     if (!result || !selectedColumn || view !== 'stats') return;
@@ -155,42 +170,53 @@ export default function Home() {
     finally { setPredicting(false); }
   }
 
-  return <main className="app-shell">
-    <header className="topbar">
-      <div className="brand-mini"><div className="brand-mark">DV</div><div><b>DataVision AI</b><span>Data Intelligence Workspace</span></div></div>
-      <div className="top-actions"><span className="runtime-dot"/> Moteur local <kbd>Ctrl K</kbd><button className="avatar">DV</button></div>
+  const activeArea=areaForView(view);
+  const paletteItems=Object.entries(viewLabels).map(([key,label])=>({key:key as View,label,area:areaForView(key as View).label,icon:viewIcons[key as View]??'•'}));
+  return <main className="app-shell professional-shell">
+    <header className="topbar pro-topbar">
+      <div className="brand-mini"><div className="brand-mark">DV</div><div><b>DataVision AI</b><span>Intelligence analytique vérifiable</span></div></div>
+      <div className="top-context">
+        {result?<><span className="top-dataset" title={result.dataset.name}><b>{result.dataset.name}</b><small>v{result.dataset.version??1}</small></span>{result.access?.governed&&<button className="governed-chip" onClick={()=>setView('governance')} title={`${result.access.policy_count??0} politique(s) active(s)`}>◈ Accès gouverné · {result.access.role}</button>}<span className="top-quality">Qualité <b>{result.quality.score}/100</b></span>{trustSummary&&<button className="trust-pill" onClick={()=>setView('trust')}>Trust {trustSummary.overall_score}/100 · {trustSummary.grade}</button>}</>:<span className="top-empty">Aucun dataset actif</span>}
+      </div>
+      <div className="top-actions"><span className="runtime-dot"/>{enterpriseBadge?<button className="enterprise-pill" onClick={()=>setView('governance')}><b>{enterpriseBadge.workspace?.name??'Enterprise'}</b><small>{enterpriseBadge.user?.display_name??enterpriseBadge.user?.email}</small></button>:<span>Local</span>}<button className="command-trigger" onClick={()=>setPaletteOpen(true)}><span>⌘</span> Rechercher <kbd>Ctrl K</kbd></button><button className="avatar" onClick={()=>enterpriseBadge&&setView('governance')}>{enterpriseBadge?String(enterpriseBadge.user?.display_name??'DV').slice(0,2).toUpperCase():'DV'}</button></div>
     </header>
-    <div className="app-grid">
-      <aside className="sidebar">
-        <div className="workspace-label"><span>WORKSPACE</span><b>Analyse locale</b></div>
-        <nav>{nav.map((item,i) => <Fragment key={item.key}>{(i===0||nav[i-1].group!==item.group)&&<div className="nav-group-label">{item.group}</div>}<button className={view === item.key ? 'nav-item active' : 'nav-item'} onClick={() => setView(item.key)}><span className="nav-icon">{item.icon}</span><span>{item.label}</span>{item.status && <i className={`status-chip ${item.status}`}>{item.status === 'planned' ? 'bientôt' : 'partiel'}</i>}</button></Fragment>)}</nav>
-        <label className="upload-side">{busy ? 'Analyse en cours…' : '↥  Importer un fichier'}<input type="file" accept=".csv,.xlsx,.json,.parquet,.txt" onChange={e => onFile(e.target.files?.[0])}/></label>
-        {result && <div className="dataset-mini"><span>DATASET ACTIF</span><b title={result.dataset.name}>{result.dataset.name}</b><small>v{result.dataset.version ?? 1} · {result.profile.rows} lignes · {result.profile.columns_count} variables</small></div>}
+    <div className="app-grid pro-grid">
+      <aside className="sidebar pro-sidebar">
+        <div className="workspace-label"><span>WORKSPACE</span><b>{enterpriseBadge?.workspace?.name??'Analyse locale'}</b><small>{enterpriseBadge?`${enterpriseBadge.workspace?.role??'member'} · ${enterpriseBadge.user?.display_name??'utilisateur'}`:'Workflow orienté objectifs'}</small></div>
+        <nav className="area-nav">{areaConfig.map(area=><button key={area.key} className={activeArea.key===area.key?'area-item active':'area-item'} onClick={()=>setView(area.defaultView)}><span>{area.icon}</span><div><b>{area.label}</b><small>{area.key==='overview'?'Synthèse & insights':area.key==='data'?'Préparer & comprendre':area.key==='analyze'?'Explorer & tester':area.key==='model'?'Prédire & expliquer':area.key==='decide'?'Sémantique & décisions':area.key==='publish'?'Dashboards & rapports':'Sécurité & audit'}</small></div></button>)}</nav>
+        <label className="upload-side pro-upload">{busy?'Analyse en cours…':'↥  Importer des données'}<input type="file" accept=".csv,.xlsx,.json,.parquet,.txt" onChange={e=>onFile(e.target.files?.[0])}/></label>
+        {result&&<div className="dataset-mini"><span>CONTEXTE ACTIF</span><b title={result.dataset.name}>{result.dataset.name}</b><small>v{result.dataset.version??1} · {result.profile.rows} lignes · {result.profile.columns_count} variables</small>{result.access?.governed&&<small className="governed-mini">◈ {result.access.role} · {result.access.policy_count??0} politique(s) · tenant-aware</small>}<div className="dataset-mini-actions"><button onClick={()=>setView('semantic')}>Sémantique</button><button onClick={()=>setView('trust')}>Trust</button></div></div>}
       </aside>
-      <section className="content">
-        {error && <div className="alert"><b>Erreur</b><span>{error}</span><button onClick={() => setError('')}>×</button></div>}
-        {view === 'home' && <HomeView result={result} busy={busy} onFile={onFile} setView={setView}/>} 
-        {view === 'data' && <DataView result={result}/>} 
-        {view === 'stats' && <StatsView result={result} selectedColumn={selectedColumn} setSelectedColumn={setSelectedColumn} analysis={columnAnalysis}/>} 
-        {view === 'tests' && <StatisticalLab result={result} setError={setError}/>} 
-        {view === 'quality' && <QualityView result={result}/>} 
-        {view === 'prepare' && <PrepareView result={result} setError={setError} onTransformed={acceptTransformed} onActivate={id => activateDataset(id, 'prepare')}/>} 
-        {view === 'visual' && <VisualizationStudio result={result} setError={setError}/>} 
-        {view === 'sql' && <SqlWorkspace result={result} setError={setError}/>} 
-        {view === 'regression' && <RegressionView result={result} setError={setError}/>} 
-        {view === 'anova' && <AnovaView result={result} setError={setError}/>} 
-        {view === 'pca' && <PcaView result={result} setError={setError}/>} 
-        {view === 'cluster' && <ClusterView result={result} setError={setError}/>} 
-        {view === 'model' && <ModelView result={result} target={target} setTarget={setTarget} algorithm={algorithm} setAlgorithm={setAlgorithm} training={training} automlRunning={automlRunning} doTrain={doTrain} doAutoML={doAutoML} model={model}/>} 
-        {view === 'forecast' && <ForecastView result={result} setError={setError}/>}
-        {view === 'anomaly' && <AnomalyView result={result} setError={setError}/>}
-        {view === 'xai' && <XaiView result={result} model={model} setError={setError}/>}
-        {view === 'ai' && <AIAnalystView result={result} setError={setError}/>}
-        {view === 'predict' && <PredictView model={model} text={predictionText} setText={setPredictionText} predicting={predicting} doPredict={doPredict} prediction={prediction}/>} 
-        {view === 'dashboard' && <DashboardBuilder result={result} setError={setError}/>}
-        {view === 'report' && <ReportView result={result} setError={setError}/>} 
+      <section className="content pro-content">
+        {activeArea.views.length>1&&<div className="context-tabs"><div><span>{activeArea.icon}</span><b>{activeArea.label}</b></div><nav>{activeArea.views.map(v=><button key={v} className={view===v?'active':''} onClick={()=>setView(v)}>{viewLabels[v]}</button>)}</nav></div>}
+        {error&&<div className="alert"><b>Erreur</b><span>{error}</span><button onClick={()=>setError('')}>×</button></div>}
+        {view==='home'&&<HomeView result={result} busy={busy} onFile={onFile} setView={setView}/>} 
+        {view==='data'&&<DataView result={result}/>} 
+        {view==='stats'&&<StatsView result={result} selectedColumn={selectedColumn} setSelectedColumn={setSelectedColumn} analysis={columnAnalysis}/>} 
+        {view==='tests'&&<StatisticalLab result={result} setError={setError}/>} 
+        {view==='quality'&&<QualityView result={result}/>} 
+        {view==='prepare'&&<PrepareView result={result} setError={setError} onTransformed={acceptTransformed} onActivate={id=>activateDataset(id,'prepare')}/>} 
+        {view==='visual'&&<VisualizationStudio result={result} setError={setError}/>} 
+        {view==='sql'&&<SqlWorkspace result={result} setError={setError}/>} 
+        {view==='regression'&&<RegressionView result={result} setError={setError}/>} 
+        {view==='anova'&&<AnovaView result={result} setError={setError}/>} 
+        {view==='pca'&&<PcaView result={result} setError={setError}/>} 
+        {view==='cluster'&&<ClusterView result={result} setError={setError}/>} 
+        {view==='model'&&<ModelView result={result} target={target} setTarget={setTarget} algorithm={algorithm} setAlgorithm={setAlgorithm} training={training} automlRunning={automlRunning} doTrain={doTrain} doAutoML={doAutoML} model={model}/>} 
+        {view==='forecast'&&<ForecastView result={result} setError={setError}/>} 
+        {view==='anomaly'&&<AnomalyView result={result} setError={setError}/>} 
+        {view==='xai'&&<XaiView result={result} model={model} setError={setError}/>} 
+        {view==='predict'&&<PredictView model={model} text={predictionText} setText={setPredictionText} predicting={predicting} doPredict={doPredict} prediction={prediction}/>} 
+        {view==='ai'&&<AIAnalystView result={result} setError={setError} initialQuestion={aiSeed}/>} 
+        {view==='semantic'&&<SemanticStudio result={result} setError={setError}/>} 
+        {view==='decision'&&<DecisionLab result={result} model={model} setError={setError} setView={setView}/>} 
+        {view==='trust'&&<TrustCenterView result={result} setError={setError}/>} 
+        {view==='dashboard'&&<DashboardBuilder result={result} setError={setError}/>} 
+        {view==='report'&&<ReportView result={result} setError={setError}/>}
+        {view==='governance'&&<GovernanceCenter result={result} setError={setError}/>}  
       </section>
     </div>
+    {paletteOpen&&<CommandPalette query={paletteQuery} setQuery={setPaletteQuery} items={paletteItems} onClose={()=>setPaletteOpen(false)} onNavigate={(v)=>{setView(v);setPaletteOpen(false);setPaletteQuery('')}} onAsk={(q)=>{setAiSeed(q);setView('ai');setPaletteOpen(false);setPaletteQuery('')}}/>}
   </main>;
 }
 
@@ -207,6 +233,7 @@ function HomeView({ result, busy, onFile, setView }: { result: AnyObj | null; bu
   return <div className="page dashboard-home">
     <div className="page-title"><div><span className="eyebrow">ANALYTICAL OVERVIEW</span><h1>{result.dataset.name}</h1><p>Vue synthétique de la structure, de la qualité, des relations et des prochaines analyses utiles.</p></div><div className="dataset-badges"><span className="version-badge">Version {result.dataset.version??1}</span><button className="secondary-btn" onClick={()=>setView('data')}>Voir les données</button></div></div>
     <div className="metrics dashboard-kpis"><Stat label="Lignes" value={d?.metrics?.rows??result.profile.rows}/><Stat label="Variables" value={d?.metrics?.columns??result.profile.columns_count}/><Stat label="Score qualité" value={`${d?.metrics?.quality_score??result.quality.score}/100`}/><Stat label="Cellules manquantes" value={d?.metrics?.missing_cells??'—'}/><Stat label="Doublons" value={d?.metrics?.duplicates??result.profile.duplicates}/></div>
+    <section className="goal-playbooks"><div className="goal-playbooks-head"><div><span className="eyebrow">START WITH A GOAL</span><h3>Que voulez-vous comprendre ?</h3></div><small>DataVision ouvre le bon workflow sans vous obliger à connaître le nom du test ou de l’algorithme.</small></div><div className="goal-playbook-grid"><button onClick={()=>setView('tests')}><span>01</span><div><b>Comparer des groupes</b><p>Choisir automatiquement le test, vérifier les hypothèses et mesurer la taille d’effet.</p></div><i>→</i></button><button onClick={()=>setView('regression')}><span>02</span><div><b>Expliquer une cible</b><p>Régression, diagnostics, variables influentes et limites d’interprétation.</p></div><i>→</i></button><button onClick={()=>setView('forecast')}><span>03</span><div><b>Prévoir une métrique</b><p>Validation temporelle, benchmark et intervalles de prévision.</p></div><i>→</i></button><button onClick={()=>setView('ai')}><span>04</span><div><b>Analyser sans choisir l’outil</b><p>L’AI Analyst planifie, exécute et vérifie une analyse multi-étapes.</p></div><i>→</i></button></div></section>
     {loading&&!d&&<div className="quiet-empty">Calcul de la synthèse analytique…</div>}
     {d&&<>
       <div className="dashboard-grid dashboard-overview-grid">
@@ -482,7 +509,7 @@ function ClusterView({ result, setError }: { result:AnyObj|null; setError:(s:str
   </div>;
 }
 
-function TestCard({ name, stat, p, goodWhenHigh=false }: { name:string; stat:any; p:any; goodWhenHigh?:boolean }) { const ok=typeof p==='number' ? (goodWhenHigh?p>=0.05:p<0.05) : false; return <div className="test-card"><div><b>{name}</b><small>Statistique {formatNumber(stat)}</small></div><span className={ok?'test-ok':'test-warn'}>p {pText(p)}</span></div>; }
+function TestCard({ name, stat, p, goodWhenHigh=false }: { name:string; stat:any; p:any; goodWhenHigh?:boolean; key?:any }) { const ok=typeof p==='number' ? (goodWhenHigh?p>=0.05:p<0.05) : false; return <div className="test-card"><div><b>{name}</b><small>Statistique {formatNumber(stat)}</small></div><span className={ok?'test-ok':'test-warn'}>p {pText(p)}</span></div>; }
 function SimpleTable({ rows, columns }: { rows:AnyObj[]; columns:[string,string][] }) { if(!rows?.length)return <div className="quiet-empty">Aucun résultat tabulaire.</div>; return <div className="table-scroll compact"><table><thead><tr>{columns.map(([k,l])=><th key={k}>{l}</th>)}</tr></thead><tbody>{rows.map((r,i)=><tr key={i}>{columns.map(([k])=><td key={k}>{typeof r[k]==='boolean'?(r[k]?'Oui':'Non'):formatNumber(r[k])}</td>)}</tr>)}</tbody></table></div>; }
 function ScatterPlot({ points, xLabel, yLabel, zeroLine=false, diagonal=false }: { points:{x:number,y:number,cluster?:number}[]; xLabel:string; yLabel:string; zeroLine?:boolean; diagonal?:boolean }) { const clean=points.filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)); if(!clean.length)return <div className="quiet-empty">Aucun point.</div>; const xs=clean.map(p=>p.x),ys=clean.map(p=>p.y),xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(...ys),ymax=Math.max(...ys),sx=(x:number)=>40+(x-xmin)/Math.max(xmax-xmin,1e-9)*520,sy=(y:number)=>235-(y-ymin)/Math.max(ymax-ymin,1e-9)*190; return <div className="svg-chart"><svg viewBox="0 0 600 280" role="img"><line x1="40" y1="235" x2="560" y2="235" className="axis"/><line x1="40" y1="45" x2="40" y2="235" className="axis"/>{zeroLine&&ymin<=0&&ymax>=0&&<line x1="40" y1={sy(0)} x2="560" y2={sy(0)} className="guide"/>}{diagonal&&<line x1={sx(Math.max(xmin,ymin))} y1={sy(Math.max(xmin,ymin))} x2={sx(Math.min(xmax,ymax))} y2={sy(Math.min(xmax,ymax))} className="diag"/>}{clean.map((p,i)=><circle key={i} cx={sx(p.x)} cy={sy(p.y)} r="2.5" className="dot"/>)}<text x="300" y="270" className="axis-label">{xLabel}</text><text x="12" y="145" className="axis-label" transform="rotate(-90 12 145)">{yLabel}</text></svg></div>; }
 function ClusterScatter({ points }: { points:AnyObj[] }) { const clean=points.filter(p=>Number.isFinite(p.x)&&Number.isFinite(p.y)); if(!clean.length)return <div className="quiet-empty">Aucun point.</div>; const xs=clean.map(p=>p.x),ys=clean.map(p=>p.y),xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(...ys),ymax=Math.max(...ys),sx=(x:number)=>35+(x-xmin)/Math.max(xmax-xmin,1e-9)*530,sy=(y:number)=>235-(y-ymin)/Math.max(ymax-ymin,1e-9)*195; return <div className="svg-chart"><svg viewBox="0 0 600 270"><line x1="35" y1="235" x2="565" y2="235" className="axis"/><line x1="35" y1="40" x2="35" y2="235" className="axis"/>{clean.map((p,i)=><circle key={i} cx={sx(p.x)} cy={sy(p.y)} r="3" className={`cluster-dot c${p.cluster%6}`}/>)}</svg><div className="cluster-legend">{[...new Set(clean.map(p=>p.cluster))].map(c=><span key={c}><i className={`cluster-dot c${c%6}`}/>Cluster {c}</span>)}</div></div>; }
@@ -564,7 +591,7 @@ function SqlWorkspace({ result, setError }: { result:AnyObj|null; setError:(s:st
   if(!result) return <EmptyState title="SQL Workspace" text="Chargez un dataset. Il sera exposé en lecture seule sous le nom de table dataset."/>;
   async function execute(){setBusy(true);setError('');try{setOut(await runSql(result!.dataset.id,sql,500));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   async function executeNlq(){if(!nlq.trim())return;setNlqBusy(true);setError('');try{const r=await runNaturalLanguageQuery(result!.dataset.id,nlq.trim(),200);setNlqOut(r);setSql(r.sql);setOut(r.result);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setNlqBusy(false);}}
-  return <div className="page"><div className="page-title"><div><span className="eyebrow">DUCKDB / LOCAL SQL · NLQ</span><h1>SQL Workspace</h1><p>Interrogez le dataset en SQL ou transformez une question en langage naturel en requête SQL vérifiée et exécutée localement.</p></div><span className="module-state implemented">NLQ v1.0</span></div>
+  return <div className="page"><div className="page-title"><div><span className="eyebrow">DUCKDB / LOCAL SQL · NLQ</span><h1>SQL Workspace</h1><p>Interrogez le dataset en SQL ou transformez une question en langage naturel en requête SQL vérifiée et exécutée localement.</p></div><span className="module-state implemented">NLQ gouverné</span></div>
     {info&&<div className="metrics"><Stat label="Moteur actif" value={info.preferred_engine}/><Stat label="DuckDB" value={info.engines.duckdb??'fallback'}/><Stat label="Polars" value={info.engines.polars??'fallback'}/><Stat label="Taille estimée" value={`${formatNumber(info.dataset.estimated_size_bytes/1024)} Ko`}/></div>}
     <Panel title="Question en langage naturel" action={<span className="read-only-chip">TEXT → SQL</span>}><div className="nlq-row"><textarea className="nlq-input" value={nlq} onChange={e=>setNlq(e.target.value)} spellCheck={false}/><RunButton busy={nlqBusy} label="Générer & exécuter" busyLabel="Interprétation…" onClick={executeNlq}/></div>{nlqOut&&<div className="nlq-meta"><span>Confiance <b>{nlqOut.confidence}</b></span><span>{nlqOut.reasoning}</span>{(nlqOut.assumptions??[]).map((x:string)=><small key={x}>⚠ {x}</small>)}</div>}</Panel>
     <div className="sql-layout"><Panel title="Éditeur SQL" action={<span className="read-only-chip">READ ONLY</span>}><textarea className="sql-editor" value={sql} onChange={e=>setSql(e.target.value)} spellCheck={false}/><div className="button-row"><RunButton busy={busy} label="Exécuter" busyLabel="Exécution…" onClick={execute}/><small className="help-text">Table disponible : <code>dataset</code> · SELECT/CTE uniquement</small></div></Panel><Panel title="Schéma"><div className="schema-list">{result.profile.columns.map((c:AnyObj)=><div key={c.name}><b>{c.name}</b><span>{c.dtype}</span></div>)}</div></Panel></div>
@@ -576,7 +603,7 @@ function ModelView({ result, target, setTarget, algorithm, setAlgorithm, trainin
   const [metric,setMetric]=useState('auto'); const [folds,setFolds]=useState(5); const [tune,setTune]=useState(true); const [maxCandidates,setMaxCandidates]=useState(5);
   if (!result) return <EmptyState title="Modélisation" text="Chargez un dataset avant de sélectionner une cible et d’entraîner un modèle."/>;
   const benchmark=model?.benchmark??[]; const importance=model?.feature_importance??[]; const guardrails=model?.guardrails??[];
-  return <div className="page"><div className="page-title"><div><span className="eyebrow">MACHINE LEARNING · AUTOML</span><h1>Modélisation professionnelle</h1><p>Benchmark multi-modèles, validation croisée, train/validation/test, tuning contrôlé, garde-fous et Model Card.</p></div><span className="module-state implemented">v1.0 compatible</span></div>
+  return <div className="page"><div className="page-title"><div><span className="eyebrow">MACHINE LEARNING · AUTOML</span><h1>Modélisation professionnelle</h1><p>Benchmark multi-modèles, validation croisée, train/validation/test, tuning contrôlé, garde-fous et Model Card.</p></div><span className="module-state implemented">AutoML vérifiable</span></div>
     <div className="two-col model-layout"><Panel title="AutoML"><div className="stack-form"><label>Variable cible<select value={target} onChange={e=>setTarget(e.target.value)}>{result.profile.columns.filter((c:AnyObj)=>!isLikelyIdentifier(c,Number(result.profile.rows??0))).map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><div className="form-row"><label>Métrique principale<select value={metric} onChange={e=>setMetric(e.target.value)}><option value="auto">Auto</option><option value="roc_auc">ROC-AUC</option><option value="f1_weighted">F1 pondéré</option><option value="balanced_accuracy">Balanced accuracy</option><option value="accuracy">Accuracy</option><option value="rmse">RMSE</option><option value="mae">MAE</option><option value="r2">R²</option></select></label><label>CV<input type="number" min={2} max={10} value={folds} onChange={e=>setFolds(Number(e.target.value))}/></label><label>Candidats<input type="number" min={2} max={6} value={maxCandidates} onChange={e=>setMaxCandidates(Number(e.target.value))}/></label></div><label className="switch-line"><input type="checkbox" checked={tune} onChange={e=>setTune(e.target.checked)}/> Optimisation contrôlée des hyperparamètres</label><button className="primary-btn real-button" disabled={automlRunning} onClick={()=>doAutoML({primary_metric:metric,cv_folds:folds,tune,max_candidates:maxCandidates})}>{automlRunning?'AutoML en cours…':'▶ Lancer AutoML'}</button><small className="help-text">Le jeu de test final reste isolé jusqu’à l’évaluation du modèle sélectionné.</small></div></Panel>
       <Panel title="Entraînement manuel"><div className="stack-form"><label>Algorithme<select value={algorithm} onChange={e=>setAlgorithm(e.target.value)}><option value="auto">Auto baseline</option><option value="linear_regression">Régression linéaire</option><option value="ridge">Ridge</option><option value="logistic_regression">Régression logistique</option><option value="random_forest">Random Forest</option><option value="extra_trees">Extra Trees</option><option value="gradient_boosting">Gradient Boosting</option><option value="hist_gradient_boosting">Histogram Gradient Boosting</option></select></label><button className="secondary-btn real-button" disabled={training} onClick={doTrain}>{training?'Entraînement…':'Entraîner un modèle précis'}</button><ul className="guardrails compact"><li>✓ Imputation + encodage dans le pipeline</li><li>✓ Split reproductible 60/20/20</li><li>✓ Test final non utilisé pour l’optimisation</li><li>✓ Modèle et Model Card sauvegardés localement</li></ul></div></Panel></div>
     {model&&<><div className="metrics six"><Stat label="Tâche" value={model.task}/><Stat label="Algorithme retenu" value={model.algorithm}/><Stat label="Train" value={model.rows_train}/><Stat label="Validation" value={model.rows_validation??'—'}/><Stat label="Test final" value={model.rows_test}/><Stat label="Métrique" value={model.primary_metric??model.model_card?.primary_metric??'auto'}/></div>
@@ -628,8 +655,69 @@ function ConfusionMatrix({matrix,classes}:{matrix:number[][];classes:any[]}) { i
 function CurveChart({rows,xKey,yKey}:{rows:AnyObj[];xKey:string;yKey:string}) { if(!rows?.length)return <div className="quiet-empty">Courbe indisponible</div>; const pts=rows.map(r=>`${30+(Number(r[xKey])||0)*250},${220-(Number(r[yKey])||0)*180}`).join(' '); return <svg viewBox="0 0 300 240" className="curve-chart"><line x1="30" y1="220" x2="280" y2="220" className="chart-axis"/><line x1="30" y1="40" x2="30" y2="220" className="chart-axis"/><line x1="30" y1="220" x2="280" y2="40" className="reference-line"/><polyline points={pts} className="roc-line" fill="none"/></svg>; }
 
 
-function AIAnalystView({ result, setError }: { result: AnyObj|null; setError:(s:string)=>void }) {
-  const [question,setQuestion]=useState('Analyse ce dataset et identifie les principaux problèmes, relations et anomalies.');
+
+function SemanticStudio({result,setError}:{result:AnyObj|null;setError:(s:string)=>void}){
+  const [semantic,setSemantic]=useState<AnyObj|null>(null);
+  const [busy,setBusy]=useState(false);
+  const [metricId,setMetricId]=useState('');
+  const [dimension,setDimension]=useState('');
+  const [dateColumn,setDateColumn]=useState('');
+  const [evaluation,setEvaluation]=useState<AnyObj|null>(null);
+  const [pulse,setPulse]=useState<AnyObj|null>(null);
+  useEffect(()=>{let cancelled=false;if(!result){setSemantic(null);return;}getSemanticModel(result.dataset.id).then(x=>{if(cancelled)return;setSemantic(x);setMetricId(x.metrics?.[0]?.id??'');}).catch(e=>{if(!cancelled)setError(e instanceof Error?e.message:String(e));});return()=>{cancelled=true}},[result?.dataset?.id]);
+  if(!result)return <EmptyState title="Couche sémantique" text="Chargez un dataset pour définir des métriques, dimensions et synonymes métier."/>;
+  if(!semantic)return <div className="loading-card">Initialisation de la couche sémantique…</div>;
+  const metrics=semantic.metrics??[],dimensions=semantic.dimensions??[];
+  const updateMetric=(i:number,patch:AnyObj)=>setSemantic({...semantic,metrics:metrics.map((m:AnyObj,j:number)=>j===i?{...m,...patch}:m)});
+  const updateDim=(i:number,patch:AnyObj)=>setSemantic({...semantic,dimensions:dimensions.map((d:AnyObj,j:number)=>j===i?{...d,...patch}:d)});
+  async function save(){setBusy(true);setError('');try{const saved=await saveSemanticModel(result!.dataset.id,{metrics:semantic!.metrics,dimensions:semantic!.dimensions,business_glossary:semantic!.business_glossary??[]});setSemantic(saved);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function evaluate(){if(!metricId)return;setBusy(true);try{setEvaluation(await evaluateSemanticMetric(result!.dataset.id,{metric_id:metricId,dimensions:dimension?[dimension]:[]}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function loadPulse(){if(!metricId)return;setBusy(true);try{setPulse(await getMetricPulse(result!.dataset.id,{metric_id:metricId,date_column:dateColumn||null,periods:12}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  return <div className="page semantic-page"><div className="page-title"><div><span className="eyebrow">GOVERNED SEMANTICS</span><h1>Couche sémantique</h1><p>Définissez une fois les métriques, dimensions, synonymes et unités métier. L’AI Analyst et les futures requêtes utilisent ce contexte au lieu de deviner la logique métier.</p></div><div className="semantic-head-actions"><span className={`semantic-status ${semantic.status}`}>{semantic.status==='governed'?'Gouvernée':'Brouillon automatique'}</span><button className="primary-btn" disabled={busy} onClick={save}>{busy?'Enregistrement…':'Enregistrer'}</button></div></div>
+    <div className="semantic-summary"><div><b>{metrics.length}</b><span>Métriques</span></div><div><b>{metrics.filter((m:AnyObj)=>m.certified).length}</b><span>Certifiées</span></div><div><b>{dimensions.length}</b><span>Dimensions</span></div><div><b>v{semantic.version??1}</b><span>Version sémantique</span></div></div>
+    <Panel title="Métriques métier" action={<span className="quiet">Mesures gouvernées et vérifiables</span>}><div className="semantic-metric-list">{metrics.map((m:AnyObj,i:number)=><article className={m.certified?'semantic-metric certified':'semantic-metric'} key={`${m.id}-${i}`}><div className="metric-cert"><input type="checkbox" checked={!!m.certified} onChange={e=>updateMetric(i,{certified:e.target.checked})}/><span>{m.certified?'CERTIFIÉE':'BROUILLON'}</span></div><label>Nom métier<input value={m.label??m.name??''} onChange={e=>updateMetric(i,{label:e.target.value,name:e.target.value})}/></label><label>Colonne<select value={m.column} onChange={e=>updateMetric(i,{column:e.target.value})}>{result.profile.columns.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><label>Agrégation<select value={m.aggregation} onChange={e=>updateMetric(i,{aggregation:e.target.value})}>{['sum','mean','median','min','max','count','nunique'].map(a=><option key={a}>{a}</option>)}</select></label><label>Unité<input value={m.unit??''} onChange={e=>updateMetric(i,{unit:e.target.value})} placeholder="€, %, ms…"/></label><label className="semantic-wide">Description<input value={m.description??''} onChange={e=>updateMetric(i,{description:e.target.value})} placeholder="Définition métier et règle d’interprétation"/></label><label className="semantic-wide">Synonymes<input value={(m.synonyms??[]).join(', ')} onChange={e=>updateMetric(i,{synonyms:e.target.value.split(',').map(x=>x.trim()).filter(Boolean)})} placeholder="CA, chiffre d’affaires, revenue"/></label></article>)}</div></Panel>
+    <Panel title="Dimensions & vocabulaire"><div className="semantic-dim-grid">{dimensions.map((d:AnyObj,i:number)=><article key={`${d.column}-${i}`}><div><b>{d.column}</b><label className="switch-line"><input type="checkbox" checked={!d.hidden} onChange={e=>updateDim(i,{hidden:!e.target.checked})}/>Exposée</label></div><input value={d.label??d.column} onChange={e=>updateDim(i,{label:e.target.value})}/><input value={(d.synonyms??[]).join(', ')} onChange={e=>updateDim(i,{synonyms:e.target.value.split(',').map(x=>x.trim()).filter(Boolean)})} placeholder="Synonymes métier"/></article>)}</div></Panel>
+    <div className="two-col semantic-lab-grid"><Panel title="Tester une métrique"><div className="stack-form semantic-test-form"><label>Métrique<select value={metricId} onChange={e=>setMetricId(e.target.value)}>{metrics.map((m:AnyObj)=><option value={m.id} key={m.id}>{m.label||m.name}</option>)}</select></label><label>Ventiler par<select value={dimension} onChange={e=>setDimension(e.target.value)}><option value="">Aucune dimension</option>{dimensions.filter((d:AnyObj)=>!d.hidden).map((d:AnyObj)=><option value={d.column} key={d.column}>{d.label||d.column}</option>)}</select></label><RunButton busy={busy} label="Calculer" busyLabel="Calcul…" onClick={evaluate}/></div>{evaluation&&<div className="semantic-evaluation"><div className="metric-hero"><span>{evaluation.metric?.label}</span><strong>{formatNumber(evaluation.value,2)} {evaluation.metric?.unit}</strong><small>{evaluation.metric?.aggregation}({evaluation.metric?.column}) · {evaluation.rows} lignes</small></div>{evaluation.result?.length>0&&<BarChart rows={evaluation.result.slice(0,12)} valueKey="value" labelKey={evaluation.dimensions?.[0]}/>}</div>}</Panel>
+      <Panel title="Metric Pulse"><div className="stack-form semantic-test-form"><label>Métrique<select value={metricId} onChange={e=>setMetricId(e.target.value)}>{metrics.map((m:AnyObj)=><option value={m.id} key={m.id}>{m.label||m.name}</option>)}</select></label><label>Dimension temporelle<select value={dateColumn} onChange={e=>setDateColumn(e.target.value)}><option value="">Aucune</option>{result.profile.columns.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><RunButton busy={busy} label="Actualiser le Pulse" busyLabel="Calcul…" onClick={loadPulse}/></div>{pulse&&<div className="pulse-card"><div className="pulse-main"><span>{pulse.metric?.label}</span><strong>{formatNumber(pulse.current,2)} {pulse.metric?.unit}</strong><small className={`pulse-delta ${pulse.status}`}>{pulse.delta_pct==null?'Tendance non disponible':`${pulse.delta_pct>=0?'+':''}${formatNumber(pulse.delta_pct,1)} % vs période précédente`}</small></div>{pulse.trend?.length>1&&<LineChart rows={pulse.trend.map((x:AnyObj,i:number)=>({x:i,value:Number(x.value)}))} xKey="x" yKey="value"/>}{pulse.anomaly&&<div className="warning-box">⚠ La dernière valeur est atypique par rapport à l’historique récent (z={formatNumber(pulse.anomaly_z,2)}).</div>}</div>}</Panel></div>
+  </div>;
+}
+
+function TrustCenterView({result,setError}:{result:AnyObj|null;setError:(s:string)=>void}){
+  const [trust,setTrust]=useState<AnyObj|null>(null);
+  useEffect(()=>{let cancelled=false;if(!result){setTrust(null);return;}getTrustCenter(result.dataset.id).then(x=>{if(!cancelled)setTrust(x)}).catch(e=>{if(!cancelled)setError(e instanceof Error?e.message:String(e));});return()=>{cancelled=true}},[result?.dataset?.id]);
+  if(!result)return <EmptyState title="Trust Center" text="Chargez un dataset pour auditer qualité, sémantique, reproductibilité et confidentialité."/>;
+  if(!trust)return <div className="loading-card">Calcul du Trust Score…</div>;
+  return <div className="page trust-page"><div className="page-title"><div><span className="eyebrow">TRUST · PROVENANCE · GOVERNANCE</span><h1>Trust Center</h1><p>Un point de contrôle unique avant de publier, modéliser ou prendre une décision. Chaque score est relié à des contrôles déterministes.</p></div><span className="module-state implemented">audit vérifiable</span></div>
+    <div className="trust-hero"><div className="trust-ring" style={{'--trust':`${trust.overall_score}%`} as CSSProperties}><strong>{trust.overall_score}</strong><span>/100</span></div><div><span className="trust-grade">Grade {trust.grade}</span><h2>Niveau de confiance analytique</h2><p>Le score combine qualité des données, couche sémantique, reproductibilité et signaux de confidentialité. Il ne remplace pas une revue métier.</p></div><div className="trust-policy"><span>Calculs numériques</span><b>Moteurs déterministes</b><span>Données brutes vers LLM externe</span><b>{trust.policy.raw_data_to_external_llm?'Autorisé':'Bloqué par défaut'}</b><span>Version dataset</span><b>v{trust.policy.dataset_version}</b></div></div>
+    <div className="trust-check-grid">{trust.checks.map((c:AnyObj)=><article className={`trust-check ${c.status}`} key={c.area}><div><span>{c.status==='pass'?'✓':c.status==='fail'?'!':'△'}</span><b>{c.area}</b></div><strong>{c.score}/100</strong><p>{c.evidence}</p></article>)}</div>
+    <div className="two-col"><Panel title="Points d’attention">{trust.warnings?.length?<div className="trust-warning-list">{trust.warnings.map((w:string,i:number)=><div key={i}><span>!</span><p>{w}</p></div>)}</div>:<div className="success-box">✓ Aucun avertissement majeur détecté.</div>}</Panel><Panel title="Lineage du dataset"><div className="lineage-compact">{(result.versions??[]).slice().sort((a:AnyObj,b:AnyObj)=>a.version-b.version).map((v:AnyObj)=><div key={v.id}><span>v{v.version}</span><div><b>{v.operation?.label??v.operation?.type??'Version'}</b><small>{v.id===result.dataset.id?'Version active':'Version enregistrée'}</small></div></div>)}</div></Panel></div>
+  </div>;
+}
+
+function DecisionLab({result,model,setError,setView}:{result:AnyObj|null;model:AnyObj|null;setError:(s:string)=>void;setView:(v:View)=>void}){
+  const [baseText,setBaseText]=useState('{}');
+  const [scenariosText,setScenariosText]=useState('[\n  {"name":"Scénario A","overrides":{}}\n]');
+  const [out,setOut]=useState<AnyObj|null>(null);
+  const [sensitivity,setSensitivity]=useState<AnyObj|null>(null);
+  const [feature,setFeature]=useState('');
+  const [range,setRange]=useState({min:0,max:10,steps:9});
+  const [busy,setBusy]=useState(false);
+  useEffect(()=>{if(!model||!result)return;const features=model.model_card?.features??model.features??[];const src=result.preview?.rows?.[0]??{};const row:AnyObj={};for(const f of features)row[f]=src[f]??null;setBaseText(JSON.stringify(row,null,2));const first=features.find((f:string)=>typeof row[f]==='number')??features[0]??'';setFeature(first);if(first&&typeof row[first]==='number'){const v=Number(row[first]);const span=Math.max(Math.abs(v)*.25,1);setRange({min:Number((v-span).toFixed(3)),max:Number((v+span).toFixed(3)),steps:9});setScenariosText(JSON.stringify([{name:'-10 %',["overrides"]:{[first]:Number((v*.9).toFixed(3))}},{name:'+10 %',["overrides"]:{[first]:Number((v*1.1).toFixed(3))}}],null,2));}},[model?.model_id,result?.dataset?.id]);
+  if(!result)return <EmptyState title="Decision Lab" text="Chargez un dataset puis entraînez un modèle pour simuler des scénarios."/>;
+  if(!model)return <div className="page"><div className="page-title"><div><span className="eyebrow">DECISION INTELLIGENCE</span><h1>Decision Lab</h1><p>Comparez des scénarios contrefactuels avec un modèle réellement entraîné et mesurez la sensibilité des prédictions.</p></div></div><div className="decision-empty"><span>⇄</span><h3>Aucun modèle actif</h3><p>Entraînez un modèle dans AutoML. Le Decision Lab utilisera exactement le pipeline sauvegardé pour comparer vos hypothèses.</p><button className="primary-btn" onClick={()=>setView('model')}>Ouvrir AutoML</button></div></div>;
+  const features=model.model_card?.features??model.features??[];
+  async function run(){setBusy(true);setError('');try{const base=JSON.parse(baseText),scenarios=JSON.parse(scenariosText);if(!Array.isArray(scenarios))throw new Error('Les scénarios doivent être un tableau JSON.');setOut(await runModelWhatIf(model!.model_id,{base_row:base,scenarios}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function sens(){if(!feature)return;setBusy(true);setError('');try{const base=JSON.parse(baseText);const steps=Math.max(3,Math.min(30,range.steps));const values=Array.from({length:steps},(_,i)=>range.min+(range.max-range.min)*i/(steps-1));setSensitivity(await runModelSensitivity(model!.model_id,{base_row:base,feature,values}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  const scenarioRows=(out?.scenarios??[]).map((x:AnyObj)=>({...x,delta_display:x.delta_pct==null?'—':`${x.delta_pct>=0?'+':''}${formatNumber(x.delta_pct,1)}%`}));
+  return <div className="page decision-page"><div className="page-title"><div><span className="eyebrow">WHAT-IF · SENSITIVITY · MODEL EVIDENCE</span><h1>Decision Lab</h1><p>Testez des hypothèses sans modifier les données originales. Les résultats représentent le comportement du modèle, pas une preuve causale.</p></div><span className="model-badge">{model.algorithm??model.model_card?.algorithm}</span></div>
+    <div className="decision-grid"><Panel title="Référence"><textarea className="json-editor compact-editor" value={baseText} onChange={e=>setBaseText(e.target.value)} spellCheck={false}/></Panel><Panel title="Scénarios"><textarea className="json-editor compact-editor" value={scenariosText} onChange={e=>setScenariosText(e.target.value)} spellCheck={false}/><RunButton busy={busy} label="Comparer les scénarios" busyLabel="Simulation…" onClick={run}/></Panel></div>
+    {out&&<Panel title="Impact sur la prédiction" action={<span className="quiet">{out.target} · {out.task}</span>}><div className="decision-warning">{out.warning}</div><div className="scenario-cards">{out.scenarios.map((x:AnyObj,i:number)=><article key={i} className={i===0?'baseline':''}><span>{x.name}</span><strong>{formatNumber(x.prediction,3)}</strong>{x.delta_pct!=null&&<small className={x.delta_pct>=0?'up':'down'}>{x.delta_pct>=0?'+':''}{formatNumber(x.delta_pct,1)}%</small>}{x.probabilities&&<small>Probabilités : {x.probabilities.map((p:number)=>formatNumber(p,2)).join(' · ')}</small>}</article>)}</div><details><summary>Voir le détail des scénarios</summary><SimpleTable rows={scenarioRows} columns={[["name","Scénario"],["prediction","Prédiction"],["delta_display","Variation"]]}/></details></Panel>}
+    <Panel title="Analyse de sensibilité"><div className="decision-sensitivity-form"><label>Variable<select value={feature} onChange={e=>setFeature(e.target.value)}>{features.map((f:string)=><option key={f}>{f}</option>)}</select></label><label>Minimum<input type="number" value={range.min} onChange={e=>setRange({...range,min:Number(e.target.value)})}/></label><label>Maximum<input type="number" value={range.max} onChange={e=>setRange({...range,max:Number(e.target.value)})}/></label><label>Points<input type="number" min={3} max={30} value={range.steps} onChange={e=>setRange({...range,steps:Number(e.target.value)})}/></label><RunButton busy={busy} label="Tracer la sensibilité" busyLabel="Calcul…" onClick={sens}/></div>{sensitivity&&<>{sensitivity.task==='regression'?<LineChart rows={sensitivity.points.map((p:AnyObj)=>({x:Number(p.value),y:Number(p.prediction)}))} xKey="x" yKey="y"/>:<SimpleTable rows={sensitivity.points.map((p:AnyObj)=>({value:p.value,prediction:p.prediction,probability:Math.max(...(p.probabilities??[]))}))} columns={[["value","Valeur"],["prediction","Classe"],["probability","Probabilité max"]]}/>}<small className="help-text">Courbe obtenue par inférence répétée du modèle sauvegardé, les autres variables restant à leur valeur de référence.</small></>}</Panel>
+  </div>;
+}
+
+function AIAnalystView({ result, setError, initialQuestion='' }: { result: AnyObj|null; setError:(s:string)=>void; initialQuestion?:string }) {
+  const [question,setQuestion]=useState(initialQuestion||'Analyse ce dataset et identifie les principaux problèmes, relations et anomalies.');
   const [mode,setMode]=useState<'auto'|'fast'|'deep'>('auto');
   const [target,setTarget]=useState('');
   const [dateColumn,setDateColumn]=useState('');
@@ -638,6 +726,7 @@ function AIAnalystView({ result, setError }: { result: AnyObj|null; setError:(s:
   const [out,setOut]=useState<AnyObj|null>(null);
   const [capabilities,setCapabilities]=useState<AnyObj|null>(null);
   const [history,setHistory]=useState<AnyObj[]>([]);
+  useEffect(()=>{if(initialQuestion)setQuestion(initialQuestion);},[initialQuestion]);
   useEffect(()=>{if(!result)return; getAIAnalystCapabilities(result.dataset.id).then(setCapabilities).catch(()=>{}); getAIHistory(result.dataset.id).then(x=>setHistory(x.analyses??[])).catch(()=>{});},[result?.dataset?.id]);
   if(!result) return <EmptyState title="AI Analyst" text="Chargez un dataset pour lancer une analyse orchestrée en langage naturel."/>;
   const columns=result.profile.columns ?? [];
@@ -658,7 +747,7 @@ function AIAnalystView({ result, setError }: { result: AnyObj|null; setError:(s:
     'Prévois la variable cible sur les 12 prochaines périodes.'
   ];
   return <div className="page ai-analyst-page">
-    <div className="page-title"><div><span className="eyebrow">AI ANALYST · TOOL ORCHESTRATION</span><h1>AI Analyst</h1><p>Décrivez votre objectif en langage naturel. L’orchestrateur construit un plan, exécute les moteurs analytiques réels, contrôle les résultats et expose leur provenance.</p></div><span className="module-state implemented">implémenté v1.0</span></div>
+    <div className="page-title"><div><span className="eyebrow">AI ANALYST · TOOL ORCHESTRATION</span><h1>AI Analyst</h1><p>Décrivez votre objectif en langage naturel. L’orchestrateur construit un plan, exécute les moteurs analytiques réels, contrôle les résultats et expose leur provenance.</p></div><span className="module-state implemented">orchestration vérifiable</span></div>
     <div className="ai-layout">
       <section className="ai-console">
         <div className="ai-console-head"><div><b>Demande analytique</b><span>Les nombres proviennent des outils exécutables, jamais d’un LLM.</span></div><span className="ai-engine-chip">{capabilities?.engine ?? 'deterministic_orchestrator'}</span></div>
@@ -799,7 +888,7 @@ function DashboardBuilder({ result, setError }: { result:AnyObj|null; setError:(
   const selected=widgets.find(w=>w.id===selectedId);
   const renderedById=new Map((preview?.widgets??[]).map((w:AnyObj)=>[w.id,w]));
 
-  return <div className="page dashboard-builder-page"><div className="page-title"><div><span className="eyebrow">DASHBOARD BUILDER</span><h1>Tableau de bord interactif</h1><p>Composez une vue décisionnelle, appliquez des filtres globaux et utilisez les graphiques comme filtres croisés.</p></div><span className="module-state implemented">v1.3</span></div>
+  return <div className="page dashboard-builder-page"><div className="page-title"><div><span className="eyebrow">DASHBOARD BUILDER</span><h1>Tableau de bord interactif</h1><p>Composez une vue décisionnelle, appliquez des filtres globaux et utilisez les graphiques comme filtres croisés.</p></div><span className="module-state implemented">interactif</span></div>
     <div className="dashboard-toolbar"><select value={currentId} onChange={e=>e.target.value?loadOne(e.target.value):startNew()}><option value="">Nouveau dashboard</option>{saved.map(d=><option key={d.id} value={d.id}>{d.name} · v{d.dataset_version}</option>)}</select><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nom du dashboard"/><input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Description"/><button className="secondary-btn" onClick={startNew}>Nouveau</button><button className="primary-btn real-button" disabled={busy} onClick={save}>{busy?'Traitement…':'Enregistrer'}</button><button className="secondary-btn" disabled={!currentId||busy} onClick={removeDashboard}>Supprimer</button><button className="secondary-btn" disabled={busy} onClick={()=>refresh()}>↻ Actualiser</button></div>
     <div className="dashboard-filter-panel"><div className="dashboard-filter-head"><div><b>Filtres globaux</b><small>{preview?`${preview.rows_after}/${preview.rows_before} lignes visibles`:'Tous les enregistrements'}</small></div><div className="dashboard-filter-form"><select value={fColumn} onChange={e=>setFColumn(e.target.value)}>{useful.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select><select value={fOperator} onChange={e=>setFOperator(e.target.value)}><option value="eq">=</option><option value="neq">≠</option><option value="contains">contient</option><option value="gt">&gt;</option><option value="gte">≥</option><option value="lt">&lt;</option><option value="lte">≤</option><option value="between">entre</option><option value="is_null">est vide</option><option value="not_null">non vide</option></select>{!['is_null','not_null'].includes(fOperator)&&<input value={fValue} onChange={e=>setFValue(e.target.value)} placeholder="Valeur"/>}{fOperator==='between'&&<input value={fValue2} onChange={e=>setFValue2(e.target.value)} placeholder="Valeur 2"/>}<button onClick={addFilter}>＋ Filtrer</button></div></div><div className="filter-chips">{filters.map(f=><button key={f.id} onClick={()=>removeFilter(f.id)} title="Retirer le filtre"><b>{f.column}</b> {f.operator} {String(f.value??'')} {f.value2?`→ ${f.value2}`:''}<span>×</span></button>)}{!filters.length&&<small>Aucun filtre actif. Cliquez sur une barre d’un graphique pour activer un cross-filter.</small>}</div></div>
     <div className="dashboard-builder-layout"><aside className="dashboard-builder-side"><Panel title="Ajouter un widget"><div className="widget-palette"><button onClick={()=>addWidget('kpi')}>123 <span>KPI</span></button><button onClick={()=>addWidget('bar')}>▥ <span>Barres</span></button><button onClick={()=>addWidget('line')}>⌁ <span>Courbe</span></button><button onClick={()=>addWidget('histogram')}>▤ <span>Histogramme</span></button><button onClick={()=>addWidget('scatter')}>⠿ <span>Scatter</span></button><button onClick={()=>addWidget('heatmap')}>▦ <span>Heatmap</span></button><button onClick={()=>addWidget('text')}>T <span>Texte</span></button></div></Panel>
@@ -829,7 +918,7 @@ function ReportView({ result, setError }: { result:AnyObj|null; setError:(s:stri
   function chooseTemplate(next:'executive'|'analytical'|'technical'){setTemplate(next);const t=templates.find(x=>x.key===next);if(t)setSections(t.sections);}
   async function create(){setBusy(true);setError('');try{const r=await createReport(result!.dataset.id,{title,subtitle,author,organization,template,sections,analysis_session_id:analysisId||null,visualization_ids:visualIds,auto_story:autoStory,auto_visualizations:autoVisuals,max_visualizations:maxVisuals});setCreated(r);await refresh();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   async function dl(reportId:string,format:'pdf'|'docx'|'html'|'md'){try{await downloadReport(result!.dataset.id,reportId,format);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
-  return <div className="page report-studio"><div className="page-title"><div><span className="eyebrow">PROFESSIONAL REPORT STUDIO</span><h1>Rapports</h1><p>Composez un rapport narratif, hiérarchisé et vérifiable, avec sélection intelligente des graphiques et limites explicites.</p></div><span className="module-state implemented">Report Intelligence v1.2.0</span></div>
+  return <div className="page report-studio"><div className="page-title"><div><span className="eyebrow">PROFESSIONAL REPORT STUDIO</span><h1>Rapports</h1><p>Composez un rapport narratif, hiérarchisé et vérifiable, avec sélection intelligente des graphiques et limites explicites.</p></div><span className="module-state implemented">Report Intelligence</span></div>
     <div className="report-studio-grid">
       <div className="report-config-column">
         <Panel title="1 · Modèle de rapport"><div className="report-template-grid">{templates.map(t=><button key={t.key} className={template===t.key?'active':''} onClick={()=>chooseTemplate(t.key)}><span>{t.key==='executive'?'◫':t.key==='analytical'?'▥':'⌘'}</span><div><b>{t.title}</b><small>{t.text}</small></div>{template===t.key&&<i>✓</i>}</button>)}</div></Panel>
@@ -844,5 +933,91 @@ function ReportView({ result, setError }: { result:AnyObj|null; setError:(s:stri
       </aside>
     </div>
     <Panel title="Historique des rapports" action={<span className="quiet">{reports.length} rapport(s)</span>}>{reports.length?<div className="report-list enhanced">{reports.map((r:AnyObj)=><div key={r.id}><div className="report-history-icon">▧</div><div><b>{r.title}</b><small>{r.template??'analytical'} · v{r.dataset_version} · {r.created_at?new Date(r.created_at).toLocaleString('fr-FR'):''}</small></div><div className="button-row"><button onClick={()=>dl(r.id,'pdf')}>PDF</button><button onClick={()=>dl(r.id,'docx')}>DOCX</button><button onClick={()=>dl(r.id,'html')}>HTML</button><button onClick={()=>dl(r.id,'md')}>MD</button></div></div>)}</div>:<div className="quiet-empty">Aucun rapport généré pour cette version.</div>}</Panel>
+  </div>;
+}
+
+function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(s:string)=>void }) {
+  const [status,setStatus]=useState<AnyObj|null>(null);
+  const [token,setToken]=useState('');
+  const [session,setSession]=useState<AnyObj|null>(null);
+  const [workspaceId,setWorkspaceId]=useState('');
+  const [workspace,setWorkspace]=useState<AnyObj|null>(null);
+  const [audit,setAudit]=useState<AnyObj[]>([]);
+  const [jobs,setJobs]=useState<AnyObj[]>([]);
+  const [busy,setBusy]=useState(false);
+  const [email,setEmail]=useState('admin@datavision.local');
+  const [password,setPassword]=useState('');
+  const [displayName,setDisplayName]=useState('Administrateur');
+  const [orgName,setOrgName]=useState('DataVision Organisation');
+  const [newWorkspace,setNewWorkspace]=useState('Équipe Analytics');
+  const [memberEmail,setMemberEmail]=useState('');
+  const [memberName,setMemberName]=useState('');
+  const [memberPassword,setMemberPassword]=useState('');
+  const [memberRole,setMemberRole]=useState('analyst');
+  const [policyName,setPolicyName]=useState('Accès analyste');
+  const [policyColumns,setPolicyColumns]=useState('');
+  const [policyRole,setPolicyRole]=useState('analyst');
+  const [policyFilterColumn,setPolicyFilterColumn]=useState('');
+  const [policyFilterOperator,setPolicyFilterOperator]=useState('eq');
+  const [policyFilterValue,setPolicyFilterValue]=useState('');
+  const [previewRole,setPreviewRole]=useState('analyst');
+  const [jobType,setJobType]=useState('ai_analysis');
+  const [jobPayload,setJobPayload]=useState('{\n  "question": "Analyse ce dataset et identifie les principaux risques et opportunités",\n  "mode": "deep"\n}');
+  const [governedPreview,setGovernedPreview]=useState<AnyObj|null>(null);
+
+  async function loadSession(nextToken:string){
+    try{
+      const s=await getEnterpriseSession(nextToken); setSession(s);
+      const stored=typeof window!=='undefined'?localStorage.getItem('dv_enterprise_workspace')||'':'';
+      const ws=workspaceId||stored||s.workspaces?.[0]?.id||''; setWorkspaceId(ws);
+      if(typeof window!=='undefined'&&ws){localStorage.setItem('dv_enterprise_workspace',ws);window.dispatchEvent(new Event('datavision-enterprise-session'));}
+      if(ws) await loadWorkspace(nextToken,ws);
+    }catch(e:unknown){ setSession(null); setToken(''); if(typeof window!=='undefined')localStorage.removeItem('dv_enterprise_token'); }
+  }
+  async function loadWorkspace(nextToken=token,nextWs=workspaceId){
+    if(!nextToken||!nextWs)return;
+    try{
+      const [w,a,j]=await Promise.all([getEnterpriseWorkspace(nextToken,nextWs),getAuditEvents(nextToken,nextWs),getEnterpriseJobs(nextToken,nextWs)]);
+      setWorkspace(w);setAudit(a.events??[]);setJobs(j.jobs??[]);
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+  }
+  useEffect(()=>{getEnterpriseStatus().then(setStatus).catch(()=>setStatus(null));if(typeof window!=='undefined'){const t=localStorage.getItem('dv_enterprise_token')||'';if(t){setToken(t);loadSession(t);}}},[]);
+  useEffect(()=>{if(token&&workspaceId)loadWorkspace(token,workspaceId);},[workspaceId]);
+
+  async function authenticate(mode:'bootstrap'|'login'){
+    setBusy(true);setError('');
+    try{
+      const r=mode==='bootstrap'?await bootstrapEnterprise({email,password,display_name:displayName,organization_name:orgName}):await loginEnterprise({email,password});
+      setToken(r.access_token); if(typeof window!=='undefined')localStorage.setItem('dv_enterprise_token',r.access_token); await loadSession(r.access_token);
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+  }
+  function logout(){setToken('');setSession(null);setWorkspace(null);setAudit([]);setJobs([]);if(typeof window!=='undefined'){localStorage.removeItem('dv_enterprise_token');localStorage.removeItem('dv_enterprise_workspace');window.dispatchEvent(new Event('datavision-enterprise-session'));}}
+  async function createWs(){if(!token||!session?.organizations?.[0]?.id)return;setBusy(true);try{await createEnterpriseWorkspace(token,session.organizations[0].id,newWorkspace);await loadSession(token);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function provisionMember(){if(!token||!workspaceId||!memberEmail)return;setBusy(true);try{await addWorkspaceMember(token,workspaceId,memberEmail,memberRole,memberName,memberPassword);setMemberEmail('');setMemberName('');setMemberPassword('');await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function bindCurrent(){if(!token||!workspaceId||!result)return;setBusy(true);try{await bindWorkspaceDataset(token,workspaceId,result.dataset.id);await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function previewGoverned(){if(!token||!workspaceId||!result)return;setBusy(true);try{setGovernedPreview(await getGovernedPreview(token,workspaceId,result.dataset.id,25,previewRole));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function createPolicy(){if(!token||!workspaceId||!result)return;setBusy(true);try{const cols=policyColumns.split(',').map(x=>x.trim()).filter(Boolean);const row_filters=policyFilterColumn?[{column:policyFilterColumn,operator:policyFilterOperator,value:policyFilterValue}]:[];await saveWorkspacePolicy(token,workspaceId,{dataset_id:result.dataset.id,name:policyName,allowed_columns:cols,row_filters,applies_to_role:policyRole});await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function submitJob(){if(!token||!workspaceId||!result)return;setBusy(true);try{const payload=JSON.parse(jobPayload||'{}');await submitEnterpriseJob(token,{workspace_id:workspaceId,organization_id:workspace?.workspace?.organization_id,job_type:jobType,dataset_id:result.dataset.id,payload});await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function cancelJob(id:string){try{await cancelEnterpriseJob(token,id);await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
+
+  if(!session) return <div className="page governance-page"><div className="page-title"><div><span className="eyebrow">TENANT-AWARE SECURITY</span><h1>Gouvernance & sécurité</h1><p>Identité, workspaces, RBAC, RLS et sécurité colonne appliqués au pipeline analytique complet. Le mode local reste disponible hors session Enterprise.</p></div><span className="module-state implemented">Enterprise v2.2</span></div>
+    <div className="governance-intro-grid">
+      <Panel title="Initialiser DataVision Enterprise"><div className="stack-form"><label>Email administrateur<input value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Mot de passe<input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="8 caractères minimum"/></label><div className="two-col"><label>Nom affiché<input value={displayName} onChange={e=>setDisplayName(e.target.value)}/></label><label>Organisation<input value={orgName} onChange={e=>setOrgName(e.target.value)}/></label></div><div className="button-row"><RunButton busy={busy} label="Initialiser" busyLabel="Initialisation…" onClick={()=>authenticate('bootstrap')}/><button className="secondary-btn" disabled={busy} onClick={()=>authenticate('login')}>Se connecter</button></div><small className="help-text">Le bootstrap ne fonctionne qu’une seule fois. Ensuite, utilisez la connexion.</small></div></Panel>
+      <Panel title="Architecture Enterprise"><div className="enterprise-status-list"><div><span>Metadata store</span><b>{status?.metadata?.url??'—'}</b><small>{status?.metadata?.dialect??'Non connecté'}</small></div><div><span>RBAC</span><b>Owner → Viewer</b><small>Permissions explicites par workspace</small></div><div><span>Jobs</span><b>{status?.queue?.available?'Redis opérationnel':'Redis à vérifier'}</b><small>{status?.queue?.available?`${status.queue.queue_depth??0} job(s) en attente`:'Le worker nécessite Redis'}</small></div><div><span>OIDC / SSO</span><b>Planifié</b><small>La v2.2 utilise une identité locale signée</small></div></div></Panel>
+    </div></div>;
+
+  const wsOptions=session.workspaces??[]; const detail=workspace?.workspace; const governedDatasets=workspace?.datasets??[]; const governancePolicies=workspace?.policies??[];
+  return <div className="page governance-page"><div className="page-title"><div><span className="eyebrow">TENANT-AWARE SECURITY</span><h1>Gouvernance & sécurité</h1><p>Administration des workspaces, rôles et politiques. Les mêmes restrictions sont maintenant appliquées à SQL, statistiques, ML, AI Analyst, dashboards, rapports et jobs.</p></div><div className="governance-user"><span>{session.user?.display_name}</span><b>{session.user?.email}</b><button onClick={logout}>Déconnexion</button></div></div>
+    <div className="governance-toolbar"><label>Workspace<select value={workspaceId} onChange={e=>{const id=e.target.value;setWorkspaceId(id);if(typeof window!=='undefined'){localStorage.setItem('dv_enterprise_workspace',id);window.dispatchEvent(new Event('datavision-enterprise-session'));}}}>{wsOptions.map((w:AnyObj)=><option key={w.id} value={w.id}>{w.name} · {w.role}</option>)}</select></label><div className="workspace-create-inline"><input value={newWorkspace} onChange={e=>setNewWorkspace(e.target.value)} placeholder="Nouveau workspace"/><button onClick={createWs} disabled={busy}>+ Créer</button></div><button className="secondary-btn" onClick={()=>loadWorkspace()} disabled={busy}>↻ Actualiser</button></div>
+    <div className="governance-scorecards"><Stat label="Rôle actif" value={detail?.role??'—'} detail="RBAC workspace"/><Stat label="Membres" value={detail?.members_count??0} detail="Utilisateurs autorisés"/><Stat label="Datasets" value={detail?.datasets_count??0} detail="Ressources liées"/><Stat label="Politiques" value={workspace?.policies?.length??0} detail="Colonnes / lignes"/><Stat label="Jobs" value={jobs.length} detail="Historique asynchrone"/></div>
+    <div className="two-col governance-main-grid">
+      <Panel title="Membres & rôles" action={<span className="quiet">owner · admin · data scientist · analyst · viewer</span>}><div className="member-table">{(workspace?.members??[]).map((m:AnyObj)=><div key={m.id}><div className="member-avatar">{String(m.display_name||m.email).slice(0,2).toUpperCase()}</div><div><b>{m.display_name}</b><small>{m.email}</small></div><span className={`role-pill role-${m.role}`}>{m.role}</span></div>)}</div><details className="governance-details"><summary>Provisionner / ajouter un membre</summary><div className="stack-form compact-governance-form"><label>Email<input value={memberEmail} onChange={e=>setMemberEmail(e.target.value)}/></label><label>Nom<input value={memberName} onChange={e=>setMemberName(e.target.value)}/></label><label>Mot de passe initial<input type="password" value={memberPassword} onChange={e=>setMemberPassword(e.target.value)} placeholder="Requis si nouvel utilisateur"/></label><label>Rôle<select value={memberRole} onChange={e=>setMemberRole(e.target.value)}>{['admin','data_scientist','analyst','viewer'].map(r=><option key={r}>{r}</option>)}</select></label><button className="primary-btn" onClick={provisionMember}>Ajouter / mettre à jour</button></div></details></Panel>
+      <Panel title="Datasets gouvernés" action={result?<div className="button-row governance-access-test"><button className="secondary-btn" onClick={bindCurrent}>Lier le dataset actif</button><select value={previewRole} onChange={e=>setPreviewRole(e.target.value)}><option value="data_scientist">Data scientist</option><option value="analyst">Analyst</option><option value="viewer">Viewer</option></select><button className="secondary-btn" onClick={previewGoverned}>Tester l’accès</button></div>:undefined}><div className="governed-resource-list">{governedDatasets.length?governedDatasets.map((d:AnyObj)=><div key={d.dataset_id}><span>▦</span><div><b>{d.dataset_id.slice(0,12)}…</b><small>lié le {new Date(d.created_at).toLocaleString('fr-FR')}</small></div></div>):<div className="quiet-empty">Aucun dataset lié à ce workspace.</div>}</div>{governedPreview&&<div className="governed-preview-summary"><b>Aperçu gouverné · {governedPreview.effective_role??previewRole}</b><span>{governedPreview.total_rows} ligne(s) · {(governedPreview.columns??[]).length} colonne(s)</span><small>{(governedPreview.columns??[]).join(' · ')}</small></div>}{result&&<details className="governance-details"><summary>Créer une politique sur le dataset actif</summary><div className="stack-form compact-governance-form"><label>Nom<input value={policyName} onChange={e=>setPolicyName(e.target.value)}/></label><label>Colonnes autorisées<input value={policyColumns} onChange={e=>setPolicyColumns(e.target.value)} placeholder="region, sales, margin"/></label><label>Rôle<select value={policyRole} onChange={e=>setPolicyRole(e.target.value)}>{['data_scientist','analyst','viewer'].map(r=><option key={r}>{r}</option>)}</select></label><div className="policy-filter-builder"><label>Filtre ligne (optionnel)<select value={policyFilterColumn} onChange={e=>setPolicyFilterColumn(e.target.value)}><option value="">Aucun</option>{(result?.profile?.columns??[]).map((c:AnyObj)=><option key={c.name} value={c.name}>{c.name}</option>)}</select></label><label>Opérateur<select value={policyFilterOperator} onChange={e=>setPolicyFilterOperator(e.target.value)}>{['eq','neq','gt','gte','lt','lte','contains'].map(op=><option key={op} value={op}>{op}</option>)}</select></label><label>Valeur<input value={policyFilterValue} onChange={e=>setPolicyFilterValue(e.target.value)}/></label></div><button className="primary-btn" onClick={createPolicy}>Enregistrer la politique</button></div></details>}</Panel>
+    </div>
+    <div className="two-col governance-main-grid">
+      <Panel title="Jobs asynchrones" action={result?<button className="secondary-btn" onClick={submitJob}>Mettre en file</button>:undefined}>{result&&<div className="job-compose"><select value={jobType} onChange={e=>setJobType(e.target.value)}><option value="ai_analysis">AI Analyst</option><option value="automl">AutoML</option><option value="forecast">Forecasting</option><option value="report">Rapport</option></select><textarea value={jobPayload} onChange={e=>setJobPayload(e.target.value)} spellCheck={false}/></div>}<div className="job-list">{jobs.length?jobs.slice(0,12).map((j:AnyObj)=><div key={j.id}><span className={`job-status ${j.status}`}>{j.status}</span><div><b>{j.job_type}</b><small>{j.dataset_id?`${j.dataset_id.slice(0,10)}… · `:''}{j.created_at?new Date(j.created_at).toLocaleString('fr-FR'):''}</small></div><div className="job-progress"><i style={{width:`${Number(j.progress)||0}%`}}/></div>{!['completed','failed','cancelled'].includes(j.status)&&<button onClick={()=>cancelJob(j.id)}>Annuler</button>}</div>):<div className="quiet-empty">Aucun job pour ce workspace.</div>}</div></Panel>
+      <Panel title="Journal d’audit" action={<span className="quiet">{audit.length} événement(s)</span>}><div className="audit-timeline">{audit.length?audit.slice(0,16).map((e:AnyObj)=><div key={e.id}><span className={e.outcome==='success'?'audit-dot ok':'audit-dot bad'}/><div><b>{e.event_type}</b><small>{e.resource_type||'system'}{e.resource_id?` · ${String(e.resource_id).slice(0,12)}…`:''}</small></div><time>{e.created_at?new Date(e.created_at).toLocaleString('fr-FR'):''}</time></div>):<div className="quiet-empty">Le journal est vide.</div>}</div></Panel>
+    </div>
+    <Panel title="Politiques d’accès" action={<span className="quiet">Fondation RLS / sécurité colonne</span>}><div className="policy-grid">{governancePolicies.length?governancePolicies.map((p:AnyObj)=><article key={p.id}><div><span>POLICY</span><b>{p.name}</b></div><p>Rôle : <strong>{p.applies_to_role||'tous'}</strong></p><p>Colonnes : {(p.allowed_columns??[]).length?(p.allowed_columns??[]).join(', '):'toutes'}</p><small>{(p.row_filters??[]).length} filtre(s) de lignes</small></article>):<div className="quiet-empty">Aucune politique enregistrée.</div>}</div><div className="governance-success"><b>Boundary v2.2 actif</b><span>Le contexte workspace est injecté dans toutes les routes dataset. RLS, sécurité colonne et RBAC s’appliquent aux moteurs statistiques, SQL, ML, AI Analyst, dashboards, rapports et jobs asynchrones.</span></div></Panel>
   </div>;
 }

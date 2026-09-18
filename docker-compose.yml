@@ -32,6 +32,19 @@ services:
       redis:
         condition: service_started
 
+  worker:
+    build: ./backend
+    env_file: .env
+    command: ["python", "-m", "app.worker"]
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
   web:
     build:
       context: ./frontend

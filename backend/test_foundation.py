@@ -765,3 +765,435 @@ def test_v130_dashboard_builder_filters_persistence_and_cross_filter_payload(tmp
     deleted = client.delete(f"/api/v1/datasets/{dataset_id}/dashboards/{dashboard_id}")
     assert deleted.status_code == 200
     assert client.get(f"/api/v1/datasets/{dataset_id}/dashboards").json()["count"] == 0
+
+def test_v200_semantic_layer_grounded_nlq_and_trust(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    frame = pd.DataFrame({
+        "region": ["Nord", "Nord", "Sud", "Sud"],
+        "revenue": [100.0, 120.0, 80.0, 100.0],
+        "cost": [60.0, 70.0, 50.0, 55.0],
+    })
+    upload = client.post("/api/v1/datasets", files={"file": ("semantic.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    assert upload.status_code == 200, upload.text
+    dataset_id = upload.json()["dataset"]["id"]
+
+    semantic = client.get(f"/api/v1/datasets/{dataset_id}/semantic")
+    assert semantic.status_code == 200, semantic.text
+    auto = semantic.json()
+    assert any(m["column"] == "revenue" for m in auto["metrics"])
+
+    payload = {
+        "metrics": [{
+            "id": "revenue", "name": "Revenue", "label": "Chiffre d'affaires", "column": "revenue",
+            "aggregation": "sum", "unit": "EUR", "description": "Revenu reconnu", "synonyms": ["CA", "ventes"], "certified": True,
+        }],
+        "dimensions": [{"column": "region", "label": "Région", "description": "Zone commerciale", "synonyms": ["zone"], "hidden": False}],
+        "business_glossary": [{"term": "CA", "definition": "Chiffre d'affaires"}],
+    }
+    saved = client.post(f"/api/v1/datasets/{dataset_id}/semantic", json=payload)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["status"] == "governed"
+    assert saved.json()["metrics"][0]["certified"] is True
+
+    evaluated = client.post(f"/api/v1/datasets/{dataset_id}/semantic/evaluate", json={"metric_id":"revenue","dimensions":["region"],"filters":[]})
+    assert evaluated.status_code == 200, evaluated.text
+    assert evaluated.json()["value"] == 400.0
+
+    nlq = client.post(f"/api/v1/datasets/{dataset_id}/workspace/nlq", json={"question":"Quelle est la moyenne du chiffre d'affaires par zone ?", "limit":100})
+    assert nlq.status_code == 200, nlq.text
+    nbody = nlq.json()
+    assert "AVG" in nbody["sql"]
+    assert '"region"' in nbody["sql"]
+    assert nbody["semantic_grounding"]["metric_id"] == "revenue"
+    assert nbody["semantic_grounding"]["certified"] is True
+
+    trust = client.get(f"/api/v1/datasets/{dataset_id}/trust")
+    assert trust.status_code == 200, trust.text
+    tbody = trust.json()
+    assert 0 <= tbody["overall_score"] <= 100
+    assert any(x["area"] == "Sémantique" for x in tbody["checks"])
+
+
+def test_v200_ai_analyst_uses_semantic_synonyms(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    frame = pd.DataFrame({
+        "segment": ["A", "B"] * 30,
+        "sales_value": [float(20 + i * 2) for i in range(60)],
+        "driver_x": [float(i) for i in range(60)],
+    })
+    upload = client.post("/api/v1/datasets", files={"file": ("ai_semantic.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    dataset_id = upload.json()["dataset"]["id"]
+    sem = {
+        "metrics": [{"id":"sales","name":"Sales","label":"Ventes","column":"sales_value","aggregation":"sum","unit":"","description":"","synonyms":["chiffre commercial"],"certified":True}],
+        "dimensions": [{"column":"segment","label":"Segment","description":"","synonyms":["groupe client"],"hidden":False}],
+        "business_glossary": [],
+    }
+    assert client.post(f"/api/v1/datasets/{dataset_id}/semantic", json=sem).status_code == 200
+    analyzed = client.post(f"/api/v1/datasets/{dataset_id}/ai/analyze", json={"question":"Fais une régression pour expliquer le chiffre commercial par driver_x", "mode":"fast"})
+    assert analyzed.status_code == 200, analyzed.text
+    body = analyzed.json()
+    assert body["intent"] == "regression"
+    assert body["provenance"]["semantic_grounding"] is True
+    assert "sales_value" in body["provenance"]["semantic_matches"]
+    assert body["artifacts"]["semantic_context"]["certified_metrics"] == ["sales"]
+    assert body["artifacts"]["regression"]["dependent"] == "sales_value"
+
+
+def test_v200_decision_lab_what_if_and_sensitivity(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    frame = pd.DataFrame({
+        "x": [float(i) for i in range(80)],
+        "z": [float(i % 5) for i in range(80)],
+        "target": [5.0 + 2.0 * i + 0.5 * (i % 5) for i in range(80)],
+    })
+    upload = client.post("/api/v1/datasets", files={"file": ("whatif.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    dataset_id = upload.json()["dataset"]["id"]
+    trained = client.post(f"/api/v1/datasets/{dataset_id}/models/train", json={"target":"target","task":"regression","algorithm":"linear_regression"})
+    assert trained.status_code == 200, trained.text
+    model_id = trained.json()["model_id"]
+    base = {"x": 10.0, "z": 2.0}
+    whatif = client.post(f"/api/v1/datasets/models/{model_id}/what-if", json={"base_row":base,"scenarios":[{"name":"x +10","overrides":{"x":20.0}}]})
+    assert whatif.status_code == 200, whatif.text
+    wbody = whatif.json()
+    assert len(wbody["scenarios"]) == 2
+    assert wbody["scenarios"][1]["prediction"] > wbody["scenarios"][0]["prediction"]
+    assert "causal" in wbody["warning"].lower()
+
+    sens = client.post(f"/api/v1/datasets/models/{model_id}/sensitivity", json={"base_row":base,"feature":"x","values":[0,10,20,30]})
+    assert sens.status_code == 200, sens.text
+    points = sens.json()["points"]
+    assert len(points) == 4
+    assert points[0]["prediction"] < points[-1]["prediction"]
+
+
+def test_v210_enterprise_bootstrap_workspace_rbac_audit_and_policies(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{tmp_path / 'enterprise.db'}")
+    metadata_store._ENGINES.clear()
+
+    boot = client.post("/api/v1/auth/bootstrap", json={
+        "email": "owner@datavision.local",
+        "password": "EnterprisePass123!",
+        "display_name": "Owner",
+        "organization_name": "DataVision Lab",
+    })
+    assert boot.status_code == 200, boot.text
+    token = boot.json()["access_token"]
+    headers = {"Authorization": f"Bearer {token}"}
+    workspace_id = boot.json()["workspace_id"]
+    org_id = boot.json()["organization_id"]
+
+    me = client.get("/api/v1/auth/me", headers=headers)
+    assert me.status_code == 200, me.text
+    assert me.json()["user"]["email"] == "owner@datavision.local"
+    assert me.json()["workspaces"][0]["role"] == "owner"
+
+    ws = client.post("/api/v1/workspaces", headers=headers, json={"organization_id": org_id, "name": "Analytics Team"})
+    assert ws.status_code == 200, ws.text
+    second_ws = ws.json()["workspace"]["id"]
+
+    frame = pd.DataFrame({"region": ["N", "S", "N"], "sales": [100, 80, 120], "secret": [1, 2, 3]})
+    upload = client.post("/api/v1/datasets", files={"file": ("governed.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    assert upload.status_code == 200
+    dataset_id = upload.json()["dataset"]["id"]
+
+    bound = client.post(f"/api/v1/workspaces/{second_ws}/datasets", headers=headers, json={"dataset_id": dataset_id})
+    assert bound.status_code == 200, bound.text
+
+    policy = client.post(f"/api/v1/workspaces/{second_ws}/policies", headers=headers, json={
+        "dataset_id": dataset_id,
+        "name": "Analystes - colonnes publiques",
+        "allowed_columns": ["region", "sales"],
+        "row_filters": [{"column": "sales", "operator": "gte", "value": 90}],
+        "applies_to_role": "analyst",
+    })
+    assert policy.status_code == 200, policy.text
+    assert policy.json()["policy"]["allowed_columns"] == ["region", "sales"]
+
+    detail = client.get(f"/api/v1/workspaces/{second_ws}", headers=headers)
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["workspace"]["datasets_count"] == 1
+    assert len(detail.json()["policies"]) == 1
+
+    provisioned = client.post(f"/api/v1/workspaces/{second_ws}/members", headers=headers, json={
+        "email": "analyst@datavision.local", "role": "analyst", "display_name": "Analyst",
+        "password": "AnalystPass123!",
+    })
+    assert provisioned.status_code == 200, provisioned.text
+    analyst_login = client.post("/api/v1/auth/login", json={"email":"analyst@datavision.local","password":"AnalystPass123!"})
+    assert analyst_login.status_code == 200, analyst_login.text
+    analyst_headers = {"Authorization": f"Bearer {analyst_login.json()['access_token']}"}
+    governed = client.get(f"/api/v1/workspaces/{second_ws}/datasets/{dataset_id}/governed-preview", headers=analyst_headers)
+    assert governed.status_code == 200, governed.text
+    assert governed.json()["columns"] == ["region", "sales"]
+    assert governed.json()["total_rows"] == 2
+    simulated = client.get(f"/api/v1/workspaces/{second_ws}/datasets/{dataset_id}/governed-preview?simulate_role=analyst", headers=headers)
+    assert simulated.status_code == 200, simulated.text
+    assert simulated.json()["effective_role"] == "analyst"
+    assert simulated.json()["columns"] == ["region", "sales"]
+    denied = client.post(f"/api/v1/workspaces/{second_ws}/policies", headers=analyst_headers, json={
+        "dataset_id": dataset_id, "name":"Should fail", "allowed_columns":[], "row_filters":[], "applies_to_role":"viewer"
+    })
+    assert denied.status_code == 403
+
+    audit = client.get(f"/api/v1/audit?workspace_id={second_ws}", headers=headers)
+    assert audit.status_code == 200, audit.text
+    event_types = {e["event_type"] for e in audit.json()["events"]}
+    assert "workspace.dataset.bind" in event_types
+    assert "workspace.policy.save" in event_types
+    assert "dataset.governed_preview" in event_types
+
+    login = client.post("/api/v1/auth/login", json={"email": "owner@datavision.local", "password": "EnterprisePass123!"})
+    assert login.status_code == 200, login.text
+    assert login.json()["access_token"]
+
+
+def test_v210_jobs_tracking_and_cancellation(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store, job_service
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{tmp_path / 'jobs.db'}")
+    metadata_store._ENGINES.clear()
+
+    class FakeRedis:
+        def __init__(self): self.items = []
+        def rpush(self, key, value): self.items.append((key, value)); return len(self.items)
+    fake = FakeRedis()
+    monkeypatch.setattr(job_service, "_redis", lambda: fake)
+
+    boot = client.post("/api/v1/auth/bootstrap", json={
+        "email": "jobs@datavision.local", "password": "EnterprisePass123!",
+        "display_name": "Jobs Owner", "organization_name": "Jobs Org",
+    })
+    assert boot.status_code == 200, boot.text
+    headers = {"Authorization": f"Bearer {boot.json()['access_token']}"}
+    ws = boot.json()["workspace_id"]
+    org = boot.json()["organization_id"]
+
+    submitted = client.post("/api/v1/jobs", headers=headers, json={
+        "workspace_id": ws, "organization_id": org, "job_type": "ai_analysis",
+        "dataset_id": "dataset-placeholder", "payload": {"question": "Analyse ce dataset"},
+    })
+    assert submitted.status_code == 200, submitted.text
+    job_id = submitted.json()["job"]["id"]
+    assert submitted.json()["job"]["status"] == "queued"
+    assert fake.items and fake.items[0][1] == job_id
+
+    listed = client.get(f"/api/v1/jobs?workspace_id={ws}", headers=headers)
+    assert listed.status_code == 200
+    assert listed.json()["jobs"][0]["id"] == job_id
+
+    cancelled = client.post(f"/api/v1/jobs/{job_id}/cancel", headers=headers)
+    assert cancelled.status_code == 200, cancelled.text
+    assert cancelled.json()["job"]["status"] == "cancelled"
+
+
+def test_v220_tenant_aware_access_applies_to_legacy_analytics_and_sql(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{tmp_path / 'tenant-aware.db'}")
+    metadata_store._ENGINES.clear()
+
+    boot = client.post("/api/v1/auth/bootstrap", json={
+        "email": "owner220@datavision.local",
+        "password": "EnterprisePass123!",
+        "display_name": "Owner 220",
+        "organization_name": "Tenant 220",
+    })
+    assert boot.status_code == 200, boot.text
+    owner_token = boot.json()["access_token"]
+    ws = boot.json()["workspace_id"]
+    owner_headers = {"Authorization": f"Bearer {owner_token}", "X-Workspace-ID": ws}
+
+    frame = pd.DataFrame({
+        "region": ["N", "S", "N", "S"],
+        "sales": [100.0, 80.0, 120.0, 200.0],
+        "margin": [10.0, 8.0, 12.0, 20.0],
+        "secret": [111, 222, 333, 444],
+    })
+    upload = client.post("/api/v1/datasets", headers=owner_headers, files={"file": ("tenant.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    assert upload.status_code == 200, upload.text
+    dataset_id = upload.json()["dataset"]["id"]
+
+    provisioned = client.post(f"/api/v1/workspaces/{ws}/members", headers={"Authorization": f"Bearer {owner_token}"}, json={
+        "email": "analyst220@datavision.local", "role": "analyst", "display_name": "Analyst 220",
+        "password": "AnalystPass123!",
+    })
+    assert provisioned.status_code == 200, provisioned.text
+    policy = client.post(f"/api/v1/workspaces/{ws}/policies", headers={"Authorization": f"Bearer {owner_token}"}, json={
+        "dataset_id": dataset_id,
+        "name": "Public sales only",
+        "allowed_columns": ["region", "sales", "margin"],
+        "row_filters": [{"column": "sales", "operator": "gte", "value": 100}],
+        "applies_to_role": "analyst",
+    })
+    assert policy.status_code == 200, policy.text
+
+    login = client.post("/api/v1/auth/login", json={"email": "analyst220@datavision.local", "password": "AnalystPass123!"})
+    assert login.status_code == 200, login.text
+    analyst_headers = {"Authorization": f"Bearer {login.json()['access_token']}", "X-Workspace-ID": ws}
+
+    preview = client.get(f"/api/v1/datasets/{dataset_id}/preview?limit=20", headers=analyst_headers)
+    assert preview.status_code == 200, preview.text
+    assert preview.headers.get("x-datavision-governed") == "true"
+    assert preview.json()["columns"] == ["region", "sales", "margin"]
+    assert preview.json()["total"] == 3
+    assert all(row["sales"] >= 100 for row in preview.json()["rows"])
+    assert all("secret" not in row for row in preview.json()["rows"])
+
+    access = client.get(f"/api/v1/datasets/{dataset_id}/access-context", headers=analyst_headers)
+    assert access.status_code == 200, access.text
+    assert access.json()["governed"] is True
+    assert access.json()["role"] == "analyst"
+    assert access.json()["effective_rows"] == 3
+    assert access.json()["effective_columns"] == ["region", "sales", "margin"]
+
+    sql = client.post(f"/api/v1/datasets/{dataset_id}/workspace/sql", headers=analyst_headers, json={"sql": "SELECT * FROM dataset ORDER BY sales", "limit": 20})
+    assert sql.status_code == 200, sql.text
+    assert sql.json()["columns"] == ["region", "sales", "margin"]
+    assert len(sql.json()["rows"]) == 3
+
+    correlations = client.post(f"/api/v1/datasets/{dataset_id}/analysis/correlations", headers=analyst_headers, json={"columns": ["sales", "margin"], "method": "pearson"})
+    assert correlations.status_code == 200, correlations.text
+    hidden_column = client.post(f"/api/v1/datasets/{dataset_id}/analysis/correlations", headers=analyst_headers, json={"columns": ["sales", "secret"], "method": "pearson"})
+    assert hidden_column.status_code == 400
+
+    forbidden_transform = client.post(f"/api/v1/datasets/{dataset_id}/transform", headers=analyst_headers, json={"operation": {"type": "rename_column", "column": "sales", "new_name": "sales2"}})
+    assert forbidden_transform.status_code == 403
+
+
+def test_v220_workspace_isolation_catalog_and_version_inheritance(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{tmp_path / 'tenant-lineage.db'}")
+    metadata_store._ENGINES.clear()
+
+    boot = client.post("/api/v1/auth/bootstrap", json={
+        "email": "lineage@datavision.local", "password": "EnterprisePass123!",
+        "display_name": "Lineage Owner", "organization_name": "Lineage Org",
+    })
+    assert boot.status_code == 200, boot.text
+    token = boot.json()["access_token"]
+    ws = boot.json()["workspace_id"]
+    base_headers = {"Authorization": f"Bearer {token}"}
+    governed_headers = {"Authorization": f"Bearer {token}", "X-Workspace-ID": ws}
+
+    # Bound upload: middleware + upload route attach it to the active workspace.
+    bound_frame = pd.DataFrame({"region": ["N", "S", "N"], "sales": [10, 20, 30], "secret": [1, 2, 3]})
+    bound = client.post("/api/v1/datasets", headers=governed_headers, files={"file": ("bound.csv", io.BytesIO(bound_frame.to_csv(index=False).encode()), "text/csv")})
+    assert bound.status_code == 200, bound.text
+    bound_id = bound.json()["dataset"]["id"]
+
+    # Unbound local upload must remain invisible to the Enterprise workspace.
+    other = client.post("/api/v1/datasets", files={"file": ("other.csv", io.BytesIO(pd.DataFrame({"x": [1,2]}).to_csv(index=False).encode()), "text/csv")})
+    other_id = other.json()["dataset"]["id"]
+    denied = client.get(f"/api/v1/datasets/{other_id}/preview", headers=governed_headers)
+    assert denied.status_code == 403
+
+    catalog = client.get("/api/v1/datasets/catalog/all", headers=governed_headers)
+    assert catalog.status_code == 200, catalog.text
+    catalog_ids = {x["id"] for x in catalog.json()["datasets"]}
+    assert bound_id in catalog_ids
+    assert other_id not in catalog_ids
+
+    # Owner policy is inherited by a derived immutable version. The RLS filter uses a column
+    # that is intentionally omitted from allowed_columns to verify row-first enforcement.
+    policy = client.post(f"/api/v1/workspaces/{ws}/policies", headers=base_headers, json={
+        "dataset_id": bound_id,
+        "name": "Owner inherited policy",
+        "allowed_columns": ["region", "sales"],
+        "row_filters": [{"column": "secret", "operator": "gte", "value": 2}],
+        "applies_to_role": "owner",
+    })
+    assert policy.status_code == 200, policy.text
+
+    parent_preview = client.get(f"/api/v1/datasets/{bound_id}/preview", headers=governed_headers)
+    assert parent_preview.status_code == 200, parent_preview.text
+    assert parent_preview.json()["columns"] == ["region", "sales"]
+    assert parent_preview.json()["total"] == 2
+
+    transformed = client.post(f"/api/v1/datasets/{bound_id}/transform", headers=governed_headers, json={
+        "operation": {"type": "rename_column", "column": "sales", "new_name": "revenue"}
+    })
+    assert transformed.status_code == 200, transformed.text
+    child_id = transformed.json()["dataset"]["id"]
+
+    # Derived version was automatically bound and inherited the row-level policy.
+    child_access = client.get(f"/api/v1/datasets/{child_id}/access-context", headers=governed_headers)
+    assert child_access.status_code == 200, child_access.text
+    assert child_access.json()["policy_count"] >= 1
+    assert child_access.json()["effective_rows"] == 2
+    # The inherited column rule keeps only columns that still exist after the transform.
+    assert child_access.json()["effective_columns"] == ["region"]
+
+
+def test_v220_background_job_reuses_tenant_access_context(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store, job_service
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{tmp_path / 'tenant-job.db'}")
+    metadata_store._ENGINES.clear()
+
+    class FakeRedis:
+        def __init__(self): self.items=[]
+        def rpush(self, key, value): self.items.append((key,value)); return len(self.items)
+    fake=FakeRedis()
+    monkeypatch.setattr(job_service, "_redis", lambda: fake)
+
+    boot=client.post("/api/v1/auth/bootstrap", json={
+        "email":"jobowner@datavision.local","password":"EnterprisePass123!",
+        "display_name":"Job Owner","organization_name":"Job Org",
+    })
+    assert boot.status_code==200, boot.text
+    owner_token=boot.json()["access_token"]; ws=boot.json()["workspace_id"]; org=boot.json()["organization_id"]
+    owner_headers={"Authorization":f"Bearer {owner_token}","X-Workspace-ID":ws}
+
+    dates=pd.date_range("2024-01-01", periods=24, freq="D")
+    frame=pd.DataFrame({"date":dates.astype(str),"sales":[float(i+1) for i in range(24)],"secret":[1000+i for i in range(24)]})
+    upload=client.post("/api/v1/datasets", headers=owner_headers, files={"file":("jobs.csv",io.BytesIO(frame.to_csv(index=False).encode()),"text/csv")})
+    assert upload.status_code==200, upload.text
+    dataset_id=upload.json()["dataset"]["id"]
+
+    member=client.post(f"/api/v1/workspaces/{ws}/members", headers={"Authorization":f"Bearer {owner_token}"}, json={
+        "email":"jobanalyst@datavision.local","role":"analyst","display_name":"Job Analyst","password":"AnalystPass123!"
+    })
+    assert member.status_code==200, member.text
+    pol=client.post(f"/api/v1/workspaces/{ws}/policies", headers={"Authorization":f"Bearer {owner_token}"}, json={
+        "dataset_id":dataset_id,"name":"Recent only","allowed_columns":["date","sales"],
+        "row_filters":[{"column":"sales","operator":"gte","value":7}],"applies_to_role":"analyst"
+    })
+    assert pol.status_code==200, pol.text
+    login=client.post("/api/v1/auth/login", json={"email":"jobanalyst@datavision.local","password":"AnalystPass123!"})
+    analyst_token=login.json()["access_token"]
+    analyst_headers={"Authorization":f"Bearer {analyst_token}"}
+
+    submitted=client.post("/api/v1/jobs", headers=analyst_headers, json={
+        "workspace_id":ws,"organization_id":org,"job_type":"forecast","dataset_id":dataset_id,
+        "payload":{"date_column":"date","target":"sales","horizon":3,"frequency":"daily","method":"naive"}
+    })
+    assert submitted.status_code==200, submitted.text
+    job_id=submitted.json()["job"]["id"]
+    completed=job_service.run_job(job_id)
+    assert completed["status"]=="completed", completed
+    history=completed["result"]["history"]
+    # RLS removed sales 1..6 before the worker reached forecasting.
+    assert len(history)==18
+    assert min(float(x["value"]) for x in history)>=7

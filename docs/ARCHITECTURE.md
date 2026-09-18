@@ -112,3 +112,42 @@ SQL Workspace
 ```
 
 Les rapports et historiques sont actuellement stockés localement sur le volume `./data`. La migration vers PostgreSQL/object storage est prévue avec la couche workspace/multi-utilisateur.
+
+## v2.0 — Semantic Intelligence, Trust & Decision
+
+```text
+Business question
+      │
+      ├── Semantic Layer
+      │     ├── metrics
+      │     ├── dimensions
+      │     ├── synonyms
+      │     ├── units
+      │     └── certification
+      │
+      ├── AI Analyst / NLQ
+      │     └── semantic grounding
+      │
+      ├── Deterministic engines
+      │     ├── SQL / DuckDB
+      │     ├── statistics
+      │     ├── ML / forecasting
+      │     └── XAI
+      │
+      ├── Critic + Trust Center
+      │     ├── quality
+      │     ├── provenance
+      │     ├── reproducibility
+      │     └── privacy signals
+      │
+      └── Decision Lab
+            ├── saved-model inference
+            ├── what-if scenarios
+            └── sensitivity
+```
+
+La couche sémantique reste locale et dataset-root-aware. Les métriques calculées sont exécutées par code, jamais par un LLM. Le Decision Lab réutilise le pipeline de modèle sauvegardé et marque explicitement les scénarios comme non causaux.
+
+### Professional shell
+
+La structure d'information passe à six espaces : Vue d'ensemble, Données, Analyser, Modéliser, Décider, Publier. La sidebar affiche les espaces ; les modules sont exposés dans une sous-navigation contextuelle. `Ctrl/Cmd + K` permet navigation et handoff vers AI Analyst.

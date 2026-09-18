@@ -1,4 +1,4 @@
-# DataVision AI — v1.3.0
+# DataVision AI — v2.2.0
 
 DataVision AI est un **Data Intelligence Workspace local et installable** réunissant import, profiling, qualité, préparation versionnée, statistiques, SQL, visualisation, Machine Learning, forecasting, détection d'anomalies, XAI, prédiction, AI Analyst et reporting reproductible dans une même interface.
 
@@ -13,6 +13,215 @@ OpenAPI   : http://localhost:8005/docs
 ```
 
 Les ports 3000 et 8000 ne sont pas utilisés.
+
+
+## Nouveau dans v2.2.0 — Tenant-Aware Data Access
+
+La v2.2 ferme la principale faille restante de la fondation Enterprise : lorsqu’une session Enterprise est active, **le même contexte d’accès est maintenant appliqué à toutes les routes dataset et à tous les moteurs analytiques**, pas seulement au Governance Center.
+
+### Boundary de sécurité centralisée
+
+Chaque appel `/api/v1/datasets/*` reçoit automatiquement le contexte :
+
+```text
+Utilisateur
+   ↓
+Workspace actif
+   ↓
+Rôle RBAC
+   ↓
+Dataset lié au workspace ?
+   ↓
+Policies héritées
+   ├── Row-Level Security
+   └── Column-Level Security
+   ↓
+DataFrame gouverné
+   ↓
+Statistiques / SQL / ML / XAI / AI Analyst / Dashboard / Rapport
+```
+
+Le mode local sans authentification reste disponible. En revanche, dès qu’un token Enterprise ou un workspace est fourni, DataVision **ne retombe jamais silencieusement en mode local non gouverné**.
+
+### Enforcement global
+
+Les restrictions s’appliquent désormais à :
+
+- preview, profilage, qualité et statistiques descriptives ;
+- tests statistiques, corrélations, régression, ANOVA, ACP et clustering ;
+- SQL Workspace et NLQ ;
+- Visualization Studio et Dashboard Builder ;
+- AutoML, forecasting, anomalies et XAI ;
+- AI Analyst ;
+- Semantic Layer, Trust Center et Decision Lab ;
+- Report Studio ;
+- jobs asynchrones Redis/worker.
+
+### Héritage de versions sécurisé
+
+Une policy attachée à une version source protège également les versions dérivées. Les nouvelles versions créées dans un workspace sont automatiquement liées à ce workspace. Lorsque les lignes d’une version dérivée ont déjà été matérialisées après RLS, DataVision conserve un snapshot `policy id + updated_at` afin d’éviter de dépendre d’une colonne de filtre ensuite supprimée, tout en réappliquant automatiquement une policy si elle a été modifiée depuis.
+
+### Correction fail-closed importante
+
+En v2.1, la projection de colonnes pouvait être appliquée avant certains filtres de lignes. La v2.2 applique désormais **RLS avant Column-Level Security**. Une policy qui référence une colonne inexistante ou un opérateur invalide échoue fermée au lieu d’élargir l’accès.
+
+### Frontend tenant-aware
+
+Toutes les fonctions API du frontend injectent automatiquement :
+
+```text
+Authorization: Bearer <token>
+X-Workspace-ID: <workspace actif>
+```
+
+La topbar affiche `Accès gouverné · <rôle>` lorsqu’un dataset est consommé via le boundary Enterprise.
+
+### Validation v2.2.0
+
+```text
+Backend pytest : 28 passed
+Python compile : OK
+RLS global     : testé
+CLS global     : testé
+SQL gouverné   : testé
+Workspace isolation : testé
+Version inheritance : testé
+Background jobs     : testé
+Ports               : 3005 / 8005
+```
+
+Documentation détaillée : `docs/TENANT_AWARE_SECURITY.md`.
+
+---
+
+## Nouveau dans v2.1.0 — Enterprise Foundation
+
+La v2.1 transforme la fondation locale en une première plateforme gouvernée multi-utilisateur, sans désactiver le mode local existant. Elle introduit **identité locale, organisations, workspaces, RBAC, metadata store PostgreSQL, audit log, politiques d'accès et jobs Redis**.
+
+### Nouvelle zone `Gouverner`
+
+L'interface v2 dispose maintenant d'un septième espace fonctionnel :
+
+```text
+Vue d’ensemble
+Données
+Analyser
+Modéliser
+Décider
+Publier
+Gouverner  ← identité, rôles, policies, jobs, audit
+```
+
+Le Governance Center permet d'initialiser un propriétaire, créer des workspaces, provisionner des membres, attribuer les rôles `owner/admin/data_scientist/analyst/viewer`, lier les datasets, définir des politiques de colonnes/lignes, suivre les jobs asynchrones et inspecter le journal d'audit.
+
+### Architecture Enterprise
+
+```text
+Browser :3005
+      │
+      ▼
+FastAPI :8005
+      │
+      ├── PostgreSQL  ← utilisateurs / workspaces / RBAC / audit / jobs
+      ├── Redis       ← file de jobs
+      ├── Worker      ← AutoML / AI Analyst / forecast / rapports
+      └── Data layer  ← Parquet / modèles / rapports / datasets versionnés
+```
+
+PostgreSQL est le metadata store principal en Docker. Un fallback SQLite local est disponible pour le développement hors stack.
+
+### Sécurité et limites explicites
+
+La v2.1 applique le RBAC sur les nouvelles ressources Enterprise et exécute réellement un `governed-preview` avec filtres de lignes/colonnes. **L'enforcement des policies sur toutes les anciennes routes analytiques est encore partiel** et reste déclaré comme tel jusqu'à la migration tenant-aware globale. OIDC/SSO, refresh tokens, vault de secrets et annulation préemptive des jobs en cours restent planifiés.
+
+### Validation v2.1.0
+
+```text
+Backend pytest : 25 passed
+Python compile : OK
+TS/TSX parse   : OK
+Ports          : 3005 / 8005
+Worker Redis   : ajouté au docker-compose
+```
+
+Documentation détaillée : `docs/ENTERPRISE_FOUNDATION.md`.
+
+---
+
+## Nouveau dans v2.0.0 — Semantic Intelligence, Trust & Decision Lab
+
+La v2.0 est une refonte produit guidée par un benchmark 2026 de Power BI/Fabric, Tableau, Looker, ThoughtSpot, Dataiku, Alteryx, Metabase et Apache Superset. Le but n'est pas de copier leurs interfaces, mais de retenir les invariants du marché — couche sémantique, analytics conversationnelle, dashboards interactifs, gouvernance, automatisation, ML/XAI — tout en corrigeant deux problèmes fréquents : **complexité d'interface** et **résultats IA difficiles à vérifier**.
+
+### Interface professionnelle orientée workflow
+
+La navigation plate est remplacée par six espaces :
+
+```text
+Vue d'ensemble
+Données
+Analyser
+Modéliser
+Décider
+Publier
+```
+
+Chaque espace possède sa sous-navigation contextuelle. Une **Command Palette** globale (`Ctrl/Cmd + K`) ouvre rapidement un module ou transmet une question à AI Analyst. La page d'accueil propose des playbooks orientés objectifs plutôt que des noms de techniques statistiques.
+
+### Semantic Studio
+
+Une couche sémantique locale et versionnée permet de définir :
+
+- métriques métier ;
+- agrégation officielle ;
+- unités ;
+- dimensions ;
+- descriptions ;
+- synonymes ;
+- statut de certification ;
+- glossaire métier.
+
+Le NLQ et AI Analyst utilisent cette couche pour résoudre les termes métier vers les colonnes physiques. Les synonymes et métriques certifiées apparaissent dans la provenance analytique.
+
+### Metric Pulse
+
+Une métrique sémantique peut être suivie dans le temps avec valeur courante, tendance, variation de période et signal simple d'anomalie. Les calculs restent déterministes.
+
+### Trust Center
+
+Le Trust Center agrège quatre axes : qualité des données, maturité sémantique, reproductibilité/lineage et signaux de confidentialité. Il affiche également les politiques d'exécution : résultats numériques par moteurs déterministes et données brutes non envoyées par défaut à un LLM externe.
+
+### Decision Lab
+
+Le Decision Lab exécute de vrais scénarios sur le pipeline de modèle sauvegardé :
+
+- référence + scénarios d'override ;
+- variation de prédiction ;
+- variation de probabilité en classification ;
+- courbe de sensibilité d'une variable.
+
+Le produit indique explicitement qu'un what-if prédictif décrit la réponse du modèle et **n'établit pas un effet causal**.
+
+### NLQ et AI Analyst sémantiquement ancrés
+
+Le text-to-SQL et l'orchestrateur reconnaissent les labels et synonymes métier. Une demande explicite d'agrégation (« moyenne », « somme », etc.) prend priorité sur l'agrégation par défaut de la métrique, tandis que la métrique et la dimension gouvernées fournissent le contexte.
+
+### Validation v2.0.0
+
+```text
+Backend          : 23 tests passent
+Python compileall: OK
+TSX / TypeScript : transpilation syntaxique OK
+CSS              : accolades équilibrées
+Ports            : 3005 / 8005
+```
+
+Le build Next.js/Docker complet reste à confirmer sur la machine cible, comme pour les versions précédentes.
+
+Voir :
+
+- `docs/MARKET_BENCHMARK_2026.md`
+- `docs/PRODUCT_STRATEGY_2026.md`
+- `docs/UI_ARCHITECTURE_V2.md`
 
 
 ## Nouveau dans v1.3.0 — Dashboard Builder interactif

@@ -1,3 +1,50 @@
+# v2.2.0
+
+- middleware tenant-aware pour toutes les routes dataset ;
+- propagation automatique token/workspace depuis le frontend ;
+- RBAC global sur lectures, analyses, modèles, transformations et publication ;
+- RLS et sécurité colonne appliquées dans `storage.load_dataframe` ;
+- isolation du catalogue par workspace ;
+- accès refusé aux datasets non liés ;
+- héritage des policies sur la lignée des versions ;
+- liaison automatique des versions dérivées au workspace actif ;
+- correction RLS-before-CLS et comportement fail-closed ;
+- snapshot des policies matérialisées pour les versions dérivées ;
+- worker Redis tenant-aware ;
+- endpoint `/datasets/{id}/access-context` ;
+- badge UI `Accès gouverné` ;
+- 28 tests backend.
+
+# v2.1.0
+
+- Identité locale avec bootstrap, login, scrypt et bearer token signé.
+- Organisations et workspaces multi-utilisateurs.
+- RBAC owner/admin/data_scientist/analyst/viewer.
+- PostgreSQL comme metadata store Enterprise, fallback SQLite local.
+- Provisionnement de membres.
+- Liaison dataset ↔ workspace.
+- Registre de politiques colonnes/lignes et governed preview exécuté réellement.
+- Journal d'audit consolidé.
+- File de jobs Redis + worker séparé + suivi/annulation.
+- Nouvelle zone UI **Gouverner**.
+- 25 tests backend passants.
+
+# v2.0.0 — Semantic Intelligence & Professional Shell
+
+- benchmark marché 2026 documenté ;
+- navigation réorganisée en six espaces orientés workflow ;
+- Command Palette globale ;
+- Goal Playbooks sur l'accueil ;
+- Semantic Studio : métriques, dimensions, synonymes, unités, certification ;
+- Metric Pulse déterministe ;
+- NLQ ancré sur la couche sémantique ;
+- AI Analyst ancré sur synonymes/métriques avec provenance sémantique ;
+- Trust Center ;
+- Decision Lab : what-if et sensibilité du modèle sauvegardé ;
+- topbar de contexte dataset/version/qualité/confiance ;
+- styles visuels simplifiés et progressive disclosure ;
+- 23 tests backend.
+
 # v1.3.0
 
 - Dashboard Builder persistant ;

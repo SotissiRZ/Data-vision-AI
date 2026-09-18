@@ -1,4 +1,4 @@
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, HTTPException, UploadFile, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
@@ -27,6 +27,10 @@ from app.services.report_builder import build_report, list_reports, get_report, 
 from app.services.dashboard import dashboard_overview
 from app.services.saved_visualizations import save_visualization, list_visualizations
 from app.services.dashboard_builder import save_dashboard, list_dashboards, get_dashboard_definition, delete_dashboard, preview_dashboard
+from app.services.semantic_layer import get_semantic_model, save_semantic_model, evaluate_metric, metric_pulse
+from app.services.trust_center import trust_center
+from app.services.decision_lab import model_what_if, sensitivity_curve
+from app.services.tenant_access import access_summary
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -183,6 +187,36 @@ class DashboardPreviewRequest(BaseModel):
     filters: list[dict] = []
     widgets: list[dict] = []
 
+class SemanticSaveRequest(BaseModel):
+    metrics: list[dict] = []
+    dimensions: list[dict] = []
+    business_glossary: list[dict] = []
+
+
+class MetricEvaluateRequest(BaseModel):
+    metric_id: str
+    dimensions: list[str] = []
+    filters: list[dict] = []
+    limit: int = Field(default=200, ge=1, le=500)
+
+
+class MetricPulseRequest(BaseModel):
+    metric_id: str
+    date_column: str | None = None
+    periods: int = Field(default=12, ge=2, le=36)
+
+
+class WhatIfRequest(BaseModel):
+    base_row: dict
+    scenarios: list[dict] = []
+
+
+class SensitivityRequest(BaseModel):
+    base_row: dict
+    feature: str
+    values: list
+
+
 class AIAnalysisRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
     target: str | None = None
@@ -216,14 +250,33 @@ def _bundle(meta: dict, frame=None) -> dict:
         "preview": preview_dataframe(df, 25),
         "decision": decision_support(profile, quality),
         "versions": dataset_versions(meta["id"]),
+        "access": access_summary(meta["id"]),
     }
 
 
 @router.post("")
-async def upload_dataset(file: UploadFile = File(...)):
+async def upload_dataset(request: Request, file: UploadFile = File(...)):
     try:
         content = await file.read()
         meta = save_upload(file.filename or "dataset", content)
+        workspace_id = request.headers.get("x-workspace-id")
+        authorization = request.headers.get("authorization")
+        if workspace_id and authorization and authorization.lower().startswith("bearer "):
+            try:
+                from app.services.auth_service import decode_token, get_user
+                from app.services.workspace_service import bind_dataset, get_workspace
+                from app.services.audit_service import record_event
+                payload = decode_token(authorization.split(" ", 1)[1].strip())
+                user = get_user(payload["sub"])
+                if not user:
+                    raise ValueError("Utilisateur introuvable")
+                bind_dataset(user["id"], workspace_id, meta["id"])
+                ws = get_workspace(user["id"], workspace_id)
+                record_event("dataset.upload", user_id=user["id"], organization_id=ws["organization_id"], workspace_id=workspace_id, resource_type="dataset", resource_id=meta["id"], payload={"name": meta["original_name"]})
+            except PermissionError as exc:
+                raise HTTPException(status_code=403, detail=str(exc)) from exc
+            except Exception as exc:
+                raise HTTPException(status_code=401, detail=f"Contexte workspace invalide: {exc}") from exc
         return {"dataset": {"id": meta["id"], "name": meta["original_name"], "format": meta["extension"]}}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -257,6 +310,22 @@ def dataset_column_analysis(dataset_id: str, column: str):
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
     except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{dataset_id}/access-context")
+def dataset_access_context(dataset_id: str):
+    try:
+        # load_dataframe performs the same authorization/policy resolution used by every engine.
+        df = load_dataframe(dataset_id)
+        summary = access_summary(dataset_id)
+        summary.update({"effective_rows": int(len(df)), "effective_columns": [str(c) for c in df.columns]})
+        return summary
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Dataset introuvable")
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
@@ -407,6 +476,7 @@ def dataset_ai_analyze(dataset_id: str, request: AIAnalysisRequest):
             group=request.group,
             horizon=request.horizon,
             mode=request.mode,
+            semantic_model=get_semantic_model(dataset_id, load_dataframe(dataset_id)),
         )
         result = analyze_dataset(load_dataframe(dataset_id), context)
         save_analysis(result)
@@ -444,7 +514,8 @@ def dataset_ai_history_item(dataset_id: str, session_id: str):
 @router.post("/{dataset_id}/workspace/nlq")
 def dataset_workspace_nlq(dataset_id: str, request: NLQRequest):
     try:
-        return run_nlq(load_dataframe(dataset_id), request.question, request.limit)
+        df = load_dataframe(dataset_id)
+        return run_nlq(df, request.question, request.limit, get_semantic_model(dataset_id, df))
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
     except ValueError as exc:
@@ -534,6 +605,62 @@ def dataset_dashboard_preview(dataset_id: str, request: DashboardPreviewRequest)
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Aperçu dashboard impossible: {exc}") from exc
+
+
+@router.get("/{dataset_id}/semantic")
+def dataset_semantic_model(dataset_id: str):
+    try:
+        return get_semantic_model(dataset_id, load_dataframe(dataset_id))
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404 if isinstance(exc, FileNotFoundError) else 400, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/semantic")
+def dataset_save_semantic_model(dataset_id: str, body: SemanticSaveRequest):
+    try:
+        return save_semantic_model(dataset_id, load_dataframe(dataset_id), body.model_dump())
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404 if isinstance(exc, FileNotFoundError) else 400, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/semantic/evaluate")
+def dataset_evaluate_metric(dataset_id: str, body: MetricEvaluateRequest):
+    try:
+        return evaluate_metric(dataset_id, load_dataframe(dataset_id), body.metric_id, body.dimensions, body.filters, body.limit)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404 if isinstance(exc, FileNotFoundError) else 400, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/semantic/pulse")
+def dataset_metric_pulse(dataset_id: str, body: MetricPulseRequest):
+    try:
+        return metric_pulse(dataset_id, load_dataframe(dataset_id), body.metric_id, body.date_column, body.periods)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404 if isinstance(exc, FileNotFoundError) else 400, detail=str(exc)) from exc
+
+
+@router.get("/{dataset_id}/trust")
+def dataset_trust_center(dataset_id: str):
+    try:
+        return trust_center(dataset_id, load_dataframe(dataset_id))
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404 if isinstance(exc, FileNotFoundError) else 400, detail=str(exc)) from exc
+
+
+@router.post("/models/{model_id}/what-if")
+def model_what_if_route(model_id: str, body: WhatIfRequest):
+    try:
+        return model_what_if(model_id, body.base_row, body.scenarios)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404 if isinstance(exc, FileNotFoundError) else 400, detail=str(exc)) from exc
+
+
+@router.post("/models/{model_id}/sensitivity")
+def model_sensitivity_route(model_id: str, body: SensitivityRequest):
+    try:
+        return sensitivity_curve(model_id, body.base_row, body.feature, body.values)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404 if isinstance(exc, FileNotFoundError) else 400, detail=str(exc)) from exc
 
 
 @router.get("/{dataset_id}/reports")
