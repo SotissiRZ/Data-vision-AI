@@ -1,3 +1,15 @@
+# v1.3.0
+
+- Dashboard Builder persistant ;
+- widgets KPI, graphiques et texte ;
+- grille responsive avec tailles de widgets et réordonnancement drag-and-drop ;
+- filtres globaux déterministes ;
+- cross-filtering depuis les graphiques en barres ;
+- persistance locale des définitions ;
+- endpoints CRUD + preview ;
+- calculs KPI/graphiques côté backend après filtrage ;
+- 20 tests backend passent.
+
 # v1.2.0 — Report Intelligence
 
 - narration analytique automatique fondée sur les résultats calculés ;

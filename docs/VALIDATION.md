@@ -1,3 +1,12 @@
+# Validation — DataVision AI v1.3.0
+
+- Backend : 20 tests passent.
+- Python : `compileall` OK.
+- Dashboard Builder : persistance, preview filtré, KPI et graphique agrégé couverts par test API.
+- Frontend TSX/TS : transpilation syntaxique OK.
+- Ports : 3005 / 8005.
+- Build Next.js/Docker final : à confirmer sur la machine cible.
+
 # Validation — v1.2.0
 
 ## Backend

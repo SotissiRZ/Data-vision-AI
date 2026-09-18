@@ -8,10 +8,11 @@ import {
   runCorrelations, runStatisticalTest, getTestAdvice, getEngineInfo, runSql, recommendVisualizations, buildVisualization, runAutoML,
   runForecast, runAnomalyDetection, getModelDiagnostics, explainModelPrediction, getAIAnalystCapabilities, runAIAnalysis,
   runNaturalLanguageQuery, getAIHistory, getAIHistoryItem, getReports, createReport, downloadReport, getDashboard, saveVisualization, getSavedVisualizations,
+  getDashboards, getDashboardDefinition, saveDashboardDefinition, deleteDashboardDefinition, previewDashboard,
 } from '../lib/api';
 
 type AnyObj = Record<string, any>;
-type View = 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'report';
+type View = 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'dashboard' | 'report';
 
 const nav: { key: View; label: string; icon: string; group: 'Explorer'|'Analyser'|'Modéliser'|'Partager'; status?: 'partial' | 'planned' }[] = [
   { key: 'home', label: 'Accueil', icon: '⌂', group: 'Explorer' },
@@ -32,6 +33,7 @@ const nav: { key: View; label: string; icon: string; group: 'Explorer'|'Analyser
   { key: 'xai', label: 'Explicabilité XAI', icon: '◇', group: 'Modéliser' },
   { key: 'predict', label: 'Prédictions', icon: '◎', group: 'Modéliser' },
   { key: 'ai', label: 'AI Analyst', icon: '✦', group: 'Modéliser' },
+  { key: 'dashboard', label: 'Dashboards', icon: '▦', group: 'Partager' },
   { key: 'report', label: 'Rapports', icon: '▧', group: 'Partager' },
 ];
 
@@ -185,6 +187,7 @@ export default function Home() {
         {view === 'xai' && <XaiView result={result} model={model} setError={setError}/>}
         {view === 'ai' && <AIAnalystView result={result} setError={setError}/>}
         {view === 'predict' && <PredictView model={model} text={predictionText} setText={setPredictionText} predicting={predicting} doPredict={doPredict} prediction={prediction}/>} 
+        {view === 'dashboard' && <DashboardBuilder result={result} setError={setError}/>}
         {view === 'report' && <ReportView result={result} setError={setError}/>} 
       </section>
     </div>
@@ -215,7 +218,7 @@ function HomeView({ result, busy, onFile, setView }: { result: AnyObj | null; bu
         <Panel title="Insights clés"><div className="insight-feed">{(d.insights??[]).map((x:AnyObj,i:number)=><article key={i} className={`insight-item ${x.severity}`}><span>{x.severity}</span><div><b>{x.title}</b><p>{x.statement}</p><small>{x.action}</small></div></article>)}</div></Panel>
         <Panel title="Prochaines analyses"><div className="smart-actions">{(d.recommended_visualizations??[]).slice(0,5).map((r:AnyObj,i:number)=><button key={i} onClick={()=>setView('visual')}><span className="smart-action-icon">▥</span><div><b>{String(r.type).toUpperCase()}</b><p>{r.reason}</p><small>{[r.x,r.y].filter(Boolean).join(' × ')}</small></div></button>)}<button onClick={()=>setView('ai')}><span className="smart-action-icon">✦</span><div><b>AI ANALYST</b><p>Construire et exécuter un plan d’analyse complet.</p><small>Provenance + Critic</small></div></button></div></Panel>
       </div>
-      <div className="quick-module-grid"><button onClick={()=>setView('quality')}><b>Qualité</b><span>{result.quality.issues_count} alerte(s)</span></button><button onClick={()=>setView('tests')}><b>Tests & corrélations</b><span>Relations et significativité</span></button><button onClick={()=>setView('visual')}><b>Visualisation</b><span>Explorer graphiquement</span></button><button onClick={()=>setView('model')}><b>AutoML</b><span>Benchmark prédictif</span></button><button onClick={()=>setView('report')}><b>Rapports</b><span>Exporter les résultats</span></button></div>
+      <div className="quick-module-grid"><button onClick={()=>setView('quality')}><b>Qualité</b><span>{result.quality.issues_count} alerte(s)</span></button><button onClick={()=>setView('tests')}><b>Tests & corrélations</b><span>Relations et significativité</span></button><button onClick={()=>setView('visual')}><b>Visualisation</b><span>Explorer graphiquement</span></button><button onClick={()=>setView('model')}><b>AutoML</b><span>Benchmark prédictif</span></button><button onClick={()=>setView('dashboard')}><b>Dashboards</b><span>Construire une vue décisionnelle</span></button><button onClick={()=>setView('report')}><b>Rapports</b><span>Exporter les résultats</span></button></div>
     </>}
   </div>;
 }
@@ -707,6 +710,101 @@ function ReportPreview({ report }: { report:AnyObj }) {
       {block.type==='provenance'&&<div className="report-preview-provenance">{Object.entries(block.data??{}).slice(0,8).map(([k,v])=><div key={k}><span>{k}</span><b>{String(v??'—')}</b></div>)}</div>}
     </section>)}
     {blocks.length>5&&<div className="report-preview-more">+ {blocks.length-5} autre(s) section(s) dans le rapport exporté</div>}
+  </div>;
+}
+
+
+function dashboardId(){ return typeof crypto!=='undefined'&&'randomUUID' in crypto ? crypto.randomUUID() : `w-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
+
+function DashboardWidgetBody({item,onCrossFilter}:{item:AnyObj;onCrossFilter:(column:string,value:any)=>void}){
+  if(item.status==='error') return <div className="widget-error">{item.error}</div>;
+  const r=item.result;
+  if(!r) return <div className="quiet-empty">Actualisez le dashboard.</div>;
+  if(r.type==='kpi') return <div className="dashboard-kpi-widget"><strong>{formatNumber(r.value,3)}</strong><span>{r.detail}</span></div>;
+  if(r.type==='text') return <div className="dashboard-text-widget">{r.text||'Texte libre'}</div>;
+  if(r.type==='bar'){
+    const vals=(r.data??[]).map((x:AnyObj)=>Number(x.value)||0),max=Math.max(1,...vals);
+    return <div className="bar-chart interactive-bars">{(r.data??[]).map((x:AnyObj,i:number)=><button key={i} className="bar-row" onClick={()=>r.x&&onCrossFilter(r.x,x.label)} title="Cliquer pour filtrer le dashboard"><span>{String(x.label)}</span><div><i style={{width:`${Math.max(1,(Number(x.value)||0)/max*100)}%`}}/></div><b>{formatNumber(x.value,2)}</b></button>)}</div>;
+  }
+  return <VizRenderer viz={r}/>;
+}
+
+function DashboardBuilder({ result, setError }: { result:AnyObj|null; setError:(s:string)=>void }) {
+  const cols=result?.profile?.columns??[];
+  const rows=Number(result?.profile?.rows??0);
+  const useful=cols.filter((c:AnyObj)=>!isLikelyIdentifier(c,rows));
+  const nums=useful.filter(isNumeric);
+  const cats=useful.filter((c:AnyObj)=>!isNumeric(c));
+  const [saved,setSaved]=useState<AnyObj[]>([]);
+  const [currentId,setCurrentId]=useState('');
+  const [name,setName]=useState('Dashboard analytique');
+  const [description,setDescription]=useState('Vue décisionnelle interactive');
+  const [filters,setFilters]=useState<AnyObj[]>([]);
+  const [widgets,setWidgets]=useState<AnyObj[]>([]);
+  const [preview,setPreview]=useState<AnyObj|null>(null);
+  const [selectedId,setSelectedId]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [dragId,setDragId]=useState('');
+  const [fColumn,setFColumn]=useState('');
+  const [fOperator,setFOperator]=useState('eq');
+  const [fValue,setFValue]=useState('');
+  const [fValue2,setFValue2]=useState('');
+
+  function defaults(){
+    const firstNum=nums[0]?.name??''; const secondNum=nums[1]?.name??''; const firstCat=cats[0]?.name??'';
+    const dateGuess=useful.find((c:AnyObj)=>/date|time|timestamp|annee|year|mois|month/i.test(String(c.name)))?.name??'';
+    const out:AnyObj[]=[
+      {id:dashboardId(),title:'Observations',type:'kpi',size:'small',config:{metric:'rows'}},
+      {id:dashboardId(),title:'Qualité',type:'kpi',size:'small',config:{metric:'quality_score'}},
+      {id:dashboardId(),title:'Valeurs manquantes',type:'kpi',size:'small',config:{metric:'missing_cells'}},
+      {id:dashboardId(),title:'Doublons',type:'kpi',size:'small',config:{metric:'duplicates'}},
+    ];
+    if(firstCat&&firstNum) out.push({id:dashboardId(),title:`${firstNum} par ${firstCat}`,type:'chart',size:'medium',config:{chart_type:'bar',x:firstCat,y:firstNum,aggregation:'mean',bins:20}});
+    if(firstNum) out.push({id:dashboardId(),title:`Distribution de ${firstNum}`,type:'chart',size:'medium',config:{chart_type:'histogram',x:firstNum,y:null,aggregation:'none',bins:20}});
+    if(firstNum&&secondNum) out.push({id:dashboardId(),title:`${secondNum} selon ${firstNum}`,type:'chart',size:'medium',config:{chart_type:'scatter',x:firstNum,y:secondNum,aggregation:'none',bins:20}});
+    if(dateGuess&&firstNum) out.push({id:dashboardId(),title:`Évolution de ${firstNum}`,type:'chart',size:'large',config:{chart_type:'line',x:dateGuess,y:firstNum,aggregation:'mean',bins:20}});
+    if(nums.length>=2) out.push({id:dashboardId(),title:'Corrélations',type:'chart',size:'full',config:{chart_type:'heatmap',x:null,y:null,aggregation:'none',bins:20}});
+    return out;
+  }
+
+  async function loadList(){ if(!result)return; try{const r=await getDashboards(result.dataset.id);setSaved(r.dashboards??[]);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));} }
+  async function refresh(nextFilters=filters,nextWidgets=widgets){ if(!result)return;setBusy(true);setError('');try{setPreview(await previewDashboard(result.dataset.id,{filters:nextFilters,widgets:nextWidgets}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);} }
+  function startNew(){ const w=defaults();setCurrentId('');setName('Dashboard analytique');setDescription('Vue décisionnelle interactive');setFilters([]);setWidgets(w);setSelectedId(w[0]?.id??'');setPreview(null);if(result)setTimeout(()=>refresh([],w),0); }
+  async function loadOne(id:string){ if(!result||!id)return;setBusy(true);try{const r=await getDashboardDefinition(result.dataset.id,id);const d=r.dashboard;setCurrentId(d.id);setName(d.name);setDescription(d.description??'');setFilters(d.filters??[]);setWidgets(d.widgets??[]);setSelectedId(d.widgets?.[0]?.id??'');await refresh(d.filters??[],d.widgets??[]);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);} }
+  async function save(){ if(!result)return;setBusy(true);setError('');try{const r=await saveDashboardDefinition(result.dataset.id,{dashboard_id:currentId||null,name,description,filters,widgets});setCurrentId(r.dashboard.id);await loadList();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);} }
+  async function removeDashboard(){ if(!result||!currentId)return;setBusy(true);try{await deleteDashboardDefinition(result.dataset.id,currentId);await loadList();startNew();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);} }
+
+  useEffect(()=>{if(!result){setSaved([]);setWidgets([]);setPreview(null);return;}setFColumn(useful[0]?.name??cols[0]?.name??'');loadList();const w=defaults();setWidgets(w);setSelectedId(w[0]?.id??'');setFilters([]);setCurrentId('');setTimeout(()=>refresh([],w),0);},[result?.dataset?.id]);
+
+  if(!result)return <EmptyState title="Dashboards" text="Chargez un dataset pour construire un tableau de bord interactif."/>;
+
+  function addWidget(kind:string){
+    const firstNum=nums[0]?.name??''; const secondNum=nums[1]?.name??''; const firstCat=cats[0]?.name??'';
+    let w:AnyObj={id:dashboardId(),title:'Nouveau widget',type:'chart',size:'medium',config:{chart_type:kind,x:firstCat||firstNum,y:firstNum||null,aggregation:firstCat&&firstNum?'mean':'none',bins:20}};
+    if(kind==='kpi') w={id:dashboardId(),title:'Indicateur',type:'kpi',size:'small',config:{metric:'rows'}};
+    if(kind==='text') w={id:dashboardId(),title:'Note',type:'text',size:'medium',config:{text:'Ajoutez votre commentaire ou votre interprétation.'}};
+    if(kind==='histogram') w.config={chart_type:'histogram',x:firstNum,y:null,aggregation:'none',bins:20};
+    if(kind==='scatter') w.config={chart_type:'scatter',x:firstNum,y:secondNum,aggregation:'none',bins:20};
+    if(kind==='heatmap') w.config={chart_type:'heatmap',x:null,y:null,aggregation:'none',bins:20};
+    if(kind==='line') w.config={chart_type:'line',x:firstCat||firstNum,y:firstNum,aggregation:'mean',bins:20};
+    const next=[...widgets,w];setWidgets(next);setSelectedId(w.id);setTimeout(()=>refresh(filters,next),0);
+  }
+  function patchWidget(id:string,patch:AnyObj){setWidgets(prev=>prev.map(w=>w.id===id?{...w,...patch}:w));}
+  function patchConfig(id:string,patch:AnyObj){setWidgets(prev=>prev.map(w=>w.id===id?{...w,config:{...(w.config??{}),...patch}}:w));}
+  function deleteWidget(id:string){const next=widgets.filter(w=>w.id!==id);setWidgets(next);if(selectedId===id)setSelectedId(next[0]?.id??'');setTimeout(()=>refresh(filters,next),0);}
+  function dropOn(target:string){if(!dragId||dragId===target)return;const next=[...widgets];const a=next.findIndex(w=>w.id===dragId),b=next.findIndex(w=>w.id===target);if(a<0||b<0)return;const [m]=next.splice(a,1);next.splice(b,0,m);setWidgets(next);setDragId('');}
+  function addFilter(){if(!fColumn)return;const f={id:dashboardId(),column:fColumn,operator:fOperator,value:fValue,value2:fValue2};const next=[...filters,f];setFilters(next);setFValue('');setFValue2('');setTimeout(()=>refresh(next,widgets),0);}
+  function removeFilter(id:string){const next=filters.filter(f=>f.id!==id);setFilters(next);setTimeout(()=>refresh(next,widgets),0);}
+  function crossFilter(column:string,value:any){const without=filters.filter(f=>!(f.source==='cross'&&f.column===column));const next=[...without,{id:dashboardId(),source:'cross',column,operator:'eq',value}];setFilters(next);setTimeout(()=>refresh(next,widgets),0);}
+  const selected=widgets.find(w=>w.id===selectedId);
+  const renderedById=new Map((preview?.widgets??[]).map((w:AnyObj)=>[w.id,w]));
+
+  return <div className="page dashboard-builder-page"><div className="page-title"><div><span className="eyebrow">DASHBOARD BUILDER</span><h1>Tableau de bord interactif</h1><p>Composez une vue décisionnelle, appliquez des filtres globaux et utilisez les graphiques comme filtres croisés.</p></div><span className="module-state implemented">v1.3</span></div>
+    <div className="dashboard-toolbar"><select value={currentId} onChange={e=>e.target.value?loadOne(e.target.value):startNew()}><option value="">Nouveau dashboard</option>{saved.map(d=><option key={d.id} value={d.id}>{d.name} · v{d.dataset_version}</option>)}</select><input value={name} onChange={e=>setName(e.target.value)} placeholder="Nom du dashboard"/><input value={description} onChange={e=>setDescription(e.target.value)} placeholder="Description"/><button className="secondary-btn" onClick={startNew}>Nouveau</button><button className="primary-btn real-button" disabled={busy} onClick={save}>{busy?'Traitement…':'Enregistrer'}</button><button className="secondary-btn" disabled={!currentId||busy} onClick={removeDashboard}>Supprimer</button><button className="secondary-btn" disabled={busy} onClick={()=>refresh()}>↻ Actualiser</button></div>
+    <div className="dashboard-filter-panel"><div className="dashboard-filter-head"><div><b>Filtres globaux</b><small>{preview?`${preview.rows_after}/${preview.rows_before} lignes visibles`:'Tous les enregistrements'}</small></div><div className="dashboard-filter-form"><select value={fColumn} onChange={e=>setFColumn(e.target.value)}>{useful.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select><select value={fOperator} onChange={e=>setFOperator(e.target.value)}><option value="eq">=</option><option value="neq">≠</option><option value="contains">contient</option><option value="gt">&gt;</option><option value="gte">≥</option><option value="lt">&lt;</option><option value="lte">≤</option><option value="between">entre</option><option value="is_null">est vide</option><option value="not_null">non vide</option></select>{!['is_null','not_null'].includes(fOperator)&&<input value={fValue} onChange={e=>setFValue(e.target.value)} placeholder="Valeur"/>}{fOperator==='between'&&<input value={fValue2} onChange={e=>setFValue2(e.target.value)} placeholder="Valeur 2"/>}<button onClick={addFilter}>＋ Filtrer</button></div></div><div className="filter-chips">{filters.map(f=><button key={f.id} onClick={()=>removeFilter(f.id)} title="Retirer le filtre"><b>{f.column}</b> {f.operator} {String(f.value??'')} {f.value2?`→ ${f.value2}`:''}<span>×</span></button>)}{!filters.length&&<small>Aucun filtre actif. Cliquez sur une barre d’un graphique pour activer un cross-filter.</small>}</div></div>
+    <div className="dashboard-builder-layout"><aside className="dashboard-builder-side"><Panel title="Ajouter un widget"><div className="widget-palette"><button onClick={()=>addWidget('kpi')}>123 <span>KPI</span></button><button onClick={()=>addWidget('bar')}>▥ <span>Barres</span></button><button onClick={()=>addWidget('line')}>⌁ <span>Courbe</span></button><button onClick={()=>addWidget('histogram')}>▤ <span>Histogramme</span></button><button onClick={()=>addWidget('scatter')}>⠿ <span>Scatter</span></button><button onClick={()=>addWidget('heatmap')}>▦ <span>Heatmap</span></button><button onClick={()=>addWidget('text')}>T <span>Texte</span></button></div></Panel>
+      <Panel title="Propriétés">{!selected?<div className="quiet-empty">Sélectionnez un widget.</div>:<div className="widget-properties"><label>Titre<input value={selected.title??''} onChange={e=>patchWidget(selected.id,{title:e.target.value})}/></label><label>Taille<select value={selected.size??'medium'} onChange={e=>patchWidget(selected.id,{size:e.target.value})}><option value="small">Petite</option><option value="medium">Moyenne</option><option value="large">Large</option><option value="full">Pleine largeur</option></select></label>{selected.type==='kpi'&&<><label>Métrique<select value={selected.config?.metric??'rows'} onChange={e=>patchConfig(selected.id,{metric:e.target.value})}><option value="rows">Nombre de lignes</option><option value="quality_score">Score qualité</option><option value="missing_cells">Cellules manquantes</option><option value="duplicates">Doublons</option><option value="mean">Moyenne</option><option value="sum">Somme</option><option value="median">Médiane</option><option value="nunique">Valeurs uniques</option><option value="missing_pct">% manquant</option></select></label>{!['rows','quality_score','missing_cells','duplicates'].includes(selected.config?.metric??'rows')&&<label>Colonne<select value={selected.config?.column??nums[0]?.name??''} onChange={e=>patchConfig(selected.id,{column:e.target.value})}>{useful.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label>}</>}{selected.type==='chart'&&<><label>Graphique<select value={selected.config?.chart_type??'bar'} onChange={e=>patchConfig(selected.id,{chart_type:e.target.value})}><option value="bar">Barres</option><option value="line">Courbe</option><option value="area">Aire</option><option value="histogram">Histogramme</option><option value="density">Densité</option><option value="scatter">Scatter</option><option value="box">Boxplot</option><option value="heatmap">Heatmap</option></select></label>{!['heatmap'].includes(selected.config?.chart_type)&&<label>Axe X<select value={selected.config?.x??''} onChange={e=>patchConfig(selected.id,{x:e.target.value})}><option value="">—</option>{useful.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label>}{!['histogram','density','heatmap'].includes(selected.config?.chart_type)&&<label>Axe Y<select value={selected.config?.y??''} onChange={e=>patchConfig(selected.id,{y:e.target.value||null})}><option value="">—</option>{useful.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label>}{['bar','line','area'].includes(selected.config?.chart_type)&&<label>Agrégation<select value={selected.config?.aggregation??'none'} onChange={e=>patchConfig(selected.id,{aggregation:e.target.value})}><option value="count">Count</option><option value="mean">Moyenne</option><option value="sum">Somme</option><option value="median">Médiane</option><option value="min">Minimum</option><option value="max">Maximum</option></select></label>}</>}{selected.type==='text'&&<label>Texte<textarea value={selected.config?.text??''} onChange={e=>patchConfig(selected.id,{text:e.target.value})}/></label>}<div className="button-row"><button className="secondary-btn" onClick={()=>refresh()}>Appliquer</button><button className="danger-btn" onClick={()=>deleteWidget(selected.id)}>Supprimer</button></div></div>}</Panel></aside>
+      <section className="dashboard-canvas"><div className="dashboard-canvas-head"><div><b>{name}</b><span>{description}</span></div><small>Glissez les cartes pour les réordonner · cliquez une barre pour filtrer</small></div><div className="dashboard-widget-grid">{widgets.map(w=>{const rendered=renderedById.get(w.id) as AnyObj|undefined;return <article key={w.id} draggable onDragStart={()=>setDragId(w.id)} onDragOver={e=>e.preventDefault()} onDrop={()=>dropOn(w.id)} className={`dashboard-widget size-${w.size??'medium'} ${selectedId===w.id?'selected':''}`} onClick={()=>setSelectedId(w.id)}><header><div><span className="widget-grip">⠿</span><b>{w.title}</b></div><small>{w.type==='chart'?(w.config?.chart_type??'chart'):w.type}</small></header><div className="dashboard-widget-body"><DashboardWidgetBody item={rendered??{...w,status:'pending'}} onCrossFilter={crossFilter}/></div></article>})}</div></section></div>
   </div>;
 }
 

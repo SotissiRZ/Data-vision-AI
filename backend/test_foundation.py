@@ -714,3 +714,54 @@ def test_v120_intelligent_report_story_auto_visuals_and_limits(tmp_path, monkeyp
     pdf_out = client.get(f"/api/v1/datasets/{dataset_id}/reports/{body['id']}/export/pdf")
     assert pdf_out.status_code == 200
     assert len(pdf_out.content) > 5000
+
+def test_v130_dashboard_builder_filters_persistence_and_cross_filter_payload(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    frame = pd.DataFrame({
+        "region": ["Nord", "Sud", "Nord", "Est", "Sud", "Nord"],
+        "sales": [100, 80, 120, 60, 95, 140],
+        "cost": [60, 50, 65, 40, 55, 70],
+    })
+    upload = client.post("/api/v1/datasets", files={"file": ("dash.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    assert upload.status_code == 200
+    dataset_id = upload.json()["dataset"]["id"]
+
+    widgets = [
+        {"id":"k1","title":"Observations","type":"kpi","size":"small","config":{"metric":"rows"}},
+        {"id":"c1","title":"Ventes par région","type":"chart","size":"medium","config":{"chart_type":"bar","x":"region","y":"sales","aggregation":"mean","bins":20}},
+    ]
+    preview = client.post(f"/api/v1/datasets/{dataset_id}/dashboards/preview", json={
+        "filters":[{"column":"region","operator":"eq","value":"Nord"}], "widgets":widgets,
+    })
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["rows_before"] == 6
+    assert body["rows_after"] == 3
+    kpi = next(w for w in body["widgets"] if w["id"] == "k1")
+    assert kpi["result"]["value"] == 3
+    chart = next(w for w in body["widgets"] if w["id"] == "c1")
+    assert chart["status"] == "ok"
+    assert chart["result"]["data"][0]["label"] == "Nord"
+    assert chart["result"]["data"][0]["value"] == 120.0
+
+    saved = client.post(f"/api/v1/datasets/{dataset_id}/dashboards", json={
+        "name":"Pilotage commercial", "description":"Dashboard de test", "filters":[], "widgets":widgets,
+    })
+    assert saved.status_code == 200, saved.text
+    dashboard_id = saved.json()["dashboard"]["id"]
+    listed = client.get(f"/api/v1/datasets/{dataset_id}/dashboards")
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+    detail = client.get(f"/api/v1/datasets/{dataset_id}/dashboards/{dashboard_id}")
+    assert detail.status_code == 200
+    assert detail.json()["dashboard"]["name"] == "Pilotage commercial"
+    updated = client.post(f"/api/v1/datasets/{dataset_id}/dashboards", json={
+        "dashboard_id":dashboard_id, "name":"Pilotage commercial v2", "filters":[{"column":"sales","operator":"gte","value":100}], "widgets":widgets,
+    })
+    assert updated.status_code == 200
+    assert updated.json()["dashboard"]["name"] == "Pilotage commercial v2"
+    deleted = client.delete(f"/api/v1/datasets/{dataset_id}/dashboards/{dashboard_id}")
+    assert deleted.status_code == 200
+    assert client.get(f"/api/v1/datasets/{dataset_id}/dashboards").json()["count"] == 0

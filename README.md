@@ -1,4 +1,4 @@
-# DataVision AI — v1.2.0
+# DataVision AI — v1.3.0
 
 DataVision AI est un **Data Intelligence Workspace local et installable** réunissant import, profiling, qualité, préparation versionnée, statistiques, SQL, visualisation, Machine Learning, forecasting, détection d'anomalies, XAI, prédiction, AI Analyst et reporting reproductible dans une même interface.
 
@@ -13,6 +13,53 @@ OpenAPI   : http://localhost:8005/docs
 ```
 
 Les ports 3000 et 8000 ne sont pas utilisés.
+
+
+## Nouveau dans v1.3.0 — Dashboard Builder interactif
+
+La v1.3 ajoute un vrai **Dashboard Builder** au-dessus des moteurs analytiques existants. L'objectif est de permettre une exploration décisionnelle persistante sans transformer l'application en simple collection de graphiques.
+
+### Composition
+
+- nouveau module **Dashboards** dans la navigation ;
+- widgets KPI, barres, courbe, histogramme, scatter, heatmap et texte ;
+- tailles Petite / Moyenne / Large / Pleine largeur ;
+- réorganisation des cartes par glisser-déposer natif ;
+- panneau de propriétés pour modifier titre, métrique, variables, agrégation et contenu ;
+- dashboards enregistrés localement et verrouillés sur la lignée du dataset.
+
+### Filtres globaux et cross-filtering
+
+Les filtres supportent égalité, différence, texte contient, comparaisons, intervalle, valeurs nulles et non nulles. Ils sont appliqués côté backend avant tout calcul de KPI ou de graphique.
+
+Les graphiques en barres sont interactifs : cliquer sur une catégorie crée un **cross-filter** global et recalcule tous les widgets sur le sous-ensemble correspondant. L'interface affiche en permanence le nombre de lignes visibles par rapport au dataset initial.
+
+### Calculs reproductibles
+
+Chaque aperçu de dashboard passe par `POST /api/v1/datasets/{id}/dashboards/preview`. Le backend applique les filtres puis appelle les mêmes moteurs déterministes que Visualization Studio. Aucun chiffre du dashboard n'est calculé dans le navigateur.
+
+Endpoints :
+
+```text
+GET    /api/v1/datasets/{id}/dashboards
+POST   /api/v1/datasets/{id}/dashboards
+GET    /api/v1/datasets/{id}/dashboards/{dashboard_id}
+DELETE /api/v1/datasets/{id}/dashboards/{dashboard_id}
+POST   /api/v1/datasets/{id}/dashboards/preview
+```
+
+### Validation v1.3.0
+
+```text
+Backend : 20 tests passent
+Python  : compileall OK
+TSX/TS  : transpilation syntaxique OK
+Ports   : 3005 / 8005
+```
+
+Le build Next.js/Docker complet reste à confirmer sur la machine cible.
+
+Voir `docs/DASHBOARD_BUILDER.md`.
 
 ## Nouveau dans v1.2.0 — Report Intelligence
 

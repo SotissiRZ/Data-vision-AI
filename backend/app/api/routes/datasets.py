@@ -26,6 +26,7 @@ from app.services.nlq_sql import run_nlq
 from app.services.report_builder import build_report, list_reports, get_report, export_report
 from app.services.dashboard import dashboard_overview
 from app.services.saved_visualizations import save_visualization, list_visualizations
+from app.services.dashboard_builder import save_dashboard, list_dashboards, get_dashboard_definition, delete_dashboard, preview_dashboard
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -167,6 +168,20 @@ class ReportCreateRequest(BaseModel):
 class SaveVisualizationRequest(BaseModel):
     title: str = Field(default="Visualisation DataVision", min_length=1, max_length=180)
     visualization: dict
+
+
+
+class DashboardSaveRequest(BaseModel):
+    dashboard_id: str | None = None
+    name: str = Field(default="Dashboard DataVision", min_length=1, max_length=180)
+    description: str = Field(default="", max_length=500)
+    filters: list[dict] = []
+    widgets: list[dict] = []
+
+
+class DashboardPreviewRequest(BaseModel):
+    filters: list[dict] = []
+    widgets: list[dict] = []
 
 class AIAnalysisRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
@@ -465,6 +480,60 @@ def dataset_save_visualization(dataset_id: str, request: SaveVisualizationReques
         return {"visualization": save_visualization(dataset_id, int(meta.get("version", 1)), request.title, request.visualization)}
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.get("/{dataset_id}/dashboards")
+def dataset_dashboards(dataset_id: str):
+    try:
+        get_meta(dataset_id)
+        rows = list_dashboards(dataset_id)
+        return {"dashboards": rows, "count": len(rows)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.post("/{dataset_id}/dashboards")
+def dataset_dashboard_save(dataset_id: str, request: DashboardSaveRequest):
+    try:
+        row = save_dashboard(dataset_id, name=request.name, description=request.description, dashboard_id=request.dashboard_id, filters=request.filters, widgets=request.widgets)
+        return {"dashboard": row}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset ou dashboard introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.get("/{dataset_id}/dashboards/{dashboard_id}")
+def dataset_dashboard_get(dataset_id: str, dashboard_id: str):
+    try:
+        meta = get_meta(dataset_id)
+        row = get_dashboard_definition(dashboard_id)
+        if row.get("root_id") != (meta.get("root_id") or meta["id"]):
+            raise FileNotFoundError(dashboard_id)
+        return {"dashboard": row}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dashboard introuvable") from exc
+
+
+@router.delete("/{dataset_id}/dashboards/{dashboard_id}")
+def dataset_dashboard_delete(dataset_id: str, dashboard_id: str):
+    try:
+        delete_dashboard(dataset_id, dashboard_id)
+        return {"deleted": True, "dashboard_id": dashboard_id}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dashboard introuvable") from exc
+
+
+@router.post("/{dataset_id}/dashboards/preview")
+def dataset_dashboard_preview(dataset_id: str, request: DashboardPreviewRequest):
+    try:
+        return preview_dashboard(load_dataframe(dataset_id), filters=request.filters, widgets=request.widgets)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Aperçu dashboard impossible: {exc}") from exc
 
 
 @router.get("/{dataset_id}/reports")

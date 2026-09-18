@@ -261,3 +261,27 @@ export async function saveVisualization(id: string, title: string, visualization
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, visualization }),
   }), 'Enregistrement de la visualisation impossible');
 }
+
+export async function getDashboards(id: string) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/dashboards`), 'Dashboards indisponibles');
+}
+
+export async function getDashboardDefinition(id: string, dashboardId: string) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/dashboards/${dashboardId}`), 'Dashboard introuvable');
+}
+
+export async function saveDashboardDefinition(id: string, payload: { dashboard_id?: string | null; name: string; description?: string; filters: Record<string, unknown>[]; widgets: Record<string, unknown>[] }) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/dashboards`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }), 'Enregistrement du dashboard impossible');
+}
+
+export async function deleteDashboardDefinition(id: string, dashboardId: string) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/dashboards/${dashboardId}`, { method: 'DELETE' }), 'Suppression du dashboard impossible');
+}
+
+export async function previewDashboard(id: string, payload: { filters: Record<string, unknown>[]; widgets: Record<string, unknown>[] }) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/dashboards/preview`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }), 'Aperçu du dashboard impossible');
+}
