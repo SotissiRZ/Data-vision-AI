@@ -110,6 +110,26 @@ def save_dataframe_version(parent_id: str, df: pd.DataFrame, operation: dict, *,
     except Exception:
         # Metadata persistence is authoritative; local mode and migrations must remain usable.
         pass
+    if governance_materialized:
+        try:
+            from app.services.tenant_access import current_access_context
+            from app.services.data_reliability import list_contracts, run_contract
+            ctx = current_access_context()
+            if ctx is not None:
+                contract_runs = []
+                for contract in list_contracts(ctx.workspace_id, dataset_id):
+                    if not contract.get("enabled"):
+                        continue
+                    result = run_contract(ctx.user_id, ctx.workspace_id, contract["id"], dataset_id)
+                    contract_runs.append({"contract_id": contract["id"], "run_id": result["id"], "status": result["status"], "score": result["score"]})
+                if contract_runs:
+                    meta["reliability_contract_runs"] = contract_runs
+                    _write_meta(meta)
+        except PermissionError:
+            raise
+        except Exception:
+            # A reliability check is observational: it must not corrupt an immutable transformation.
+            pass
     return meta
 
 

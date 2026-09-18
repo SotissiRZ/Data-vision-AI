@@ -239,3 +239,26 @@ External SQL → Data Connector → Connector Source → Refresh Run → Immutab
 ```
 
 Les credentials sont chiffrés dans le metadata store. Le refresh est un lifecycle système autorisé à charger la version brute précédente afin de ne pas matérialiser un sous-ensemble RLS ; les consumers analytiques utilisent toujours la boundary gouvernée.
+
+
+## v2.8 — Data Reliability Plane
+
+La v2.8 ajoute un plan de contrôle transversal, séparé des moteurs analytiques :
+
+```text
+Sources / Uploads
+      ↓
+Immutable Dataset Versions
+      ↓
+Data Reliability Plane
+  ├── Contracts
+  ├── Distribution Drift
+  ├── Reliability Events
+  ├── Lineage Graph
+  ├── Impact Analysis
+  └── Publication Gate
+      ↓
+Statistics / ML / AI / Dashboards / Reports / Review
+```
+
+Le gate est fail-closed pour les contrats `block` : une nouvelle version doit être contrôlée explicitement avant certification ou export Enterprise. Les refresh et transformations gouvernées déclenchent automatiquement les contrats actifs de leur lignée.

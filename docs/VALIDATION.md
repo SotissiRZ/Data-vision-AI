@@ -1,3 +1,9 @@
+# Validation courante — DataVision AI v2.8.0
+
+La validation détaillée la plus récente est documentée dans `VALIDATION_V280.md`. Résumé : 50 tests backend, compileall Python OK, validation TS/TSX ciblée OK, Data Contracts / drift / lineage / impact / Publication Gate testés. Le build Docker/Next complet reste à confirmer sur la machine cible.
+
+---
+
 # Validation — DataVision AI v2.0.0
 
 ```text

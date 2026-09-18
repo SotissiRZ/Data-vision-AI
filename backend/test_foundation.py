@@ -1792,3 +1792,143 @@ def test_v270_connector_catalog_hides_infrastructure_from_analyst(tmp_path, monk
     assert 'source_query' not in safe_source
     denied=client.get(f'/api/v1/workspaces/{ws}/sources/{source["id"]}/preview',headers=ah)
     assert denied.status_code==403
+
+
+def _bootstrap_v280(tmp_path, monkeypatch, suffix="main"):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+    settings=get_settings(); monkeypatch.setattr(settings,'data_root',tmp_path); monkeypatch.setattr(settings,'database_url',f"sqlite:///{tmp_path/f'reliability-{suffix}.db'}"); monkeypatch.setattr(settings,'auth_secret','test-v280-reliability-secret-with-enough-entropy')
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+    boot=client.post('/api/v1/auth/bootstrap',json={'email':f'owner-{suffix}@datavision.local','password':'EnterprisePass123!','display_name':'Owner','organization_name':f'Reliability {suffix}'})
+    assert boot.status_code==200,boot.text
+    token=boot.json()['access_token']; ws=boot.json()['workspace_id']; return token,ws,{'Authorization':f'Bearer {token}'}
+
+
+def test_v280_data_contracts_drift_and_publication_gate(tmp_path, monkeypatch):
+    from app.services.workspace_service import bind_dataset
+    from app.services.storage import save_upload, save_dataframe_version
+    token,ws,h=_bootstrap_v280(tmp_path,monkeypatch,'contracts')
+    meta=save_upload('sales.csv',b'id,revenue,region\n1,100,A\n2,120,A\n3,130,B\n4,140,B\n')
+    bind_dataset(client.get('/api/v1/auth/me',headers=h).json()['user']['id'],ws,meta['id'])
+    contract=client.post(f'/api/v1/workspaces/{ws}/contracts',headers=h,json={
+        'dataset_id':meta['id'],'name':'Sales contract','enforcement_mode':'block','rules':[
+            {'type':'required_columns','columns':['id','revenue','region'],'severity':'critical'},
+            {'type':'row_count','min':4,'severity':'high'},
+            {'type':'missing_pct','column':'revenue','max':0,'severity':'critical'},
+            {'type':'unique','column':'id','max_duplicate_pct':0,'severity':'critical'},
+            {'type':'range','column':'revenue','min':0,'max':1000,'severity':'high'},
+        ]
+    })
+    assert contract.status_code==200,contract.text
+    cid=contract.json()['contract']['id']
+    run=client.post(f'/api/v1/workspaces/{ws}/contracts/{cid}/run',headers=h,json={})
+    assert run.status_code==200,run.text
+    assert run.json()['run']['status']=='healthy'
+    assert run.json()['run']['score']==100.0
+    gate=client.post(f'/api/v1/workspaces/{ws}/publication-gate',headers=h,json={'dataset_id':meta['id']})
+    assert gate.status_code==200 and gate.json()['allowed'] is True
+
+    bad=pd.DataFrame({'id':[1,1,3,4],'revenue':[100,None,5000,140],'region':['A','A','B','B']})
+    v2=save_dataframe_version(meta['id'],bad,{'type':'test_bad'})
+    bind_dataset(client.get('/api/v1/auth/me',headers=h).json()['user']['id'],ws,v2['id'])
+    run2=client.post(f'/api/v1/workspaces/{ws}/contracts/{cid}/run',headers=h,json={'dataset_id':v2['id']})
+    assert run2.status_code==200,run2.text
+    payload=run2.json()['run']
+    assert payload['status'] in {'failing','critical'} and payload['blocking_failures']>=2
+    gate2=client.post(f'/api/v1/workspaces/{ws}/publication-gate',headers=h,json={'dataset_id':v2['id']})
+    assert gate2.status_code==200 and gate2.json()['allowed'] is False
+    assert gate2.json()['blockers'][0]['contract_id']==cid
+
+
+def test_v280_distribution_drift_lineage_and_impact(tmp_path, monkeypatch):
+    from app.services.workspace_service import bind_dataset
+    from app.services.storage import save_upload, save_dataframe_version
+    from app.services.analysis_history import save_analysis
+    from app.services.dashboard_builder import save_dashboard
+    token,ws,h=_bootstrap_v280(tmp_path,monkeypatch,'lineage')
+    uid=client.get('/api/v1/auth/me',headers=h).json()['user']['id']
+    base=save_upload('metrics.csv',b'id,value,segment\n1,10,A\n2,11,A\n3,12,B\n4,13,B\n5,14,B\n')
+    bind_dataset(uid,ws,base['id'])
+    shifted=pd.DataFrame({'id':[1,2,3,4,5],'value':[100,110,120,130,140],'segment':['X','X','Y','Y','Y']})
+    v2=save_dataframe_version(base['id'],shifted,{'type':'distribution_shift'})
+    bind_dataset(uid,ws,v2['id'])
+    c=client.post(f'/api/v1/workspaces/{ws}/contracts',headers=h,json={'dataset_id':base['id'],'name':'Drift guard','enforcement_mode':'warn','rules':[
+        {'type':'distribution_drift','column':'value','max_ks':0.2,'severity':'high'},
+        {'type':'distribution_drift','column':'segment','max_tvd':0.25,'severity':'medium'}
+    ]})
+    cid=c.json()['contract']['id']
+    run=client.post(f'/api/v1/workspaces/{ws}/contracts/{cid}/run',headers=h,json={'dataset_id':v2['id']})
+    assert run.status_code==200,run.text
+    assert run.json()['run']['checks_failed']==2
+
+    save_analysis({'session_id':'analysis-v280','question':'Analyse value','answer':'ok','provenance':{'dataset_id':v2['id'],'dataset_version':2,'executed_at':'2026-09-18T00:00:00+00:00'}})
+    dash=save_dashboard(v2['id'],name='Executive metrics',widgets=[])
+    graph=client.get(f'/api/v1/workspaces/{ws}/lineage?dataset_id={v2["id"]}',headers=h)
+    assert graph.status_code==200,graph.text
+    types={n['type'] for n in graph.json()['nodes']}
+    assert {'dataset','analysis','dashboard'}.issubset(types)
+    impact=client.get(f'/api/v1/workspaces/{ws}/impact/dataset/{base["id"]}',headers=h)
+    assert impact.status_code==200,impact.text
+    impacted={x['id'] for x in impact.json()['impacted']}
+    assert f'dataset:{v2["id"]}' in impacted
+    # The downstream dashboard is reachable through the derived dataset.
+    assert f'dashboard:{dash["id"]}' in impacted
+
+
+def test_v280_certification_gate_blocks_critical_contract(tmp_path, monkeypatch):
+    from app.services.workspace_service import bind_dataset
+    from app.services.storage import save_upload
+    token,ws,h=_bootstrap_v280(tmp_path,monkeypatch,'certgate')
+    me=client.get('/api/v1/auth/me',headers=h).json(); uid=me['user']['id']
+    meta=save_upload('bad.csv',b'id,value\n1,\n1,5\n')
+    bind_dataset(uid,ws,meta['id'])
+    c=client.post(f'/api/v1/workspaces/{ws}/contracts',headers=h,json={'dataset_id':meta['id'],'name':'Critical contract','enforcement_mode':'block','rules':[{'type':'missing_pct','column':'value','max':0,'severity':'critical'}]})
+    cid=c.json()['contract']['id']
+    assert client.post(f'/api/v1/workspaces/{ws}/contracts/{cid}/run',headers=h,json={}).status_code==200
+    review=client.post(f'/api/v1/workspaces/{ws}/reviews',headers=h,json={'resource_type':'dataset','resource_id':meta['id'],'dataset_id':meta['id'],'title':'Dataset certification','owner_user_id':uid,'reviewer_user_id':uid})
+    assert review.status_code==200,review.text
+    rid=review.json()['review']['id']
+    assert client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/transition',headers=h,json={'action':'submit','note':''}).status_code==200
+    assert client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/transition',headers=h,json={'action':'approve','note':'checked'}).status_code==200
+    cert=client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/certify',headers=h,json={'notes':'should block'})
+    assert cert.status_code==400,cert.text
+    assert 'Reliability Gate' in cert.text
+
+
+def test_v280_report_export_is_blocked_by_reliability_gate(tmp_path, monkeypatch):
+    from app.services.workspace_service import bind_dataset
+    from app.services.storage import save_upload
+    token,ws,h=_bootstrap_v280(tmp_path,monkeypatch,'exportgate')
+    me=client.get('/api/v1/auth/me',headers=h).json(); uid=me['user']['id']
+    meta=save_upload('unsafe.csv',b'id,value\n1,\n2,5\n')
+    bind_dataset(uid,ws,meta['id'])
+    contract=client.post(f'/api/v1/workspaces/{ws}/contracts',headers=h,json={'dataset_id':meta['id'],'name':'Export guard','enforcement_mode':'block','rules':[{'type':'missing_pct','column':'value','max':0,'severity':'critical'}]}).json()['contract']
+    assert client.post(f'/api/v1/workspaces/{ws}/contracts/{contract["id"]}/run',headers=h,json={}).status_code==200
+    gh={**h,'X-Workspace-ID':ws}
+    report=client.post(f'/api/v1/datasets/{meta["id"]}/reports',headers=gh,json={'title':'Unsafe report','sections':['overview','quality']})
+    assert report.status_code==200,report.text
+    exported=client.get(f'/api/v1/datasets/{meta["id"]}/reports/{report.json()["id"]}/export/html',headers=gh)
+    assert exported.status_code==409,exported.text
+    assert 'Data Reliability Gate' in exported.text
+
+
+def test_v280_derived_version_runs_contract_automatically(tmp_path, monkeypatch):
+    from app.services.workspace_service import bind_dataset
+    from app.services.storage import save_upload
+    token,ws,h=_bootstrap_v280(tmp_path,monkeypatch,'autocontract')
+    uid=client.get('/api/v1/auth/me',headers=h).json()['user']['id']
+    meta=save_upload('rows.csv',b'id,value\n1,10\n2,20\n3,30\n4,40\n')
+    bind_dataset(uid,ws,meta['id'])
+    contract=client.post(f'/api/v1/workspaces/{ws}/contracts',headers=h,json={'dataset_id':meta['id'],'name':'Volume guard','enforcement_mode':'block','rules':[{'type':'row_count','min':4,'severity':'critical'}]}).json()['contract']
+    first=client.post(f'/api/v1/workspaces/{ws}/contracts/{contract["id"]}/run',headers=h,json={})
+    assert first.status_code==200 and first.json()['run']['status']=='healthy'
+    gh={**h,'X-Workspace-ID':ws}
+    transformed=client.post(f'/api/v1/datasets/{meta["id"]}/transform',headers=gh,json={'operation':{'type':'filter_rows','column':'id','operator':'gte','value':3}})
+    assert transformed.status_code==200,transformed.text
+    v2=transformed.json()['dataset']['id']
+    runs=client.get(f'/api/v1/workspaces/{ws}/contract-runs?contract_id={contract["id"]}',headers=h)
+    assert runs.status_code==200,runs.text
+    latest=runs.json()['runs'][0]
+    assert latest['dataset_id']==v2 and latest['status']=='critical'
+    gate=client.post(f'/api/v1/workspaces/{ws}/publication-gate',headers=h,json={'dataset_id':v2})
+    assert gate.status_code==200 and gate.json()['allowed'] is False

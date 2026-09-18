@@ -1,4 +1,21 @@
-# v2.7.0
+# v2.8.0 — Data Reliability & Lineage
+
+- Data Contracts persistants par lignée de dataset ;
+- règles required columns, volume, nullité, unicité, plage, domaine, dtype, regex ;
+- distribution drift numérique par KS et catégoriel par TVD ;
+- score de fiabilité pondéré par sévérité ;
+- modes monitor / warn / block ;
+- contrôles automatiques sur versions dérivées et refresh connecteurs ;
+- événements de fiabilité persistants ;
+- Publication Gate fail-closed sur la version exacte ;
+- certification Review Center bloquée si un contrat critique en mode block échoue ;
+- export de rapports Enterprise bloqué par le même gate ;
+- lineage source → dataset → analyse / modèle / métrique / dashboard / rapport ;
+- impact analysis downstream ;
+- nouveau Reliability Center professionnel ;
+- 50 tests backend passent.
+
+# v2.7.0 — Sources & Refresh
 
 - PostgreSQL et MySQL comme sources SQL réelles ;
 - credentials chiffrés au repos via Fernet / AUTH_SECRET ;
@@ -11,7 +28,7 @@
 - scheduler worker + claim atomique des échéances ;
 - job asynchrone `connector_refresh` tenant-aware ;
 - observabilité des refresh et historique détaillé ;
-- nouvel écran professionnel `Sources & Refresh` ;
+- écran professionnel `Sources & Refresh` ;
 - 45 tests backend.
 
 # Changelog

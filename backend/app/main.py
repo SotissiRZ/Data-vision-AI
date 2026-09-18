@@ -16,7 +16,7 @@ from app.services.tenant_access import (
 )
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="2.7.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.8.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -128,7 +128,7 @@ async def tenant_aware_data_access(request: Request, call_next):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": settings.app_name, "version": "2.7.0"}
+    return {"status": "ok", "product": settings.app_name, "version": "2.8.0"}
 
 
 @app.get("/api/v1/capabilities")
@@ -161,6 +161,8 @@ def capabilities():
             "collaboration_reviews", "review_workflows", "review_comments", "review_mentions", "review_notifications", "review_decision_history",
             "postgresql_connectors", "mysql_connectors", "encrypted_connector_credentials", "source_discovery", "manual_refresh",
             "scheduled_refresh", "incremental_refresh", "refresh_watermarks", "freshness_sla", "schema_drift_detection", "connector_observability",
+            "data_contracts", "contract_rule_engine", "distribution_drift_detection", "reliability_events", "end_to_end_lineage",
+            "impact_analysis", "publication_reliability_gate", "contract_aware_report_export", "contract_aware_certification", "automatic_contract_checks_on_derived_versions",
             "semantic_layer", "semantic_multitable", "semantic_calculated_metrics", "semantic_time_intelligence",
             "semantic_nlq_multitable", "semantic_dashboard_widgets", "semantic_drilldown",
         ],

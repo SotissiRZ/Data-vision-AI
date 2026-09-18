@@ -15,10 +15,11 @@ import {
   bootstrapEnterprise, loginEnterprise, getEnterpriseSession, getEnterpriseStatus, createEnterpriseWorkspace, getEnterpriseWorkspace, addWorkspaceMember, bindWorkspaceDataset, saveWorkspacePolicy, getAuditEvents, getEnterpriseJobs, submitEnterpriseJob, cancelEnterpriseJob, getGovernedPreview,
   getReviewSummary, getReviews, getReviewDetail, createReview, assignReview, transitionReview, addReviewComment, resolveReviewComment, getCollaborationNotifications, markCollaborationNotificationRead, getCertifications, certifyReview, revokeCertification,
   getConnectorOverview, getConnectorHealth, createDataConnector, testDataConnector, discoverDataConnector, createConnectorSource, deleteConnectorSource, previewConnectorSource, refreshConnectorSource, saveConnectorSchedule, getRefreshRuns,
+  getReliabilitySummary, getDataContracts, saveDataContract, deleteDataContract, runDataContract, getContractRuns, getLineageGraph, getImpactAnalysis, getPublicationGate,
 } from '../lib/api';
 
 type AnyObj = Record<string, any>;
-type View = 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance';
+type View = 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance';
 type AreaKey = 'overview'|'data'|'analyze'|'model'|'decide'|'publish'|'collaborate'|'governance';
 
 const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; views:View[] }[] = [
@@ -29,14 +30,14 @@ const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; vi
   {key:'decide',label:'Décider',icon:'✦',defaultView:'inbox',views:['inbox','ai','semantic','decision','trust']},
   {key:'publish',label:'Publier',icon:'▧',defaultView:'dashboard',views:['dashboard','report']},
   {key:'collaborate',label:'Collaborer',icon:'◎',defaultView:'review',views:['review']},
-  {key:'governance',label:'Gouverner',icon:'⌾',defaultView:'sources',views:['sources','governance']},
+  {key:'governance',label:'Gouverner',icon:'⌾',defaultView:'reliability',views:['reliability','sources','governance']},
 ];
 const viewLabels: Record<View,string> = {
   home:'Vue d’ensemble',data:'Aperçu des données',quality:'Qualité',prepare:'Préparation',stats:'Statistiques descriptives',
   visual:'Visualisation',tests:'Tests & corrélations',sql:'SQL',regression:'Régression',anova:'ANOVA',pca:'ACP',cluster:'Clustering',
-  model:'AutoML',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',sources:'Sources & Refresh',governance:'Gouvernance'
+  model:'AutoML',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',reliability:'Fiabilité & Lineage',sources:'Sources & Refresh',governance:'Gouvernance'
 };
-const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',trust:'✓',dashboard:'▦',report:'▧',review:'◎',sources:'↻',governance:'⌾'};
+const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',trust:'✓',dashboard:'▦',report:'▧',review:'◎',reliability:'◫',sources:'↻',governance:'⌾'};
 function areaForView(view:View){ return areaConfig.find(a=>a.views.includes(view)) ?? areaConfig[0]; }
 
 function formatNumber(value: unknown, digits = 3) {
@@ -187,7 +188,7 @@ export default function Home() {
     <div className="app-grid pro-grid">
       <aside className="sidebar pro-sidebar">
         <div className="workspace-label"><span>WORKSPACE</span><b>{enterpriseBadge?.workspace?.name??'Analyse locale'}</b><small>{enterpriseBadge?`${enterpriseBadge.workspace?.role??'member'} · ${enterpriseBadge.user?.display_name??'utilisateur'}`:'Workflow orienté objectifs'}</small></div>
-        <nav className="area-nav">{areaConfig.map(area=><button key={area.key} className={activeArea.key===area.key?'area-item active':'area-item'} onClick={()=>setView(area.defaultView)}><span>{area.icon}</span><div><b>{area.label}</b><small>{area.key==='overview'?'Synthèse & insights':area.key==='data'?'Préparer & comprendre':area.key==='analyze'?'Explorer & tester':area.key==='model'?'Prédire & expliquer':area.key==='decide'?'Sémantique & décisions':area.key==='publish'?'Dashboards & rapports':area.key==='collaborate'?'Revue & approbation':'Sources, sécurité & audit'}</small></div></button>)}</nav>
+        <nav className="area-nav">{areaConfig.map(area=><button key={area.key} className={activeArea.key===area.key?'area-item active':'area-item'} onClick={()=>setView(area.defaultView)}><span>{area.icon}</span><div><b>{area.label}</b><small>{area.key==='overview'?'Synthèse & insights':area.key==='data'?'Préparer & comprendre':area.key==='analyze'?'Explorer & tester':area.key==='model'?'Prédire & expliquer':area.key==='decide'?'Sémantique & décisions':area.key==='publish'?'Dashboards & rapports':area.key==='collaborate'?'Revue & approbation':'Fiabilité, sources & sécurité'}</small></div></button>)}</nav>
         <label className="upload-side pro-upload">{busy?'Analyse en cours…':'↥  Importer des données'}<input type="file" accept=".csv,.xlsx,.json,.parquet,.txt" onChange={e=>onFile(e.target.files?.[0])}/></label>
         {result&&<div className="dataset-mini"><span>CONTEXTE ACTIF</span><b title={result.dataset.name}>{result.dataset.name}</b><small>v{result.dataset.version??1} · {result.profile.rows} lignes · {result.profile.columns_count} variables</small>{result.access?.governed&&<small className="governed-mini">◈ {result.access.role} · {result.access.policy_count??0} politique(s) · tenant-aware</small>}<div className="dataset-mini-actions"><button onClick={()=>setView('semantic')}>Sémantique</button><button onClick={()=>setView('trust')}>Trust</button></div></div>}
       </aside>
@@ -219,6 +220,7 @@ export default function Home() {
         {view==='dashboard'&&<DashboardBuilder result={result} setError={setError}/>} 
         {view==='report'&&<ReportView result={result} setError={setError}/>}
         {view==='review'&&<CollaborationCenter result={result} setError={setError} setView={setView}/>}
+        {view==='reliability'&&<ReliabilityLineageCenter result={result} setError={setError} setView={setView}/>}
         {view==='sources'&&<SourcesRefreshCenter setError={setError} setView={setView} onActivate={id=>activateDataset(id,'data')}/>}
         {view==='governance'&&<GovernanceCenter result={result} setError={setError}/>}  
       </section>
@@ -1142,6 +1144,106 @@ function CollaborationCenter({result,setError,setView}:{result:AnyObj|null;setEr
       </>:<div className="review-detail-empty"><span>◎</span><h3>Sélectionnez une revue</h3><p>La fiche regroupe contexte, ownership, discussion, décision et piste d’audit.</p></div>}</section>
       <aside className="review-notifications"><div className="review-notif-head"><div><b>Notifications</b><small>{unread} non lue(s)</small></div></div><div className="review-notif-list">{notifications.slice(0,14).map((n:AnyObj)=><button key={n.id} className={!n.is_read?'unread':''} onClick={()=>readNotification(n)}><span>{n.notification_type==='mention'?'@':'◎'}</span><div><b>{n.message}</b><small>{new Date(n.created_at).toLocaleString('fr-FR')}</small></div></button>)}{!notifications.length&&<div className="quiet-empty">Aucune notification.</div>}</div><div className="review-cert-list"><div className="review-notif-head"><div><b>Certifications actives</b><small>{certifications.length}</small></div></div>{certifications.slice(0,8).map((c:AnyObj)=><div className="review-cert-card" key={c.id}><div><b>{c.resource_id}</b><small>{c.resource_type}{c.valid_until?` · expire ${new Date(c.valid_until).toLocaleDateString('fr-FR')}`:''}</small></div>{canManage&&<button className="ghost-btn" onClick={()=>revokeCert(c.id)}>Révoquer</button>}</div>)}</div><div className="review-governance-note"><b>Approval gate</b><p>Une approbation appartient à un reviewer identifié. Toutes les transitions sont auditées et conservées séparément du contenu analytique.</p></div></aside>
     </div>
+  </div>;
+}
+
+
+function ReliabilityLineageCenter({result,setError,setView}:{result:AnyObj|null;setError:(s:string)=>void;setView:(v:View)=>void}){
+  const [token,setToken]=useState('');
+  const [session,setSession]=useState<AnyObj|null>(null);
+  const [workspaceId,setWorkspaceId]=useState('');
+  const [summary,setSummary]=useState<AnyObj|null>(null);
+  const [contracts,setContracts]=useState<AnyObj[]>([]);
+  const [runs,setRuns]=useState<AnyObj[]>([]);
+  const [lineage,setLineage]=useState<AnyObj>({nodes:[],edges:[]});
+  const [gate,setGate]=useState<AnyObj|null>(null);
+  const [impact,setImpact]=useState<AnyObj|null>(null);
+  const [selectedRun,setSelectedRun]=useState<AnyObj|null>(null);
+  const [busy,setBusy]=useState(false);
+  const [notice,setNotice]=useState('');
+  const [compose,setCompose]=useState(false);
+  const [name,setName]=useState('Contrat de qualité');
+  const [mode,setMode]=useState('warn');
+  const [ruleType,setRuleType]=useState('required_columns');
+  const [ruleColumn,setRuleColumn]=useState('');
+  const [ruleThreshold,setRuleThreshold]=useState('0');
+  const [draftRules,setDraftRules]=useState<AnyObj[]>([]);
+  const activeDatasetId=String(result?.dataset?.id??'');
+  const activeWorkspace=(session?.workspaces??[]).find((w:AnyObj)=>w.id===workspaceId);
+  const role=activeWorkspace?.role??'';
+  const canManage=['owner','admin','data_scientist'].includes(role);
+
+  async function load(t=token,ws=workspaceId){
+    if(!t||!ws)return;
+    setBusy(true);
+    try{
+      const [s,c,r,l]=await Promise.all([
+        getReliabilitySummary(t,ws,activeDatasetId||undefined),getDataContracts(t,ws,activeDatasetId||undefined),getContractRuns(t,ws,undefined,activeDatasetId||undefined),getLineageGraph(t,ws,activeDatasetId||undefined)
+      ]);
+      setSummary(s);setContracts(c.contracts??[]);setRuns(r.runs??[]);setLineage(l);
+      if(activeDatasetId){try{setGate(await getPublicationGate(t,ws,activeDatasetId));}catch{setGate(null)}}else setGate(null);
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false)}
+  }
+  useEffect(()=>{
+    if(typeof window==='undefined')return;
+    const t=localStorage.getItem('dv_enterprise_token')||''; const stored=localStorage.getItem('dv_enterprise_workspace')||'';setToken(t);
+    if(!t)return;
+    getEnterpriseSession(t).then(s=>{setSession(s);setWorkspaceId(stored||s.workspaces?.[0]?.id||'')}).catch(()=>{setToken('');setSession(null)});
+  },[]);
+  useEffect(()=>{if(token&&workspaceId)load(token,workspaceId);},[token,workspaceId,activeDatasetId]);
+  useEffect(()=>{if(result?.profile?.columns?.length&&!ruleColumn)setRuleColumn(String(result.profile.columns[0].name));},[result?.dataset?.id]);
+
+  function changeWorkspace(id:string){setWorkspaceId(id);setImpact(null);setSelectedRun(null);if(typeof window!=='undefined'){localStorage.setItem('dv_enterprise_workspace',id);window.dispatchEvent(new Event('datavision-enterprise-session'));}}
+  function addRule(){
+    const severity=ruleType==='required_columns'||ruleType==='unique'?'critical':'high';
+    let rule:AnyObj={type:ruleType,severity};
+    if(ruleType==='required_columns')rule.columns=(result?.profile?.columns??[]).map((c:AnyObj)=>c.name);
+    else if(ruleType==='row_count')rule.min=Math.max(1,Number(ruleThreshold)||1);
+    else if(ruleType==='missing_pct'){rule.column=ruleColumn;rule.max=Math.max(0,Number(ruleThreshold)||0)}
+    else if(ruleType==='unique'){rule.column=ruleColumn;rule.max_duplicate_pct=Math.max(0,Number(ruleThreshold)||0)}
+    else if(ruleType==='range'){rule.column=ruleColumn;rule.min=0;rule.max=Number(ruleThreshold)||100}
+    else if(ruleType==='distribution_drift'){rule.column=ruleColumn;if((result?.profile?.columns??[]).find((c:AnyObj)=>c.name===ruleColumn&&isNumeric(c)))rule.max_ks=Number(ruleThreshold)||.2;else rule.max_tvd=Number(ruleThreshold)||.2}
+    setDraftRules(x=>[...x,rule]);
+  }
+  function recommendedRules(){
+    if(!result)return;
+    const rows=Number(result.profile.rows||0); const cols=result.profile.columns??[];
+    const rules:AnyObj[]=[{type:'required_columns',columns:cols.map((c:AnyObj)=>c.name),severity:'critical',blocking:true},{type:'row_count',min:Math.max(1,Math.floor(rows*.8)),severity:'high',blocking:true}];
+    cols.slice(0,12).forEach((c:AnyObj)=>{const current=rows?Number(c.missing||0)/rows*100:0;rules.push({type:'missing_pct',column:c.name,max:Math.min(100,Math.max(2,Math.ceil(current+5))),severity:'high',blocking:false});if(isLikelyIdentifier(c,rows))rules.push({type:'unique',column:c.name,max_duplicate_pct:0,severity:'critical',blocking:true});});
+    const numeric=cols.find((c:AnyObj)=>isNumeric(c)&&!isLikelyIdentifier(c,rows)); if(numeric)rules.push({type:'distribution_drift',column:numeric.name,max_ks:.2,severity:'medium',blocking:false});
+    setDraftRules(rules);setName(`Contrat — ${result.dataset.name}`);setCompose(true);
+  }
+  async function saveContract(){
+    if(!activeDatasetId||!workspaceId||!token||!draftRules.length)return;
+    setBusy(true);try{await saveDataContract(token,workspaceId,{dataset_id:activeDatasetId,name,description:'Contrat créé depuis Data Reliability Center',rules:draftRules,enforcement_mode:mode,enabled:true});setNotice('Data contract enregistré. Exécutez-le pour établir le statut courant.');setCompose(false);setDraftRules([]);await load();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+  }
+  async function runContract(c:AnyObj){setBusy(true);try{const r=await runDataContract(token,workspaceId,c.id,activeDatasetId||c.dataset_id);setSelectedRun(r.run);setNotice(`Contrat exécuté · ${r.run.status} · score ${r.run.score}/100`);await load();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function removeContract(c:AnyObj){if(!confirm(`Supprimer le contrat « ${c.name} » ?`))return;setBusy(true);try{await deleteDataContract(token,workspaceId,c.id);await load();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function inspectImpact(n:AnyObj){setBusy(true);try{setImpact(await getImpactAnalysis(token,workspaceId,n.type,n.resource_id,8));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+
+  if(!token||!session)return <div className="page reliability-page"><div className="page-title"><div><span className="eyebrow">DATA RELIABILITY · CONTRACTS · LINEAGE</span><h1>Fiabilité & Lineage</h1><p>Définissez ce qu'une donnée fiable signifie, détectez les ruptures et mesurez l'impact avant publication.</p></div><span className="module-state implemented">v2.8</span></div><div className="collab-auth-empty"><span>◫</span><div><h3>Session Enterprise requise</h3><p>Les contrats et le lineage sont isolés par workspace et s'appuient sur la gouvernance tenant-aware.</p></div><button className="primary-btn" onClick={()=>setView('governance')}>Ouvrir Gouvernance</button></div></div>;
+
+  const status=summary?.contract_status??{}; const nodes=lineage?.nodes??[]; const sources=nodes.filter((n:AnyObj)=>n.type==='source'); const datasets=nodes.filter((n:AnyObj)=>n.type==='dataset'); const outputs=nodes.filter((n:AnyObj)=>!['source','dataset'].includes(n.type));
+  return <div className="page reliability-page">
+    <div className="page-title"><div><span className="eyebrow">DATA RELIABILITY & LINEAGE · V2.8</span><h1>Fiabilité & Lineage</h1><p>Data contracts exécutables, dérive de distribution, lineage de bout en bout, analyse d'impact et gate de publication.</p></div><div className="reliability-head-actions"><label>Workspace<select value={workspaceId} onChange={e=>changeWorkspace(e.target.value)}>{(session.workspaces??[]).map((w:AnyObj)=><option key={w.id} value={w.id}>{w.name} · {w.role}</option>)}</select></label><button className="secondary-btn" onClick={()=>load()} disabled={busy}>↻ Actualiser</button>{activeDatasetId&&canManage&&<button className="primary-btn" onClick={recommendedRules}>+ Contrat recommandé</button>}</div></div>
+    {notice&&<div className="source-notice"><span>✓</span><p>{notice}</p><button onClick={()=>setNotice('')}>×</button></div>}
+    <div className="reliability-scorecards"><Stat label="Reliability" value={summary?.reliability_score==null?'—':`${summary.reliability_score}/100`} detail="contrats exécutés"/><Stat label="Contrats" value={summary?.contracts??0} detail={`${status.healthy??0} healthy · ${status.critical??0} critical`}/><Stat label="Incidents ouverts" value={summary?.open_event_count??0} detail="signaux de qualité"/><Stat label="Lineage" value={summary?.lineage?.nodes??0} detail={`${summary?.lineage?.edges??0} dépendances`}/><Stat label="Publication gate" value={!activeDatasetId?'—':gate?.allowed?'OPEN':'BLOCKED'} detail={!activeDatasetId?'Activez un dataset':`${gate?.blockers?.length??0} bloqueur(s)`}/></div>
+
+    {activeDatasetId&&gate&&<div className={`publication-gate ${gate.allowed?'open':'blocked'}`}><div className="gate-icon">{gate.allowed?'✓':'!'}</div><div><span>PUBLICATION GATE</span><h3>{gate.allowed?'Prêt pour revue / publication':'Publication bloquée'}</h3><p>{gate.allowed?'Aucun contrat en mode block n’est actuellement en échec.':`${gate.blockers.length} contrat(s) bloquant(s) doivent être corrigés avant certification.`}</p></div><div className="gate-meta"><b>Dataset v{gate.dataset_version}</b><small>{gate.warnings?.length??0} avertissement(s)</small></div></div>}
+
+    {compose&&<Panel title="Nouveau Data Contract" action={<button className="text-btn" onClick={()=>setCompose(false)}>Fermer</button>}><div className="contract-compose"><label>Nom<input value={name} onChange={e=>setName(e.target.value)}/></label><label>Enforcement<select value={mode} onChange={e=>setMode(e.target.value)}><option value="monitor">Monitor</option><option value="warn">Warn</option><option value="block">Block</option></select></label><div className="rule-builder"><label>Règle<select value={ruleType} onChange={e=>setRuleType(e.target.value)}><option value="required_columns">Colonnes requises</option><option value="row_count">Volume minimum</option><option value="missing_pct">% manquant max</option><option value="unique">Unicité</option><option value="range">Plage numérique</option><option value="distribution_drift">Distribution drift</option></select></label>{!['required_columns','row_count'].includes(ruleType)&&<label>Colonne<select value={ruleColumn} onChange={e=>setRuleColumn(e.target.value)}>{(result?.profile?.columns??[]).map((c:AnyObj)=><option key={c.name} value={c.name}>{c.name}</option>)}</select></label>}<label>Seuil<input value={ruleThreshold} onChange={e=>setRuleThreshold(e.target.value)} placeholder="0"/></label><button className="secondary-btn" onClick={addRule}>+ Ajouter</button></div><div className="draft-rules">{draftRules.map((r,i)=><div key={i}><b>{r.type}</b><span>{r.column??(r.columns?`${r.columns.length} colonnes`:'dataset')}</span><small>{r.severity}{r.blocking?' · bloquant':''}</small><button onClick={()=>setDraftRules(x=>x.filter((_,j)=>j!==i))}>×</button></div>)}</div><div className="contract-compose-actions"><small>Les règles sont exécutées par le moteur déterministe. Le mode <b>block</b> peut empêcher la certification d'une ressource liée au dataset.</small><button className="primary-btn" disabled={busy||!draftRules.length} onClick={saveContract}>Enregistrer le contrat</button></div></div></Panel>}
+
+    <div className="reliability-grid">
+      <section className="reliability-card"><div className="reliability-section-head"><div><span>DATA CONTRACTS</span><h3>Contrats & derniers contrôles</h3></div>{activeDatasetId&&canManage&&<button className="secondary-btn" onClick={()=>setCompose(v=>!v)}>+ Manuel</button>}</div>{contracts.length?<div className="contract-list">{contracts.map(c=><article key={c.id} className={`contract-card ${c.status}`}><div className="contract-status"><i/><span>{c.status}</span></div><div className="contract-main"><div><b>{c.name}</b><small>{c.rules?.length??0} règle(s) · {c.enforcement_mode}</small></div><strong>{c.last_score==null?'—':`${formatNumber(c.last_score,1)}/100`}</strong></div><div className="contract-actions"><button onClick={()=>runContract(c)} disabled={busy||!canManage}>▶ Exécuter</button><button onClick={()=>{const r=runs.find((x:AnyObj)=>x.contract_id===c.id);if(r)setSelectedRun(r)}}>Détails</button>{canManage&&<button className="danger-link" onClick={()=>removeContract(c)}>Supprimer</button>}</div></article>)}</div>:<div className="quiet-empty">{activeDatasetId?'Aucun data contract pour cette lignée.':'Activez un dataset pour afficher ses contrats.'}</div>}</section>
+      <section className="reliability-card"><div className="reliability-section-head"><div><span>QUALITY EVENTS</span><h3>Signaux à investiguer</h3></div><small>{summary?.open_event_count??0} ouvert(s)</small></div><div className="reliability-events">{(summary?.open_events??[]).slice(0,8).map((e:AnyObj)=><div key={e.id} className={`reliability-event ${e.severity}`}><span>{String(e.severity).toUpperCase()}</span><div><b>{e.title}</b><small>{String(e.created_at??'').replace('T',' ').slice(0,16)}</small></div></div>)}{!(summary?.open_events??[]).length&&<div className="quiet-empty">Aucun incident ouvert.</div>}</div></section>
+    </div>
+
+    {selectedRun&&<Panel title={`Résultat du contrat · ${selectedRun.status}`} action={<button className="text-btn" onClick={()=>setSelectedRun(null)}>Fermer</button>}><div className="contract-run-summary"><Stat label="Score" value={`${selectedRun.score}/100`}/><Stat label="Pass" value={selectedRun.checks_passed}/><Stat label="Fail" value={selectedRun.checks_failed}/><Stat label="Bloquants" value={selectedRun.blocking_failures}/></div><div className="contract-checks">{(selectedRun.results??[]).map((r:AnyObj)=><div key={r.rule_id} className={r.status}><span>{r.status==='pass'?'✓':'!'}</span><div><b>{r.label}</b><p>{r.message}</p></div><small>{r.severity}{r.blocking?' · block':''}</small></div>)}</div></Panel>}
+
+    <section className="lineage-shell"><div className="reliability-section-head"><div><span>END-TO-END LINEAGE</span><h3>Source → Dataset → Analyse → Modèle → Dashboard → Rapport</h3></div><small>{lineage?.node_count??0} nœuds · {lineage?.edge_count??0} liens</small></div><div className="lineage-flow"><div className="lineage-column"><span>SOURCES</span>{sources.map((n:AnyObj)=><button key={n.id} onClick={()=>inspectImpact(n)}><i>DB</i><div><b>{n.label}</b><small>source</small></div></button>)}</div><div className="lineage-arrow">→</div><div className="lineage-column"><span>DATASETS</span>{datasets.slice(0,12).map((n:AnyObj)=><button key={n.id} onClick={()=>inspectImpact(n)}><i>v{n.version??'•'}</i><div><b>{n.label}</b><small>{String(n.resource_id).slice(0,8)}</small></div></button>)}</div><div className="lineage-arrow">→</div><div className="lineage-column"><span>CONSOMMATEURS</span>{outputs.slice(0,18).map((n:AnyObj)=><button key={n.id} onClick={()=>inspectImpact(n)}><i>{n.type==='model'?'ML':n.type==='dashboard'?'BI':n.type==='report'?'RP':n.type==='metric'?'KPI':'AN'}</i><div><b>{n.label}</b><small>{n.type}</small></div></button>)}</div></div></section>
+
+    {impact&&<section className="impact-panel"><div className="reliability-section-head"><div><span>IMPACT ANALYSIS</span><h3>{impact.resource?.label}</h3></div><button className="text-btn" onClick={()=>setImpact(null)}>Fermer</button></div><div className="impact-kpis"><Stat label="Ressources impactées" value={impact.impact_count}/>{Object.entries(impact.by_type??{}).map(([k,v])=><Stat key={k} label={k} value={String(v)}/>)}</div><div className="impact-list">{(impact.impacted??[]).map((n:AnyObj)=><div key={n.id}><span>+{n.depth}</span><div><b>{n.label??n.id}</b><small>{n.type} · via {n.via}</small></div></div>)}</div></section>}
   </div>;
 }
 

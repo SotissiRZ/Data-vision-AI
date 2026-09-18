@@ -33,7 +33,8 @@ from app.services.semantic_layer import (
 )
 from app.services.trust_center import trust_center
 from app.services.decision_lab import model_what_if, sensitivity_curve
-from app.services.tenant_access import access_summary
+from app.services.tenant_access import access_summary, current_access_context
+from app.services.data_reliability import publication_gate
 from app.services.proactive_intelligence import (
     list_watches as proactive_list_watches, save_watch as proactive_save_watch, delete_watch as proactive_delete_watch,
     auto_configure_watches as proactive_auto_configure, scan as proactive_scan, list_alerts as proactive_list_alerts,
@@ -867,6 +868,12 @@ def dataset_report_export(dataset_id: str, report_id: str, fmt: str):
         report = get_report(report_id)
         if report.get("dataset_id") != dataset_id:
             raise HTTPException(status_code=404, detail="Rapport introuvable pour ce dataset")
+        ctx = current_access_context()
+        if ctx is not None:
+            gate = publication_gate(ctx.workspace_id, dataset_id)
+            if not gate.get("allowed", True):
+                names = ", ".join(str(x.get("name") or x.get("contract_id")) for x in gate.get("blockers", []))
+                raise HTTPException(status_code=409, detail=f"Export bloqué par le Data Reliability Gate: {names or 'contrat critique en échec'}")
         path = export_report(report_id, fmt)
         media = {"pdf":"application/pdf","docx":"application/vnd.openxmlformats-officedocument.wordprocessingml.document","html":"text/html","md":"text/markdown","markdown":"text/markdown"}.get(fmt.lower(), "application/octet-stream")
         return FileResponse(path, media_type=media, filename=path.name)

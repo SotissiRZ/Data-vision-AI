@@ -1,4 +1,4 @@
-# DataVision AI — v2.7.0
+# DataVision AI — v2.8.0
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
 
@@ -12,148 +12,150 @@ OpenAPI   : http://localhost:8005/docs
 
 Les ports 3000 et 8000 ne sont pas utilisés.
 
-## Nouveau dans v2.7.0 — Sources & Refresh
+## Nouveau dans v2.8.0 — Data Reliability & Lineage
 
-La zone **Gouverner → Sources & Refresh** transforme l'import ponctuel en véritable couche d'ingestion gouvernée.
+La zone **Gouverner → Fiabilité & Lineage** transforme la qualité des données en une couche exécutable et gouvernée. Une donnée n'est plus seulement « profilée » : DataVision peut définir un contrat, le tester à chaque nouvelle version, tracer ses dépendances et empêcher la certification ou l'export d'un rapport si un contrat critique en mode `block` est rompu.
 
-### Connecteurs SQL réels
+### Data Contracts exécutables
 
-- PostgreSQL via `psycopg` ;
-- MySQL via `PyMySQL` ;
-- test de connexion ;
-- découverte des schémas, tables et colonnes ;
-- source depuis une table ou une requête SQL read-only ;
-- TLS configurable `disable / prefer / require` selon le moteur.
+Les contrats supportent actuellement :
 
-Les mots de passe ne sont jamais renvoyés par l'API. Ils sont chiffrés au repos avec Fernet à partir de `CONNECTOR_SECRET_KEY` (fallback `AUTH_SECRET`). Pour un déploiement partagé, `AUTH_SECRET` doit être robuste, sauvegardé et géré comme une clé de production. L'intégration à un vault externe reste une étape ultérieure.
+- colonnes requises ;
+- volume minimum / maximum ;
+- pourcentage maximal de valeurs manquantes ;
+- unicité ;
+- plages numériques ;
+- valeurs autorisées ;
+- type attendu ;
+- regex ;
+- dérive de distribution numérique par statistique KS ;
+- dérive catégorielle par Total Variation Distance.
 
-### Refresh versionné
+Chaque règle possède une sévérité et peut être bloquante. Le contrat possède un mode :
 
-Chaque refresh matérialise une nouvelle version immuable du dataset :
+```text
+monitor → mesure uniquement
+warn    → signale sans bloquer
+block   → interdit la publication/certification si une règle bloquante échoue
+```
+
+Le score de fiabilité est calculé par le moteur déterministe en pondérant les échecs selon leur sévérité.
+
+### Contrôles automatiques sur les nouvelles versions
+
+Lorsqu'une transformation gouvernée crée une nouvelle version immuable, les contrats actifs de la lignée sont réexécutés automatiquement. Les refresh SQL v2.7 exécutent également les contrats après matérialisation.
+
+```text
+Dataset v3
+   ↓ transformation / refresh
+Dataset v4
+   ↓
+Data Contracts
+   ↓
+healthy / warning / failing / critical
+```
+
+Le Data Reliability Gate exige aussi qu'un contrat en mode `block` ait été exécuté sur **la version exacte** qui doit être publiée. Un succès obtenu sur v3 ne suffit donc pas à autoriser automatiquement v4.
+
+### Publication Gate
+
+Le gate est réellement branché sur deux flux critiques :
+
+- certification depuis le Review Center ;
+- export PDF/DOCX/HTML/Markdown d'un rapport en contexte Enterprise.
+
+Si un contrat critique en mode `block` échoue, l'opération est refusée avec le contrat responsable. Les modes `monitor` et `warn` restent visibles comme avertissements.
+
+### Lineage de bout en bout
+
+Le graphe consolide automatiquement les dépendances existantes :
 
 ```text
 Source SQL
    ↓
-Refresh
-   ↓
-Dataset v1
-   ↓
-Refresh
-   ↓
-Dataset v2
-   ↓
-Analytics / ML / AI / Report
+Dataset v1 → Dataset v2 → Dataset v3
+   ↓             ↓             ↓
+Métrique       Analyse       Modèle
+                                ↓
+Dashboard                       ↓
+   ↓                          Rapport
+Rapport
 ```
 
-La version précédente reste disponible pour rollback, audit et reproductibilité.
+Les nœuds disponibles incluent :
 
-### Full et incremental refresh
+- sources externes ;
+- versions de datasets ;
+- analyses AI Analyst ;
+- modèles ML ;
+- métriques sémantiques ;
+- dashboards ;
+- rapports.
 
-Le mode incrémental conserve un **watermark** sur une colonne telle que `updated_at`, `event_id` ou `id`.
+L'API peut calculer l'**impact downstream** d'un dataset ou d'une autre ressource avant modification.
+
+### Reliability Center
+
+L'interface v2.8 ajoute :
+
+- scorecards de fiabilité ;
+- état du Publication Gate ;
+- créateur de Data Contract ;
+- génération d'un contrat recommandé à partir du dataset actif ;
+- détail des checks `pass/fail` ;
+- incidents de fiabilité ;
+- lineage visuel par colonnes Sources / Datasets / Consommateurs ;
+- clic sur un nœud pour calculer l'analyse d'impact.
+
+La zone **Gouverner** s'ouvre désormais par défaut sur Fiabilité & Lineage, avant Sources & Refresh et Gouvernance.
+
+## Sécurité et gouvernance
+
+La v2.8 conserve la boundary Enterprise introduite en v2.2 :
+
+- organisations et workspaces ;
+- RBAC ;
+- RLS et sécurité colonne dans tout le pipeline analytique ;
+- PostgreSQL comme metadata store principal avec fallback SQLite ;
+- audit log ;
+- worker Redis ;
+- connecteurs PostgreSQL/MySQL avec credentials chiffrés ;
+- refresh asynchrone tenant-aware ;
+- reviews et certifications gouvernées.
+
+Les Data Contracts sont évalués sur le data product du workspace, pas sur une vue RLS propre à un rôle individuel. Seuls les rôles autorisés peuvent créer ou exécuter les contrats.
+
+### Permissions Reliability
+
+| Rôle | Lire contrats / lineage | Créer / modifier contrats | Exécuter |
+|---|---:|---:|---:|
+| Owner | ✓ | ✓ | ✓ |
+| Admin | ✓ | ✓ | ✓ |
+| Data Scientist | ✓ | ✓ | ✓ |
+| Analyst | ✓ | — | — |
+| Viewer | ✓ | — | — |
+
+## Validation v2.8.0
 
 ```text
-watermark actuel = 12500
-        ↓
-WHERE id > 12500
-        ↓
-nouvelles lignes uniquement
-        ↓
-append vers une nouvelle version
-        ↓
-nouveau watermark
+Backend pytest                       : 50 passed
+Python compileall                    : OK
+TS/TSX syntax                        : OK
+strictNullChecks ciblé               : OK
+Data contracts                       : testé
+Missing / uniqueness / range rules   : testé
+Distribution drift KS + TVD          : testé
+Reliability score                    : testé
+Publication gate                     : testé
+Certification blocking               : testé
+Report export blocking               : testé
+Lineage graph                        : testé
+Impact analysis                      : testé
+Tenant-aware workspace isolation     : conservé
+Ports                                : 3005 / 8005
 ```
 
-Le refresh n'écrase jamais la version précédente.
-
-### Scheduler
-
-Les sources peuvent être exécutées :
-
-- manuellement ;
-- toutes les heures ;
-- toutes les 6 h ;
-- toutes les 12 h ;
-- quotidiennement ;
-- hebdomadairement ;
-- avec un intervalle personnalisé entre 15 minutes et 30 jours via l'API.
-
-Le worker revendique atomiquement les schedules arrivés à échéance avant de créer un job Redis. Cela réduit le risque de double déclenchement lorsque plusieurs workers tournent simultanément.
-
-### Freshness SLA
-
-Chaque source possède un SLA de fraîcheur et un état explicite :
-
-```text
-fresh
-warning
-stale
-refreshing
-error
-never
-```
-
-`warning` signifie que plus de 80 % du SLA est consommé. `stale` signifie que le SLA est dépassé.
-
-### Schema drift
-
-DataVision compare le schéma courant au schéma du refresh précédent :
-
-- colonnes ajoutées ;
-- colonnes supprimées ;
-- types modifiés.
-
-Deux politiques sont disponibles :
-
-- `warn` : poursuivre et enregistrer le drift ;
-- `fail` : bloquer les changements destructifs avant matérialisation.
-
-### Observabilité
-
-Chaque exécution conserve :
-
-- source et connecteur ;
-- trigger manuel ou planifié ;
-- mode full/incremental ;
-- dataset avant/après ;
-- nombre de lignes lues et matérialisées ;
-- watermark avant/après ;
-- schema drift ;
-- début/fin ;
-- erreur éventuelle ;
-- job asynchrone associé.
-
-La page **Sources & Refresh** présente le taux de succès, la durée moyenne, les volumes ingérés, les sources stale et l'historique des runs.
-
-### RBAC v2.7
-
-| Rôle | Voir sources | Tester / gérer credentials | Lancer refresh | Planifier |
-|---|---:|---:|---:|---:|
-| Owner | ✓ | ✓ | ✓ | ✓ |
-| Admin | ✓ | ✓ | ✓ | ✓ |
-| Data Scientist | ✓ | — | ✓ | — |
-| Analyst | ✓ | — | — | — |
-| Viewer | ✓ | — | — | — |
-
-Les refresh asynchrones reconstruisent le contexte utilisateur/workspace avant exécution.
-
-## Validation v2.7.0
-
-```text
-Backend pytest                 : 45 passed
-Python compileall              : OK
-TS/TSX syntax                  : OK
-strictNullChecks ciblé         : OK
-Credential encryption          : testé
-Incremental refresh            : testé
-Immutable dataset versions     : testé
-Freshness SLA                  : testé
-Schema drift fail policy       : testé
-Atomic scheduler claim         : testé
-Tenant-aware refresh job       : testé
-Ports                          : 3005 / 8005
-```
-
-Le build Docker/Next complet reste à confirmer sur la machine cible avant validation frontend de production. Les tests de connexion PostgreSQL/MySQL réels nécessitent évidemment un serveur cible accessible ; la logique des drivers, credentials, refresh et scheduler est implémentée, mais aucun serveur externe n'est simulé comme « validé ».
+Le build Docker/Next complet reste à confirmer sur la machine cible avant validation frontend de production. Les tests réseau PostgreSQL/MySQL réels nécessitent un serveur externe accessible.
 
 ## Installation Docker
 
@@ -163,6 +165,13 @@ docker compose build web
 docker compose build api
 docker compose up -d
 docker compose ps
+```
+
+Ou sous Windows :
+
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install-windows.ps1
 ```
 
 Puis ouvrir :
@@ -175,8 +184,9 @@ http://localhost:3005
 
 Les documents principaux sont dans `docs/` :
 
+- `DATA_RELIABILITY_LINEAGE_V280.md`
+- `VALIDATION_V280.md`
 - `CONNECTORS_REFRESH_V270.md`
-- `VALIDATION_V270.md`
 - `COLLABORATION_REVIEW_V260.md`
 - `PROACTIVE_INTELLIGENCE_V250.md`
 - `SEMANTIC_ORCHESTRATION_V240.md`
@@ -196,7 +206,7 @@ Les documents principaux sont dans `docs/` :
 - refresh et transformations versionnés ;
 - analyses reproductibles ;
 - credentials non exposés par l'API ;
-- requêtes de sources personnalisées limitées à la lecture seule ;
 - gouvernance appliquée au pipeline analytique complet ;
+- un contrat critique ne peut pas être contourné par un export Enterprise ;
 - aucune fonctionnalité fictive présentée comme implémentée ;
 - décisions humaines documentées avant certification des actifs analytiques.

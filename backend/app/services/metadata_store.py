@@ -292,6 +292,73 @@ SCHEMA_SQL = [
         finished_at TEXT
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS data_contracts (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        dataset_id TEXT NOT NULL,
+        dataset_root_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        rules_json TEXT NOT NULL,
+        enforcement_mode TEXT NOT NULL DEFAULT 'warn',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        owner_user_id TEXT,
+        status TEXT NOT NULL DEFAULT 'never_run',
+        last_score REAL,
+        last_run_at TEXT,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS data_contract_runs (
+        id TEXT PRIMARY KEY,
+        contract_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        dataset_id TEXT NOT NULL,
+        dataset_version INTEGER,
+        status TEXT NOT NULL,
+        score REAL NOT NULL,
+        checks_total INTEGER NOT NULL,
+        checks_passed INTEGER NOT NULL,
+        checks_failed INTEGER NOT NULL,
+        blocking_failures INTEGER NOT NULL,
+        results_json TEXT NOT NULL,
+        baseline_dataset_id TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS lineage_registry (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        target_type TEXT NOT NULL,
+        target_id TEXT NOT NULL,
+        relation TEXT NOT NULL,
+        metadata_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE(workspace_id, source_type, source_id, target_type, target_id, relation)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS reliability_events (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        dataset_id TEXT,
+        event_type TEXT NOT NULL,
+        severity TEXT NOT NULL,
+        title TEXT NOT NULL,
+        details_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'open',
+        created_at TEXT NOT NULL,
+        resolved_at TEXT
+    )
+    """,
 ]
 
 

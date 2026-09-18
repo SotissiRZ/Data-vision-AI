@@ -21,6 +21,10 @@ from app.services.connector_service import (
     create_source, get_source, list_sources, delete_source, preview_source, refresh_source,
     save_schedule, list_schedules, get_refresh_runs, workspace_refresh_health,
 )
+from app.services.data_reliability import (
+    save_contract, get_contract, list_contracts, delete_contract, run_contract, list_contract_runs,
+    build_lineage_graph, impact_analysis, publication_gate, reliability_summary,
+)
 from app.services.workspace_service import (
     bind_dataset,
     create_workspace,
@@ -35,6 +39,25 @@ from app.services.workspace_service import (
 
 router = APIRouter(tags=["enterprise"])
 
+
+
+
+class DataContractRequest(BaseModel):
+    contract_id: str | None = None
+    dataset_id: str
+    name: str = Field(min_length=1, max_length=180)
+    description: str = Field(default="", max_length=3000)
+    rules: list[dict[str, Any]] = []
+    enforcement_mode: str = Field(default="warn", pattern="^(monitor|warn|block)$")
+    enabled: bool = True
+
+
+class ContractRunRequest(BaseModel):
+    dataset_id: str | None = None
+
+
+class PublicationGateRequest(BaseModel):
+    dataset_id: str
 
 class BootstrapRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
@@ -240,6 +263,9 @@ def enterprise_status():
             "collaboration_review": "implemented",
             "resource_certification": "implemented",
             "connectors": "postgresql_mysql_with_encrypted_credentials",
+            "data_contracts": "implemented_v2.8",
+            "lineage_impact": "implemented_v2.8",
+            "publication_gate": "contract_aware_v2.8",
             "connector_secret_key": "dedicated" if bool(get_settings().connector_secret_key) else "auth_secret_fallback",
             "refresh_scheduler": "worker_polling_with_atomic_schedule_claim",
             "queue": queue_status(),
@@ -672,3 +698,101 @@ def connector_refresh_runs(workspace_id: str, source_id: str | None = Query(defa
         return {"runs": get_refresh_runs(workspace_id, source_id, limit)}
     except Exception as exc:
         _handle(exc)
+
+# ---------------------------- Data Reliability & Lineage v2.8 ----------------------------
+
+@router.get("/workspaces/{workspace_id}/reliability/summary")
+def reliability_workspace_summary(workspace_id: str, dataset_id: str | None = Query(default=None), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:read")
+        return reliability_summary(workspace_id, dataset_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/contracts")
+def contracts_list(workspace_id: str, dataset_id: str | None = Query(default=None), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:read")
+        return {"contracts": list_contracts(workspace_id, dataset_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/contracts")
+def contracts_save(workspace_id: str, req: DataContractRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:manage")
+        contract = save_contract(user["id"], workspace_id, req.dataset_id, name=req.name, description=req.description, rules=req.rules, enforcement_mode=req.enforcement_mode, enabled=req.enabled, contract_id=req.contract_id)
+        record_event("reliability.contract.save", user_id=user["id"], workspace_id=workspace_id, resource_type="data_contract", resource_id=contract["id"], payload={"dataset_id":req.dataset_id,"enforcement_mode":req.enforcement_mode})
+        return {"contract": contract}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/contracts/{contract_id}")
+def contracts_detail(workspace_id: str, contract_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:read")
+        return {"contract": get_contract(workspace_id, contract_id), "runs": list_contract_runs(workspace_id, contract_id, limit=50)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/workspaces/{workspace_id}/contracts/{contract_id}")
+def contracts_delete(workspace_id: str, contract_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:manage")
+        delete_contract(workspace_id, contract_id)
+        record_event("reliability.contract.delete", user_id=user["id"], workspace_id=workspace_id, resource_type="data_contract", resource_id=contract_id)
+        return {"deleted": True, "contract_id": contract_id}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/contracts/{contract_id}/run")
+def contracts_run(workspace_id: str, contract_id: str, req: ContractRunRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:run")
+        result = run_contract(user["id"], workspace_id, contract_id, req.dataset_id)
+        record_event("reliability.contract.run", user_id=user["id"], workspace_id=workspace_id, resource_type="data_contract", resource_id=contract_id, outcome="success" if result.get("status") == "healthy" else "failed", payload={"run_id":result.get("id"),"score":result.get("score"),"status":result.get("status")})
+        return {"run": result}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/contract-runs")
+def contracts_runs(workspace_id: str, contract_id: str | None = Query(default=None), dataset_id: str | None = Query(default=None), limit: int = Query(default=100, ge=1, le=500), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:read")
+        return {"runs": list_contract_runs(workspace_id, contract_id, dataset_id, limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/lineage")
+def lineage_graph(workspace_id: str, dataset_id: str | None = Query(default=None), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:read")
+        return build_lineage_graph(workspace_id, dataset_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/impact/{resource_type}/{resource_id}")
+def lineage_impact(workspace_id: str, resource_type: str, resource_id: str, depth: int = Query(default=6, ge=1, le=12), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:read")
+        return impact_analysis(workspace_id, resource_type, resource_id, depth)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/publication-gate")
+def reliability_publication_gate(workspace_id: str, req: PublicationGateRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:read")
+        return publication_gate(workspace_id, req.dataset_id)
+    except Exception as exc:
+        _handle(exc)
+

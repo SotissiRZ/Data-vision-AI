@@ -367,6 +367,12 @@ def certify_review(actor_id: str, workspace_id: str, review_id: str, *, valid_un
     review = get_review(actor_id, workspace_id, review_id)
     if review["status"] != "approved":
         raise ValueError("La ressource doit être approuvée avant certification.")
+    if review.get("dataset_id"):
+        from app.services.data_reliability import publication_gate
+        gate = publication_gate(workspace_id, str(review["dataset_id"]))
+        if not gate.get("allowed", True):
+            names = ", ".join(str(x.get("name") or x.get("contract_id")) for x in gate.get("blockers", []))
+            raise ValueError(f"Certification bloquée par le Data Reliability Gate: {names or 'contrat critique en échec'}.")
     execute(
         "UPDATE resource_certifications SET status='revoked' WHERE workspace_id=:ws AND resource_type=:rtype AND resource_id=:rid AND status='active'",
         {"ws": workspace_id, "rtype": review["resource_type"], "rid": review["resource_id"]},

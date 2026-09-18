@@ -399,7 +399,22 @@ def refresh_source(workspace_id: str, source_id: str, *, actor_id: str, trigger:
                 {"dataset":after_id,"watermark":json_dumps(watermark_after) if watermark_after is not None else None,"schema":json_dumps(effective_schema),"finished":finished,"rows":rows_fetched,"drift":json_dumps(drift),"id":source_id})
         execute("""UPDATE refresh_runs SET dataset_id_after=:after,status='completed',rows_fetched=:fetched,rows_written=:written,watermark_after_json=:watermark,schema_drift_json=:drift,finished_at=:finished WHERE id=:id""",
                 {"after":after_id,"fetched":rows_fetched,"written":rows_written,"watermark":json_dumps(watermark_after) if watermark_after is not None else None,"drift":json_dumps(drift),"finished":finished,"id":run_id})
-        return {"run_id":run_id,"source_id":source_id,"dataset_id":after_id,"previous_dataset_id":before_id,"status":"completed","rows_fetched":rows_fetched,"rows_written":rows_written,"watermark_before":watermark_before,"watermark_after":watermark_after,"schema_drift":drift,"finished_at":finished}
+        contract_runs = []
+        try:
+            from app.services.data_reliability import list_contracts, run_contract, register_lineage_edge
+            register_lineage_edge(workspace_id, "source", source_id, "dataset", after_id, "materialized_as", {"refresh_run_id": run_id, "refresh_mode": source["refresh_mode"]})
+            for contract in list_contracts(workspace_id, after_id):
+                if not contract.get("enabled"):
+                    continue
+                try:
+                    cr = run_contract(actor_id, workspace_id, contract["id"], after_id)
+                    contract_runs.append({"contract_id": contract["id"], "run_id": cr["id"], "status": cr["status"], "score": cr["score"]})
+                except Exception as contract_exc:
+                    contract_runs.append({"contract_id": contract["id"], "status": "error", "error": str(contract_exc)[:500]})
+        except Exception:
+            # Reliability automation must never corrupt a successfully materialized refresh.
+            contract_runs = []
+        return {"run_id":run_id,"source_id":source_id,"dataset_id":after_id,"previous_dataset_id":before_id,"status":"completed","rows_fetched":rows_fetched,"rows_written":rows_written,"watermark_before":watermark_before,"watermark_after":watermark_after,"schema_drift":drift,"contract_runs":contract_runs,"finished_at":finished}
     except Exception as exc:
         finished = utcnow(); error = _safe_error(exc)
         execute("UPDATE connector_sources SET status='error',last_refresh_finished_at=:finished,last_error=:error,updated_at=:finished WHERE id=:id", {"finished":finished,"error":error,"id":source_id})

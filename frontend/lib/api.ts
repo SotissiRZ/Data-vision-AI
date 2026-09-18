@@ -583,3 +583,36 @@ export async function getRefreshRuns(token:string, workspace_id:string, source_i
   const params=new URLSearchParams(); if(source_id)params.set('source_id',source_id); params.set('limit','100');
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/refresh-runs?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Historique des refresh indisponible');
 }
+
+// ---------------------------- Data Reliability & Lineage v2.8 ----------------------------
+export async function getReliabilitySummary(token:string, workspace_id:string, dataset_id?:string) {
+  const params=new URLSearchParams(); if(dataset_id)params.set('dataset_id',dataset_id);
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reliability/summary?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Synthèse de fiabilité indisponible');
+}
+export async function getDataContracts(token:string, workspace_id:string, dataset_id?:string) {
+  const params=new URLSearchParams(); if(dataset_id)params.set('dataset_id',dataset_id);
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/contracts?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Data contracts indisponibles');
+}
+export async function saveDataContract(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/contracts`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Enregistrement du data contract impossible');
+}
+export async function deleteDataContract(token:string, workspace_id:string, contract_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/contracts/${contract_id}`, { method:'DELETE', headers:enterpriseHeaders(token) }), 'Suppression du data contract impossible');
+}
+export async function runDataContract(token:string, workspace_id:string, contract_id:string, dataset_id?:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/contracts/${contract_id}/run`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({dataset_id:dataset_id||null}) }), 'Exécution du data contract impossible');
+}
+export async function getContractRuns(token:string, workspace_id:string, contract_id?:string, dataset_id?:string) {
+  const params=new URLSearchParams(); if(contract_id)params.set('contract_id',contract_id); if(dataset_id)params.set('dataset_id',dataset_id);
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/contract-runs?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Historique des contrats indisponible');
+}
+export async function getLineageGraph(token:string, workspace_id:string, dataset_id?:string) {
+  const params=new URLSearchParams(); if(dataset_id)params.set('dataset_id',dataset_id);
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/lineage?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Lineage indisponible');
+}
+export async function getImpactAnalysis(token:string, workspace_id:string, resource_type:string, resource_id:string, depth=6) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/impact/${encodeURIComponent(resource_type)}/${encodeURIComponent(resource_id)}?depth=${depth}`, { headers:enterpriseHeaders(token) }), "Analyse d'impact indisponible");
+}
+export async function getPublicationGate(token:string, workspace_id:string, dataset_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/publication-gate`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({dataset_id}) }), 'Publication gate indisponible');
+}
