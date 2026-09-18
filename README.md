@@ -1,4 +1,4 @@
-# DataVision AI — v1.0.2
+# DataVision AI — v1.2.0
 
 DataVision AI est un **Data Intelligence Workspace local et installable** réunissant import, profiling, qualité, préparation versionnée, statistiques, SQL, visualisation, Machine Learning, forecasting, détection d'anomalies, XAI, prédiction, AI Analyst et reporting reproductible dans une même interface.
 
@@ -13,6 +13,115 @@ OpenAPI   : http://localhost:8005/docs
 ```
 
 Les ports 3000 et 8000 ne sont pas utilisés.
+
+## Nouveau dans v1.2.0 — Report Intelligence
+
+La v1.2 transforme le Report Studio en **moteur éditorial analytique**. Le rapport ne se contente plus d’assembler des résultats : il organise automatiquement les éléments les plus utiles, construit une lecture hiérarchisée et documente les limites d’interprétation.
+
+### Narration analytique automatique
+
+- génération d’une section **Résultats clés et lecture analytique** ;
+- constats classés par priorité avec **preuve calculée** et **interprétation** ;
+- synthèse de qualité, complétude, corrélations, asymétries, concentrations catégorielles et tendances temporelles lorsque les données le permettent ;
+- intégration optionnelle des constats d’une session AI Analyst ;
+- conclusion de lecture construite à partir des résultats réellement calculés.
+
+### Sélection intelligente des figures
+
+DataVision peut générer automatiquement, sans exiger qu’elles aient été préalablement épinglées :
+
+- manquants par variable ;
+- heatmap de corrélation ;
+- scatterplot de la relation numérique la plus forte ;
+- histogramme d’une variable informative ;
+- comparaison catégorie/mesure ;
+- série temporelle lorsqu’une date exploitable est détectée.
+
+Chaque figure automatique conserve son **objectif**, sa **lecture**, la version du dataset et sa provenance. Le nombre maximal de figures est configurable dans Report Studio.
+
+### Limites et précautions
+
+Une section dédiée explicite automatiquement les principaux risques d’interprétation : valeurs manquantes, qualité, petit échantillon, variables identifiantes, limites temporelles et absence de preuve causale. Les corrélations sont présentées comme associations et non comme causalité.
+
+### Meilleure détection des identifiants
+
+Une variable numérique continue n’est plus exclue uniquement parce que ses valeurs sont presque toutes uniques. L’exclusion automatique vise désormais les colonnes réellement susceptibles d’être des identifiants (`id`, `*_id`, UUID, clés, numéros d’enregistrement, etc.). Cela évite de masquer des mesures continues utiles dans les graphiques et analyses automatiques.
+
+### Validation v1.2.0
+
+```text
+Backend : 19 tests passent
+Python  : compileall OK
+PDF     : QA visuelle OK (13 pages rendues et inspectées)
+DOCX    : QA visuelle OK (13 pages rendues et inspectées)
+TSX/TS  : transpilation syntaxique OK
+```
+
+Le build Next.js/Docker complet reste à confirmer sur la machine cible.
+
+Voir `docs/REPORT_INTELLIGENCE.md`.
+
+## Nouveau dans v1.1.1 — Professional Report Studio
+
+Le module **Rapports** a été entièrement repensé. Il ne produit plus une simple succession de blocs : il compose désormais un document professionnel structuré et visuel.
+
+### Report Studio
+
+- trois modèles : **Exécutif**, **Analytique** et **Technique** ;
+- page de garde avec titre, sous-titre, dataset, version, auteur/organisation et date ;
+- sommaire automatique et sections numérotées ;
+- **synthèse exécutive** avec KPI, constats prioritaires et recommandations ;
+- sélection explicite des sections du document ;
+- sélection individuelle des visualisations épinglées à publier ;
+- aperçu de type document directement dans l'interface avant export ;
+- historique des rapports avec indication du modèle utilisé.
+
+### Exports professionnels
+
+- PDF avec page de garde, en-têtes/pieds de page, pagination, KPI, tableaux stylés et graphiques vectoriels ;
+- DOCX avec styles, sommaire statique, tableaux professionnels, pagination et **graphiques intégrés sous forme d'images** ;
+- HTML imprimable avec mise en page responsive, page de garde, sommaire cliquable, KPI et graphiques SVG ;
+- Markdown réorganisé avec sommaire, numérotation et synthèse exécutive.
+
+Les graphiques épinglés ne sont plus remplacés par de simples extraits de données : DataVision rend réellement les graphiques `bar`, `line`, `area`, `histogram`, `density`, `scatter`, `heatmap` et `box` dans les exports compatibles.
+
+### Validation v1.1.1
+
+```text
+Backend : 18 tests passent
+Python  : compileall OK
+PDF     : rendu visuel QA OK (9 pages testées)
+DOCX    : rendu visuel QA OK (9 pages testées)
+TSX/TS  : transpilation syntaxique OK
+```
+
+Voir `docs/REPORT_STUDIO.md`.
+
+## Nouveau dans v1.1.0 — dashboard analytique & visualisations épinglées
+
+- l’accueil devient un **Analytical Overview** dès qu’un dataset est actif ;
+- KPI de structure et de qualité visibles immédiatement ;
+- graphiques automatiques pour valeurs manquantes, types et corrélations fortes ;
+- feed **Insights clés** calculé à partir des résultats déterministes ;
+- recommandations de visualisations et raccourcis vers les modules pertinents ;
+- identifiants probables exclus des corrélations automatiques du dashboard ;
+- bouton **Ajouter au rapport** dans Visualization Studio ;
+- registre local des visualisations épinglées, verrouillées sur la version du dataset ;
+- nouvelle section **Visualisations épinglées** dans le Report Builder ;
+- endpoint `GET /api/v1/datasets/{id}/dashboard` ;
+- endpoints `GET/POST /api/v1/datasets/{id}/visualizations/saved`.
+
+Voir `docs/ANALYTICAL_DASHBOARD.md`.
+
+### Validation v1.1.0
+
+```text
+Backend : 17 tests passent
+Python  : compileall OK
+TSX/TS  : transpilation OK + strictNullChecks ciblé OK
+```
+
+Le build Next.js/Docker complet reste à confirmer sur la machine cible.
 
 ## Nouveau dans v1.0.2 — interface analytique plus lisible & diagnostics visuels
 

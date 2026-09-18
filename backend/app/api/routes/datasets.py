@@ -24,6 +24,8 @@ from app.services.ai_analyst import AnalystContext, analyze_dataset, tool_regist
 from app.services.analysis_history import save_analysis, list_analyses, get_analysis
 from app.services.nlq_sql import run_nlq
 from app.services.report_builder import build_report, list_reports, get_report, export_report
+from app.services.dashboard import dashboard_overview
+from app.services.saved_visualizations import save_visualization, list_visualizations
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -149,8 +151,22 @@ class NLQRequest(BaseModel):
 
 class ReportCreateRequest(BaseModel):
     title: str = Field(default="Rapport DataVision", min_length=1, max_length=180)
-    sections: list[str] = ["overview", "quality", "descriptive", "ai_analysis", "methodology", "provenance"]
+    subtitle: str | None = Field(default=None, max_length=240)
+    author: str | None = Field(default=None, max_length=120)
+    organization: str | None = Field(default=None, max_length=120)
+    template: str = Field(default="analytical", pattern="^(executive|analytical|technical)$")
+    sections: list[str] = ["executive_summary", "analytical_story", "overview", "quality", "descriptive", "visualizations", "ai_analysis", "limitations", "methodology", "provenance"]
     analysis_session_id: str | None = None
+    visualization_ids: list[str] = []
+    auto_story: bool = False
+    auto_visualizations: bool = False
+    max_visualizations: int = Field(default=6, ge=1, le=10)
+
+
+
+class SaveVisualizationRequest(BaseModel):
+    title: str = Field(default="Visualisation DataVision", min_length=1, max_length=180)
+    visualization: dict
 
 class AIAnalysisRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
@@ -422,6 +438,35 @@ def dataset_workspace_nlq(dataset_id: str, request: NLQRequest):
         raise HTTPException(status_code=422, detail=f"NLQ impossible: {exc}") from exc
 
 
+@router.get("/{dataset_id}/dashboard")
+def dataset_dashboard(dataset_id: str):
+    try:
+        return dashboard_overview(load_dataframe(dataset_id))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Dashboard analytique impossible: {exc}") from exc
+
+
+@router.get("/{dataset_id}/visualizations/saved")
+def dataset_saved_visualizations(dataset_id: str):
+    try:
+        get_meta(dataset_id)
+        rows = list_visualizations(dataset_id)
+        return {"visualizations": rows, "count": len(rows)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.post("/{dataset_id}/visualizations/saved")
+def dataset_save_visualization(dataset_id: str, request: SaveVisualizationRequest):
+    try:
+        meta = get_meta(dataset_id)
+        return {"visualization": save_visualization(dataset_id, int(meta.get("version", 1)), request.title, request.visualization)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
 @router.get("/{dataset_id}/reports")
 def dataset_reports(dataset_id: str):
     try:
@@ -435,7 +480,12 @@ def dataset_reports(dataset_id: str):
 @router.post("/{dataset_id}/reports")
 def dataset_report_create(dataset_id: str, request: ReportCreateRequest):
     try:
-        return build_report(dataset_id, request.title, request.sections, request.analysis_session_id)
+        return build_report(
+            dataset_id, request.title, request.sections, request.analysis_session_id,
+            template=request.template, subtitle=request.subtitle, author=request.author, organization=request.organization,
+            visualization_ids=request.visualization_ids or None, auto_story=request.auto_story,
+            auto_visualizations=request.auto_visualizations, max_visualizations=request.max_visualizations,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset ou analyse introuvable") from exc
     except ValueError as exc:

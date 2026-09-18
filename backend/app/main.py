@@ -5,7 +5,7 @@ from app.api.routes.datasets import router as datasets_router
 from app.core.config import get_settings
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="0.9.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="1.1.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -17,7 +17,7 @@ app.add_middleware(
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": settings.app_name, "version": "0.9.0"}
+    return {"status": "ok", "product": settings.app_name, "version": "1.1.0"}
 
 
 @app.get("/api/v1/capabilities")
@@ -37,6 +37,7 @@ def capabilities():
             "forecasting", "forecast_model_benchmark", "prediction_intervals", "anomaly_detection",
             "xai_diagnostics", "confusion_matrix", "roc_pr_curves", "binary_calibration", "local_perturbation_explanations",
             "ai_analyst_orchestrator", "natural_language_intent_routing", "analytic_tool_registry", "critic_validation", "analysis_provenance",
+            "analytical_dashboard", "deterministic_insight_feed", "saved_visualizations", "report_visualization_assets",
         ],
         "partial": ["audit", "shap", "fairness", "nlq"],
         "planned": [

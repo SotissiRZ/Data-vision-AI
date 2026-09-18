@@ -570,3 +570,147 @@ def test_v102_regression_visual_diagnostics():
     assert out["qq_points"]
     assert "r" in out["qq_line"]
     assert out["influence"]
+
+
+def test_v110_dashboard_insights_and_saved_visualizations(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    frame = pd.DataFrame({
+        "ID": range(1, 81),
+        "Age": list(range(20, 60)) * 2,
+        "Score": [float(i * 2 + 5) for i in list(range(20, 60)) * 2],
+        "Group": ["A", "B"] * 40,
+    })
+    frame.loc[0:9, "Score"] = None
+    r = client.post("/api/v1/datasets", files={"file": ("dashboard.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    assert r.status_code == 200
+    dataset_id = r.json()["dataset"]["id"]
+
+    dashboard = client.get(f"/api/v1/datasets/{dataset_id}/dashboard")
+    assert dashboard.status_code == 200, dashboard.text
+    body = dashboard.json()
+    assert body["metrics"]["rows"] == 80
+    assert body["metrics"]["missing_cells"] == 10
+    assert body["insights"]
+    assert all("ID" not in {x.get("x"), x.get("y")} for x in body["strong_correlations"])
+
+    built = client.post(f"/api/v1/datasets/{dataset_id}/visualizations/build", json={"chart_type": "bar", "x": "Group", "y": "Age", "aggregation": "mean", "bins": 20})
+    assert built.status_code == 200, built.text
+    saved = client.post(f"/api/v1/datasets/{dataset_id}/visualizations/saved", json={"title": "Age moyen par groupe", "visualization": built.json()})
+    assert saved.status_code == 200, saved.text
+    listed = client.get(f"/api/v1/datasets/{dataset_id}/visualizations/saved")
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 1
+
+    report = client.post(f"/api/v1/datasets/{dataset_id}/reports", json={"title": "Rapport dashboard", "sections": ["overview", "visualizations", "provenance"]})
+    assert report.status_code == 200, report.text
+    viz_blocks = [b for b in report.json()["blocks"] if b.get("type") == "visualizations"]
+    assert len(viz_blocks) == 1
+    assert len(viz_blocks[0]["items"]) == 1
+
+
+def test_v111_professional_report_structure_and_chart_exports(tmp_path, monkeypatch):
+    import zipfile
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    frame = pd.DataFrame({
+        "region": ["Nord", "Sud", "Est", "Ouest"] * 20,
+        "sales": [100 + i * 2.5 for i in range(80)],
+        "cost": [65 + i * 1.3 for i in range(80)],
+    })
+    frame.loc[0:5, "cost"] = None
+    upload = client.post("/api/v1/datasets", files={"file": ("executive.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    assert upload.status_code == 200, upload.text
+    dataset_id = upload.json()["dataset"]["id"]
+    built = client.post(f"/api/v1/datasets/{dataset_id}/visualizations/build", json={"chart_type":"bar","x":"region","y":"sales","aggregation":"mean","bins":20})
+    assert built.status_code == 200, built.text
+    saved = client.post(f"/api/v1/datasets/{dataset_id}/visualizations/saved", json={"title":"Ventes moyennes par region","visualization":built.json()})
+    assert saved.status_code == 200, saved.text
+    viz_id = saved.json()["visualization"]["id"]
+    report = client.post(f"/api/v1/datasets/{dataset_id}/reports", json={
+        "title":"Performance commerciale regionale",
+        "subtitle":"Synthese decisionnelle et qualite des donnees",
+        "author":"Equipe Data",
+        "organization":"DataVision Lab",
+        "template":"executive",
+        "sections":["executive_summary","overview","quality","visualizations","methodology","provenance"],
+        "visualization_ids":[viz_id],
+    })
+    assert report.status_code == 200, report.text
+    body = report.json()
+    assert body["template"] == "executive"
+    assert body["section_outline"][0]["key"] == "executive_summary"
+    executive = next(b for b in body["blocks"] if b["type"] == "executive_summary")
+    assert len(executive["data"]["kpis"]) == 4
+    assert body["visualization_ids"] == [viz_id]
+    report_id = body["id"]
+    html_out = client.get(f"/api/v1/datasets/{dataset_id}/reports/{report_id}/export/html")
+    assert html_out.status_code == 200
+    assert b"Sommaire" in html_out.content
+    assert b"kpi-grid" in html_out.content
+    pdf_out = client.get(f"/api/v1/datasets/{dataset_id}/reports/{report_id}/export/pdf")
+    assert pdf_out.status_code == 200
+    assert len(pdf_out.content) > 4000
+    docx_out = client.get(f"/api/v1/datasets/{dataset_id}/reports/{report_id}/export/docx")
+    assert docx_out.status_code == 200
+    docx_path = tmp_path / "professional.docx"
+    docx_path.write_bytes(docx_out.content)
+    with zipfile.ZipFile(docx_path) as zf:
+        assert any(name.startswith("word/media/") for name in zf.namelist())
+
+def test_v120_intelligent_report_story_auto_visuals_and_limits(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    frame = pd.DataFrame({
+        "record_id": range(1, 121),
+        "date": pd.date_range("2026-01-01", periods=120, freq="D"),
+        "region": ["Nord", "Sud", "Est", "Ouest"] * 30,
+        "sales": [100 + i * 1.8 + (i % 5) * 3 for i in range(120)],
+        "cost": [65 + i * 1.1 + (i % 7) * 2 for i in range(120)],
+        "score": [40 + i * 0.7 + (i % 3) for i in range(120)],
+    })
+    frame.loc[0:11, "cost"] = None
+    upload = client.post("/api/v1/datasets", files={"file": ("intelligent.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    assert upload.status_code == 200, upload.text
+    dataset_id = upload.json()["dataset"]["id"]
+
+    report = client.post(f"/api/v1/datasets/{dataset_id}/reports", json={
+        "title": "Rapport intelligent",
+        "template": "analytical",
+        "sections": ["executive_summary", "analytical_story", "visualizations", "limitations", "methodology", "provenance"],
+        "auto_story": True,
+        "auto_visualizations": True,
+        "max_visualizations": 6,
+        "visualization_ids": [],
+    })
+    assert report.status_code == 200, report.text
+    body = report.json()
+    assert body["generation_mode"] == "intelligent"
+    assert body["intelligence"]["auto_story"] is True
+    assert body["auto_visualization_count"] >= 3
+
+    story = next(b for b in body["blocks"] if b["type"] == "analytical_story")
+    assert len(story["data"]["findings"]) >= 2
+    assert any("correlation" in (f.get("statement", "") + f.get("evidence", "")).lower() for f in story["data"]["findings"])
+    assert "record_id" in story["data"]["identifiers_excluded"]
+
+    visuals = next(b for b in body["blocks"] if b["type"] == "visualizations")
+    assert visuals["items"]
+    assert all(v.get("source") == "auto_report" for v in visuals["items"])
+    assert all(v.get("insight") for v in visuals["items"])
+    assert all(v.get("dataset_version") == 1 for v in visuals["items"])
+
+    limits = next(b for b in body["blocks"] if b["type"] == "limitations")
+    assert any(x["title"] == "Causalite" for x in limits["items"])
+    assert any(x["title"] == "Valeurs manquantes" for x in limits["items"])
+
+    html_out = client.get(f"/api/v1/datasets/{dataset_id}/reports/{body['id']}/export/html")
+    assert html_out.status_code == 200
+    assert b"story-grid" in html_out.content
+    assert b"figure-insight" in html_out.content
+    pdf_out = client.get(f"/api/v1/datasets/{dataset_id}/reports/{body['id']}/export/pdf")
+    assert pdf_out.status_code == 200
+    assert len(pdf_out.content) > 5000

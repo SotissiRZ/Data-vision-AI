@@ -1,4 +1,46 @@
-# v1.0.2
+# v1.2.0 — Report Intelligence
+
+- narration analytique automatique fondée sur les résultats calculés ;
+- constats prioritaires avec preuve et interprétation ;
+- sélection et génération automatiques de figures pertinentes dans les rapports ;
+- légendes enrichies avec objectif et lecture analytique ;
+- section automatique des limites et précautions d’interprétation ;
+- verrouillage des visualisations automatiques sur la version du dataset ;
+- détection des identifiants affinée afin de ne plus masquer les mesures numériques continues uniques ;
+- Report Studio enrichi de contrôles pour narration automatique, figures automatiques et nombre maximal de figures ;
+- export PDF/DOCX/HTML/Markdown adapté aux nouvelles sections ;
+- 19 tests backend passent ;
+- QA visuelle PDF et DOCX effectuée sur 13 pages de chaque export.
+
+# v1.1.1
+
+- refonte complète du Report Builder en **Professional Report Studio** ;
+- modèles Exécutif / Analytique / Technique ;
+- page de garde et sommaire automatiques ;
+- synthèse exécutive avec KPI, constats et recommandations ;
+- organisation explicite et numérotée des sections ;
+- sélection individuelle des visualisations à publier ;
+- aperçu document dans l'interface ;
+- PDF professionnel avec en-têtes, pieds de page, pagination et graphiques vectoriels ;
+- DOCX professionnel avec styles, pagination et graphiques intégrés ;
+- HTML print-ready avec graphiques SVG et sommaire cliquable ;
+- support de rendu des graphiques bar, line, area, histogram, density, scatter, heatmap et box ;
+- métadonnées auteur/organisation/sous-titre ;
+- 18 tests backend passent ;
+- QA visuelle PDF et DOCX effectuée par rendu de toutes les pages d'un rapport de test.
+
+# Changelog
+
+## v1.1.0
+
+- Analytical Overview sur l’accueil.
+- Insights déterministes et recommandations analytiques.
+- Visualisations épinglables depuis Visualization Studio.
+- Registre local des visualisations par dataset/version.
+- Section de rapport pour les visualisations épinglées.
+- API dashboard et saved visualizations.
+
+v1.0.2
 
 - navigation latérale regroupée : Explorer / Analyser / Modéliser / Partager ;
 - interface des tests statistiques simplifiée et plus responsive ;

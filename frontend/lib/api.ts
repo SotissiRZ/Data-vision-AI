@@ -226,7 +226,7 @@ export async function getReports(id: string) {
   return parse<any>(await fetch(`${API}/datasets/${id}/reports`), 'Rapports indisponibles');
 }
 
-export async function createReport(id: string, payload: { title: string; sections: string[]; analysis_session_id?: string | null }) {
+export async function createReport(id: string, payload: { title: string; subtitle?: string | null; author?: string | null; organization?: string | null; template?: 'executive'|'analytical'|'technical'; sections: string[]; analysis_session_id?: string | null; visualization_ids?: string[]; auto_story?: boolean; auto_visualizations?: boolean; max_visualizations?: number }) {
   return parse<any>(await fetch(`${API}/datasets/${id}/reports`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }), 'Création du rapport impossible');
@@ -246,4 +246,18 @@ export async function downloadReport(id: string, reportId: string, format: 'pdf'
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
+}
+
+export async function getDashboard(id: string) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/dashboard`), 'Dashboard analytique indisponible');
+}
+
+export async function getSavedVisualizations(id: string) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/visualizations/saved`), 'Visualisations enregistrées indisponibles');
+}
+
+export async function saveVisualization(id: string, title: string, visualization: Record<string, unknown>) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/visualizations/saved`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title, visualization }),
+  }), 'Enregistrement de la visualisation impossible');
 }

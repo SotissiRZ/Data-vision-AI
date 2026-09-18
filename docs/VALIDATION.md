@@ -1,9 +1,9 @@
-# Validation — v1.0.2
+# Validation — v1.2.0
 
 ## Backend
 
 ```text
-16 passed
+19 passed
 ```
 
 La suite couvre notamment :
@@ -11,15 +11,16 @@ La suite couvre notamment :
 - upload / profiling / qualité ;
 - préparation / versioning / rollback ;
 - pipelines et feature engineering ;
-- tests statistiques avec tailles d’effet et payloads de visualisation ;
-- régression avec Q-Q plot, histogramme des résidus et influence ;
-- ANOVA, ACP et clustering ;
+- tests statistiques, régression, ANOVA, ACP et clustering ;
 - SQL, NLQ et visualisations ;
-- AutoML, model registry et XAI ;
-- forecasting et anomalies ;
-- AI Analyst et provenance ;
-- historique AI Analyst ;
-- Report Builder et exports.
+- AutoML, model registry, forecasting, anomalies et XAI ;
+- AI Analyst, critic et provenance ;
+- dashboard analytique et visualisations sauvegardées ;
+- Professional Report Studio ;
+- narration analytique automatique ;
+- visualisations automatiques de rapport ;
+- limites et précautions d’interprétation ;
+- exports PDF, DOCX, HTML et Markdown.
 
 ## Python
 
@@ -27,9 +28,19 @@ La suite couvre notamment :
 
 ## Frontend
 
-Les fichiers `frontend/app/page.tsx` et `frontend/lib/api.ts` ont été validés au niveau syntaxique par transpilation TypeScript.
+- transpilation syntaxique TypeScript/TSX : OK ;
+- le build complet Next.js n’est pas déclaré validé dans cet environnement faute d’installation locale complète des dépendances frontend.
 
-Le build Next.js/Docker complet reste à exécuter sur la machine cible. Cette distinction est volontaire : une validation syntaxique n’est pas présentée comme un build de production réussi.
+## QA visuelle des rapports
+
+Un rapport intelligent de validation a été exporté puis rendu pour contrôle visuel :
+
+```text
+PDF  : 13 pages rendues et inspectées
+DOCX : 13 pages rendues et inspectées
+```
+
+Contrôles effectués : page de garde, narration analytique, cartes de constats, graphiques et légendes, limites, pagination, absence de chevauchement et de titres de figures orphelins.
 
 ## Ports
 
