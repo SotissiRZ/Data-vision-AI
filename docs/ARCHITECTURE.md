@@ -94,3 +94,21 @@ Le jeu de test final ne participe ni au benchmark, ni au tuning.
 - les routes sont exposées sous `/api/v1/datasets/{id}/ai/*` ;
 - les artefacts retournés sont tronqués pour l'affichage mais les moteurs sont réellement exécutés ;
 - les erreurs ne sont pas transformées en faux résultats.
+
+## v1.0 — persistance analytique et reporting
+
+```text
+AI Analyst
+   └── data/analyses/<session_id>.json
+
+Report Builder
+   ├── verrou dataset/version
+   ├── session AI optionnelle
+   ├── data/reports/<report_id>.json
+   └── exports PDF / DOCX / HTML / Markdown
+
+SQL Workspace
+   └── NLQ déterministe → SQL read-only validé → DuckDB/SQLite fallback
+```
+
+Les rapports et historiques sont actuellement stockés localement sur le volume `./data`. La migration vers PostgreSQL/object storage est prévue avec la couche workspace/multi-utilisateur.

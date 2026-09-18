@@ -453,3 +453,120 @@ def test_v09_ai_analyst_regression_uses_real_engine(tmp_path, monkeypatch):
     assert body["intent"] == "regression"
     assert body["artifacts"]["regression"]["r_squared"] > 0.95
     assert "regression" in body["provenance"]["tools_executed"]
+
+
+def test_v10_nlq_history_reports_and_exports(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+
+    frame = pd.DataFrame({
+        "region": ["Nord", "Nord", "Sud", "Sud", "Est", "Est"],
+        "sales": [100.0, 120.0, 80.0, 90.0, 140.0, 160.0],
+        "cost": [60.0, 70.0, 50.0, 55.0, 90.0, 95.0],
+    })
+    upload = client.post("/api/v1/datasets", files={"file": ("report.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    assert upload.status_code == 200, upload.text
+    dataset_id = upload.json()["dataset"]["id"]
+
+    nlq = client.post(f"/api/v1/datasets/{dataset_id}/workspace/nlq", json={"question": "Quelle est la moyenne de sales par region ?", "limit": 100})
+    assert nlq.status_code == 200, nlq.text
+    nbody = nlq.json()
+    assert "AVG" in nbody["sql"]
+    assert nbody["result"]["returned_rows"] == 3
+
+    analysis = client.post(f"/api/v1/datasets/{dataset_id}/ai/analyze", json={
+        "question": "Quelles sont les corrélations entre sales et cost ?",
+        "variables": ["sales", "cost"],
+        "mode": "fast",
+    })
+    assert analysis.status_code == 200, analysis.text
+    session_id = analysis.json()["session_id"]
+
+    history = client.get(f"/api/v1/datasets/{dataset_id}/ai/history")
+    assert history.status_code == 200, history.text
+    assert history.json()["count"] == 1
+    assert history.json()["analyses"][0]["session_id"] == session_id
+
+    report = client.post(f"/api/v1/datasets/{dataset_id}/reports", json={
+        "title": "Rapport ventes régional",
+        "sections": ["overview", "quality", "descriptive", "ai_analysis", "methodology", "provenance"],
+        "analysis_session_id": session_id,
+    })
+    assert report.status_code == 200, report.text
+    report_id = report.json()["id"]
+    assert report.json()["dataset"]["version"] == 1
+    assert report.json()["reproducibility"]["analysis_session_locked"] is True
+
+    listing = client.get(f"/api/v1/datasets/{dataset_id}/reports")
+    assert listing.status_code == 200
+    assert listing.json()["count"] == 1
+
+    for fmt, content_type in [
+        ("md", "text/markdown"),
+        ("html", "text/html"),
+        ("pdf", "application/pdf"),
+        ("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),
+    ]:
+        exported = client.get(f"/api/v1/datasets/{dataset_id}/reports/{report_id}/export/{fmt}")
+        assert exported.status_code == 200, exported.text
+        assert content_type in exported.headers.get("content-type", "")
+        assert len(exported.content) > 100
+
+
+def test_visualization_density_heatmap_and_area():
+    from app.services.visualization import build_visualization, recommend_visualizations
+    frame = pd.DataFrame({
+        "date": pd.date_range("2026-01-01", periods=30, freq="D"),
+        "sales": [float(i + (i % 4)) for i in range(30)],
+        "cost": [float(i * 0.6 + 3) for i in range(30)],
+        "region": ["N", "S", "E"] * 10,
+    })
+    density = build_visualization(frame, chart_type="density", x="sales")
+    assert density["type"] == "density"
+    assert len(density["data"]) == 120
+
+    heatmap = build_visualization(frame, chart_type="heatmap")
+    assert heatmap["type"] == "heatmap"
+    assert {"sales", "cost"}.issubset(set(heatmap["columns"]))
+
+    area = build_visualization(frame, chart_type="area", x="date", y="sales", aggregation="mean")
+    assert area["type"] == "area"
+    assert len(area["data"]) == 30
+
+    recs = recommend_visualizations(frame, ["date", "sales", "cost"])
+    assert any(r["type"] == "heatmap" for r in recs)
+    assert any(r["type"] == "line" for r in recs)
+
+
+def test_v102_statistical_effect_sizes_and_visual_payloads():
+    from app.services.statistics_engine import statistical_test
+    frame = pd.DataFrame({
+        "group": ["A"] * 20 + ["B"] * 20,
+        "x": list(range(20)) + list(range(10, 30)),
+        "y": [v * 2.0 + 1 for v in list(range(20)) + list(range(10, 30))],
+    })
+    welch = statistical_test(frame, "welch_t", value="x", group="group")
+    assert welch["effect_size"]["name"] == "Cohen d"
+    assert len(welch["group_summary"]) == 2
+    assert "boxplot" in welch["group_summary"][0]
+
+    corr = statistical_test(frame, "pearson", x="x", y="y")
+    assert corr["effect_size"]["name"] == "r"
+    assert corr["effect_size"]["value"] > 0.99
+    assert corr["scatter_points"]
+
+
+def test_v102_regression_visual_diagnostics():
+    from app.services.advanced_analysis import regression_analysis
+    frame = pd.DataFrame({
+        "x": list(range(60)),
+        "z": [(i % 7) for i in range(60)],
+        "y": [5 + 1.8 * i + (i % 5) * 0.25 for i in range(60)],
+    })
+    out = regression_analysis(frame, "y", ["x", "z"])
+    assert out["r_squared"] > 0.99
+    assert out["residual_histogram"]
+    assert out["qq_points"]
+    assert "r" in out["qq_line"]
+    assert out["influence"]

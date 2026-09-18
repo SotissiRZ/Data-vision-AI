@@ -1,62 +1,39 @@
-# Validation — DataVision AI v0.9.1
+# Validation — v1.0.2
 
 ## Backend
 
-Commande :
-
-```bash
-cd backend
-PYTHONPATH=. pytest -q
-```
-
-Résultat obtenu :
-
 ```text
-............
-12 passed
+16 passed
 ```
 
-## Compilation Python
+La suite couvre notamment :
 
-```bash
-python -m compileall -q app
-```
+- upload / profiling / qualité ;
+- préparation / versioning / rollback ;
+- pipelines et feature engineering ;
+- tests statistiques avec tailles d’effet et payloads de visualisation ;
+- régression avec Q-Q plot, histogramme des résidus et influence ;
+- ANOVA, ACP et clustering ;
+- SQL, NLQ et visualisations ;
+- AutoML, model registry et XAI ;
+- forecasting et anomalies ;
+- AI Analyst et provenance ;
+- historique AI Analyst ;
+- Report Builder et exports.
 
-Résultat : `OK`.
+## Python
 
-## Nouveaux scénarios v0.9
+`python -m compileall backend/app` : OK.
 
-Les tests automatisés ajoutés couvrent :
+## Frontend
 
-- `GET /ai/capabilities` ;
-- présence du Tool Registry ;
-- détection d'une intention `correlation` ;
-- exécution réelle du moteur de corrélation ;
-- Critic `passed` ;
-- provenance dataset/version/outils ;
-- politique `llm_used_for_numeric_calculation = false` ;
-- détection d'une intention `regression` ;
-- exécution réelle de la régression ;
-- R² supérieur à 0,95 sur un jeu de test construit pour vérifier le moteur.
+Les fichiers `frontend/app/page.tsx` et `frontend/lib/api.ts` ont été validés au niveau syntaxique par transpilation TypeScript.
+
+Le build Next.js/Docker complet reste à exécuter sur la machine cible. Cette distinction est volontaire : une validation syntaxique n’est pas présentée comme un build de production réussi.
 
 ## Ports
 
 ```text
-Frontend : 3005
-Backend  : 8005
+Web : 3005
+API : 8005
 ```
-
-## Frontend
-
-Correctif v0.9.1 appliqué au type narrowing TypeScript des handlers asynchrones (`result` nullable) qui bloquait `next build` à `page.tsx:321`. Les usages analogues ont été corrigés dans les autres modules afin d'éviter une succession d'erreurs identiques.
-
-Contrôle statique avec stubs React/Node : aucune erreur TypeScript propre au code DataVision détectée après le correctif.
-
-Le build Next.js complet n'a pas pu être reproduit dans l'environnement de génération car l'installation npm y a dépassé le délai disponible. La validation définitive du conteneur frontend doit donc être faite par `docker compose build web` sur la machine cible.
-
-
-## v0.9.2
-
-- Correctif appliqué pour l’erreur TypeScript `model is possibly null` signalée par `next build`.
-- Vérification statique ciblée des autres fermetures asynchrones manipulant `result`/`model`.
-- Le build Next.js complet doit être exécuté dans Docker sur la machine cible, où les dépendances npm sont disponibles.

@@ -129,6 +129,33 @@ def regression_analysis(df: pd.DataFrame, dependent: str, independents: list[str
         for i in order
     ]
 
+    # Additional visual diagnostics: residual distribution, Q-Q plot and influence.
+    bins = min(24, max(8, int(math.sqrt(max(1, len(resid))))))
+    hist_counts, hist_edges = np.histogram(np.asarray(resid, dtype=float), bins=bins)
+    residual_histogram = [
+        {"from": _float(hist_edges[i]), "to": _float(hist_edges[i+1]), "count": int(hist_counts[i])}
+        for i in range(len(hist_counts))
+    ]
+    try:
+        (theoretical, ordered_resid), (qq_slope, qq_intercept, qq_r) = stats.probplot(np.asarray(resid, dtype=float), dist="norm", fit=True)
+        qq_idx = np.linspace(0, len(theoretical)-1, min(500, len(theoretical))).astype(int)
+        qq_points = [{"x": _float(theoretical[i]), "y": _float(ordered_resid[i])} for i in qq_idx]
+        qq_line = {"slope": _float(qq_slope), "intercept": _float(qq_intercept), "r": _float(qq_r)}
+    except Exception:
+        qq_points, qq_line = [], {"slope": None, "intercept": None, "r": None}
+    try:
+        influence_obj = model.get_influence()
+        cooks = np.asarray(influence_obj.cooks_distance[0], dtype=float)
+        studentized = np.asarray(influence_obj.resid_studentized_internal, dtype=float)
+        labels = list(y.index)
+        top = np.argsort(np.nan_to_num(cooks, nan=-1.0))[::-1][:15]
+        influence = [
+            {"index": str(labels[i]), "cooks_distance": _float(cooks[i]), "studentized_residual": _float(studentized[i])}
+            for i in top if math.isfinite(float(cooks[i]))
+        ]
+    except Exception:
+        influence = []
+
     return {
         "dependent": dependent,
         "independents": independents,
@@ -144,6 +171,10 @@ def regression_analysis(df: pd.DataFrame, dependent: str, independents: list[str
         "coefficients": coefficients,
         "tests": {"shapiro_wilk_residuals": shapiro, "breusch_pagan": bp},
         "diagnostics": diagnostics,
+        "residual_histogram": residual_histogram,
+        "qq_points": qq_points,
+        "qq_line": qq_line,
+        "influence": influence,
     }
 
 
@@ -192,6 +223,12 @@ def anova_analysis(df: pd.DataFrame, response: str, factor1: str, factor2: str |
     if factor2 is None:
         groups = [g[response].to_numpy(dtype=float) for _, g in work.groupby(factor1, observed=True)]
         f_stat, p_value = stats.f_oneway(*groups)
+        all_values = np.concatenate(groups)
+        grand_mean = float(np.mean(all_values))
+        ss_between = float(sum(len(g) * (float(np.mean(g)) - grand_mean) ** 2 for g in groups))
+        ss_within = float(sum(np.sum((g - float(np.mean(g))) ** 2) for g in groups))
+        ss_total = ss_between + ss_within
+        eta_sq = ss_between / ss_total if ss_total > 1e-15 else np.nan
         try:
             lev_stat, lev_p = stats.levene(*groups, center="median")
         except Exception:
@@ -210,7 +247,10 @@ def anova_analysis(df: pd.DataFrame, response: str, factor1: str, factor2: str |
             })
         return {
             "type": "one_way", "response": response, "factor1": factor1, "factor2": None, "n": int(len(work)),
-            "anova_table": [{"source": factor1, "df": int(len(groups)-1), "f": _float(f_stat), "p_value": _float(p_value)}],
+            "anova_table": [
+                {"source": factor1, "sum_sq": _float(ss_between), "df": int(len(groups)-1), "f": _float(f_stat), "p_value": _float(p_value), "effect_size": _float(eta_sq)},
+                {"source": "Résidus", "sum_sq": _float(ss_within), "df": int(len(work)-len(groups)), "f": None, "p_value": None, "effect_size": None},
+            ],
             "levene": {"statistic": _float(lev_stat), "p_value": _float(lev_p)},
             "normality": normality, "tukey": tukey,
             "groups": _group_summaries(work, response, [factor1]),
@@ -222,10 +262,16 @@ def anova_analysis(df: pd.DataFrame, response: str, factor1: str, factor2: str |
     table = anova_lm(model, typ=2)
     source_names = {"C(f1)": factor1, "C(f2)": factor2, "C(f1):C(f2)": f"{factor1} × {factor2}", "Residual": "Résidus"}
     rows = []
+    residual_ss = float(table.loc["Residual", "sum_sq"]) if "Residual" in table.index else np.nan
     for idx, row in table.iterrows():
+        ss = _float(row.get("sum_sq"))
+        partial_eta = None
+        if str(idx) != "Residual" and ss is not None and math.isfinite(residual_ss):
+            denom = float(ss) + residual_ss
+            partial_eta = _float(float(ss) / denom) if denom > 1e-15 else None
         rows.append({
-            "source": source_names.get(str(idx), str(idx)), "sum_sq": _float(row.get("sum_sq")), "df": _float(row.get("df")),
-            "f": _float(row.get("F")), "p_value": _float(row.get("PR(>F)")),
+            "source": source_names.get(str(idx), str(idx)), "sum_sq": ss, "df": _float(row.get("df")),
+            "f": _float(row.get("F")), "p_value": _float(row.get("PR(>F)")), "effect_size": partial_eta,
         })
     residual_shapiro = _shapiro(model.resid)
     try:

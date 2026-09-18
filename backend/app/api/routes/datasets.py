@@ -1,4 +1,5 @@
 from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from app.services.storage import (
@@ -20,6 +21,9 @@ from app.services.forecasting import forecast_series
 from app.services.anomaly_detection import detect_anomalies
 from app.services.xai import model_diagnostics, local_explanation
 from app.services.ai_analyst import AnalystContext, analyze_dataset, tool_registry
+from app.services.analysis_history import save_analysis, list_analyses, get_analysis
+from app.services.nlq_sql import run_nlq
+from app.services.report_builder import build_report, list_reports, get_report, export_report
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -135,6 +139,18 @@ class AnomalyRequest(BaseModel):
 class LocalExplanationRequest(BaseModel):
     row: dict
 
+
+
+
+class NLQRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=1000)
+    limit: int = Field(default=200, ge=1, le=5000)
+
+
+class ReportCreateRequest(BaseModel):
+    title: str = Field(default="Rapport DataVision", min_length=1, max_length=180)
+    sections: list[str] = ["overview", "quality", "descriptive", "ai_analysis", "methodology", "provenance"]
+    analysis_session_id: str | None = None
 
 class AIAnalysisRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
@@ -361,13 +377,97 @@ def dataset_ai_analyze(dataset_id: str, request: AIAnalysisRequest):
             horizon=request.horizon,
             mode=request.mode,
         )
-        return analyze_dataset(load_dataframe(dataset_id), context)
+        result = analyze_dataset(load_dataframe(dataset_id), context)
+        save_analysis(result)
+        return result
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
     except (ValueError, TypeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"AI Analyst impossible: {exc}") from exc
+
+
+@router.get("/{dataset_id}/ai/history")
+def dataset_ai_history(dataset_id: str):
+    try:
+        get_meta(dataset_id)
+        rows = list_analyses(dataset_id)
+        return {"analyses": rows, "count": len(rows)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.get("/{dataset_id}/ai/history/{session_id}")
+def dataset_ai_history_item(dataset_id: str, session_id: str):
+    try:
+        get_meta(dataset_id)
+        item = get_analysis(session_id)
+        if item.get("provenance", {}).get("dataset_id") != dataset_id:
+            raise HTTPException(status_code=404, detail="Analyse introuvable pour ce dataset")
+        return item
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Analyse introuvable") from exc
+
+
+@router.post("/{dataset_id}/workspace/nlq")
+def dataset_workspace_nlq(dataset_id: str, request: NLQRequest):
+    try:
+        return run_nlq(load_dataframe(dataset_id), request.question, request.limit)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"NLQ impossible: {exc}") from exc
+
+
+@router.get("/{dataset_id}/reports")
+def dataset_reports(dataset_id: str):
+    try:
+        get_meta(dataset_id)
+        rows = list_reports(dataset_id)
+        return {"reports": rows, "count": len(rows)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.post("/{dataset_id}/reports")
+def dataset_report_create(dataset_id: str, request: ReportCreateRequest):
+    try:
+        return build_report(dataset_id, request.title, request.sections, request.analysis_session_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset ou analyse introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Création du rapport impossible: {exc}") from exc
+
+
+@router.get("/{dataset_id}/reports/{report_id}")
+def dataset_report(dataset_id: str, report_id: str):
+    try:
+        report = get_report(report_id)
+        if report.get("dataset_id") != dataset_id:
+            raise HTTPException(status_code=404, detail="Rapport introuvable pour ce dataset")
+        return report
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Rapport introuvable") from exc
+
+
+@router.get("/{dataset_id}/reports/{report_id}/export/{fmt}")
+def dataset_report_export(dataset_id: str, report_id: str, fmt: str):
+    try:
+        report = get_report(report_id)
+        if report.get("dataset_id") != dataset_id:
+            raise HTTPException(status_code=404, detail="Rapport introuvable pour ce dataset")
+        path = export_report(report_id, fmt)
+        media = {"pdf":"application/pdf","docx":"application/vnd.openxmlformats-officedocument.wordprocessingml.document","html":"text/html","md":"text/markdown","markdown":"text/markdown"}.get(fmt.lower(), "application/octet-stream")
+        return FileResponse(path, media_type=media, filename=path.name)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Rapport introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{dataset_id}/versions")

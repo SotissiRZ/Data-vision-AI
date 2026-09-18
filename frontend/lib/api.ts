@@ -207,3 +207,43 @@ export async function runAIAnalysis(id: string, payload: { question: string; tar
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }), 'Analyse AI impossible');
 }
+
+export async function runNaturalLanguageQuery(id: string, question: string, limit = 200) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/workspace/nlq`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question, limit }),
+  }), 'Question en langage naturel impossible');
+}
+
+export async function getAIHistory(id: string) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/ai/history`), 'Historique AI Analyst indisponible');
+}
+
+export async function getAIHistoryItem(id: string, sessionId: string) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/ai/history/${sessionId}`), 'Analyse AI introuvable');
+}
+
+export async function getReports(id: string) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/reports`), 'Rapports indisponibles');
+}
+
+export async function createReport(id: string, payload: { title: string; sections: string[]; analysis_session_id?: string | null }) {
+  return parse<any>(await fetch(`${API}/datasets/${id}/reports`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }), 'Création du rapport impossible');
+}
+
+export async function downloadReport(id: string, reportId: string, format: 'pdf'|'docx'|'html'|'md') {
+  const res = await fetch(`${API}/datasets/${id}/reports/${reportId}/export/${format}`);
+  if (!res.ok) {
+    let detail = 'Export du rapport impossible';
+    try { const body = await res.json(); detail = body.detail ?? detail; } catch {}
+    throw new Error(detail);
+  }
+  const blob = await res.blob();
+  const disposition = res.headers.get('content-disposition') ?? '';
+  const match = disposition.match(/filename="?([^";]+)"?/i);
+  const filename = match?.[1] ?? `datavision-report.${format}`;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}

@@ -1,12 +1,10 @@
-# DataVision AI — v0.9.2
+# DataVision AI — v1.0.2
 
-DataVision AI est un **logiciel installable de Data Intelligence** réunissant import, profiling, qualité, préparation versionnée, statistiques, SQL local, visualisation, Machine Learning, forecasting, détection d'anomalies, explicabilité, prédiction et maintenant **AI Analyst orchestré** dans une même interface.
+DataVision AI est un **Data Intelligence Workspace local et installable** réunissant import, profiling, qualité, préparation versionnée, statistiques, SQL, visualisation, Machine Learning, forecasting, détection d'anomalies, XAI, prédiction, AI Analyst et reporting reproductible dans une même interface.
 
-L'interface conserve l'esprit du DataVision R/Shiny historique — navigation latérale, modules analytiques dédiés et résultats structurés — avec une architecture moderne **Next.js + FastAPI + Python**.
+L'interface conserve l'esprit du DataVision R/Shiny historique tout en utilisant une architecture **Next.js + FastAPI + Python**.
 
-## Ports de cette version
-
-Les ports par défaut ont été déplacés pour éviter les conflits demandés :
+## Ports
 
 ```text
 Interface : http://localhost:3005
@@ -14,188 +12,259 @@ API       : http://localhost:8005
 OpenAPI   : http://localhost:8005/docs
 ```
 
-Les ports 3000 et 8000 ne sont plus utilisés par la configuration Docker fournie.
+Les ports 3000 et 8000 ne sont pas utilisés.
 
+## Nouveau dans v1.0.2 — interface analytique plus lisible & diagnostics visuels
 
-## Correctif v0.9.2 — build Docker / TypeScript
+Cette version poursuit l’épuration de l’interface et ajoute des visualisations statistiques qui manquaient pour interpréter les résultats sans dépendre uniquement des tableaux numériques.
 
-Cette révision corrige le blocage rencontré pendant `next build` :
+### Navigation et ergonomie
+
+- navigation regroupée en quatre blocs : **Explorer**, **Analyser**, **Modéliser** et **Partager** ;
+- menu latéral plus compact et hiérarchie plus claire ;
+- panneaux de configuration statistiques simplifiés ;
+- tableaux techniques placés dans des sections repliables lorsque le graphique est plus utile en première lecture ;
+- identifiants probables (`ID`, `*_id`, colonnes quasi uniques) détectés et exclus des sélections analytiques automatiques ;
+- identifiants toujours accessibles manuellement lorsqu’ils sont réellement nécessaires.
+
+### Tests statistiques : au-delà de la p-value
+
+Les résultats des tests incluent désormais, lorsque la méthode le permet :
+
+- **Cohen d** pour Student/Welch ;
+- **corrélation bisérielle de rang** pour Mann–Whitney ;
+- **eta²** pour ANOVA à un facteur ;
+- **epsilon²** pour Kruskal–Wallis ;
+- **r / rho** pour Pearson et Spearman ;
+- **V de Cramér** pour le chi-deux ;
+- **odds ratio** pour Fisher ;
+- **Cohen dz** pour le t apparié.
+
+Les écrans affichent aussi, selon le test :
+
+- boxplots et synthèses par groupe ;
+- nuage de points pour les corrélations ;
+- heatmap d’intensité pour les tableaux de contingence ;
+- diagnostics statistiques repliables.
+
+### Régression : diagnostics professionnels
+
+La page Régression contient maintenant :
+
+- forest plot des coefficients avec **IC 95 %** et ligne de référence à zéro ;
+- résidus vs valeurs ajustées ;
+- **Q-Q plot** des résidus ;
+- histogramme des résidus ;
+- observé vs prédit ;
+- Shapiro-Wilk et Breusch-Pagan ;
+- observations les plus influentes selon la **distance de Cook** ;
+- AIC/BIC et informations techniques repliables.
+
+### ANOVA
+
+- **eta²** pour l’ANOVA à un facteur ;
+- **eta² partiel** pour l’ANOVA à deux facteurs ;
+- visualisation des intervalles de confiance à 95 % du post-hoc Tukey ;
+- boxplots par groupe conservés pour la lecture des distributions.
+
+### Forecasting et XAI
+
+- benchmark Forecasting complété par des graphiques **RMSE** et **MAE** ;
+- XAI régression enrichi avec résidus vs prédictions et observé vs prédit ;
+- résultats numériques détaillés conservés mais moins envahissants dans l’interface.
+
+### Validation v1.0.2
 
 ```text
-Type error: 'result' is possibly 'null'.
-frontend/app/page.tsx
+Backend : 16 tests passent
+Python  : compileall OK
+TS/TSX  : syntaxe validée par transpilation TypeScript
 ```
 
-Le correctif ajoute des assertions de non-nullité uniquement dans les handlers asynchrones exécutés après le garde UI `if (!result) return ...`. Les modules concernés sont Préparation, Régression, ANOVA, ACP, Clustering, tests statistiques, visualisation, SQL, forecasting, anomalies et AI Analyst.
+Le build Docker/Next complet reste à confirmer sur la machine cible, car c’est elle qui possède l’environnement npm/Docker complet.
 
-Le warning Autoprefixer `align-items: end` a aussi été supprimé en utilisant `align-items: flex-end`.
+## Fonctionnalités v1.0
 
-Sur une machine où l'étape `npm install` de l'image Docker a déjà été construite, Docker doit normalement réutiliser cette couche en cache lors du prochain build du frontend.
+### Report Builder reproductible
 
-## Nouveautés v0.9 — AI Analyst réel
+L'onglet **Rapports** est maintenant fonctionnel. Un rapport peut inclure :
 
-### 1. Orchestrateur analytique
+- vue d'ensemble du dataset ;
+- qualité des données ;
+- statistiques descriptives ;
+- une session AI Analyst précise ;
+- méthodologie ;
+- provenance complète.
 
-Le nouvel onglet **AI Analyst** accepte une demande en français ou en anglais et :
+Chaque rapport est verrouillé sur **l'identifiant et la version exacte du dataset** utilisés lors de sa génération.
 
-1. détecte l'intention analytique ;
-2. inspecte le dataset ;
-3. construit un plan ;
-4. sélectionne des outils réels ;
-5. exécute les calculs ;
-6. transforme les sorties en constats vérifiables ;
-7. exécute un contrôle Critic ;
-8. retourne la provenance des résultats.
+Exports réels :
 
-Le noyau v0.9 fonctionne **sans fournisseur LLM externe**. Il utilise un routeur déterministe de langage naturel pour choisir les moteurs analytiques. Une couche LLM configurable pourra être ajoutée ensuite pour enrichir la compréhension du langage, sans lui déléguer les calculs numériques.
+```text
+PDF
+DOCX
+HTML
+Markdown
+```
 
-### 2. Tool Registry
+### Historique AI Analyst
 
-Outils actuellement orchestrables :
+Chaque analyse AI Analyst est maintenant persistée localement. L'interface permet de rouvrir les sessions précédentes avec :
 
-- profiling ;
+- question ;
+- intention détectée ;
+- résultat synthétique ;
+- outils exécutés ;
+- Critic status ;
+- provenance ;
+- timestamp ;
+- version du dataset.
+
+### NLQ / Text-to-SQL contrôlé
+
+Le SQL Workspace accepte désormais des questions en langage naturel, par exemple :
+
+```text
+Quelle est la moyenne de sales par region ?
+Combien de lignes par segment ?
+Quelle est la somme de revenue par product ?
+Top 10 produits par sales
+```
+
+DataVision :
+
+1. identifie les colonnes citées ;
+2. construit une requête SQL ;
+3. expose les hypothèses et le niveau de confiance ;
+4. valide la requête avec le garde-fou SQL read-only ;
+5. exécute la requête via DuckDB ou le fallback local.
+
+Le NLQ v1.0 est volontairement déterministe. Les questions ambiguës sont signalées au lieu d'inventer une logique métier.
+
+### Installation Windows simplifiée
+
+Trois scripts PowerShell sont inclus :
+
+```text
+install-windows.ps1
+start-datavision.ps1
+stop-datavision.ps1
+```
+
+`install-windows.ps1` vérifie Docker, crée `.env`, construit les images, démarre DataVision et ouvre automatiquement `http://localhost:3005`.
+
+### Builds Docker plus rapides
+
+Les Dockerfiles utilisent maintenant les caches BuildKit :
+
+- cache pip pour le backend ;
+- cache npm pour le frontend.
+
+Les reconstructions après une modification de code doivent donc éviter de retélécharger inutilement toutes les dépendances.
+
+## Fonctionnalités disponibles
+
+- import CSV / XLSX / JSON / Parquet / TXT ;
+- profiling automatique ;
 - Data Quality ;
+- préparation et transformations ;
+- versioning immuable et rollback ;
+- lineage et pipelines sauvegardables/rejouables ;
+- feature engineering sécurisé ;
+- GroupBy, pivot, unpivot, jointures et concaténations ;
+- statistiques descriptives ;
+- Statistical Test Advisor ;
+- tests paramétriques/non paramétriques ;
 - corrélations ;
 - régression ;
 - ANOVA ;
-- clustering ;
-- AutoML ;
-- forecasting ;
-- détection d'anomalies ;
-- decision support.
-
-### 3. Intentions prises en charge
-
-Exemples :
-
-```text
-Analyse ce dataset et identifie les principaux problèmes, relations et anomalies.
-Quelles sont les corrélations les plus importantes ?
-Détecte les anomalies dans les variables numériques.
-Compare les groupes et indique s'il existe une différence significative.
-Fais une régression pour expliquer target par x et z.
-Construis un modèle prédictif pour churn.
-Prévois sales sur les 12 prochaines périodes.
-```
-
-La cible, la colonne temporelle et l'horizon peuvent aussi être forcés dans l'interface.
-
-### 4. Critic / Reliability Layer
-
-Chaque exécution vérifie au minimum :
-
-- le succès ou l'échec de chaque outil ;
-- la présence d'une provenance pour les constats numériques ;
-- l'interdiction d'utiliser un LLM comme calculatrice.
-
-Le résultat comprend un statut `passed` ou `warning`.
-
-### 5. Provenance
-
-Chaque réponse AI Analyst contient :
-
-- dataset et version utilisés ;
-- date d'exécution ;
-- outils réellement exécutés ;
-- temps d'exécution par outil ;
-- résultats techniques ;
-- constats reliés à leur source calculée ;
-- politique de calcul `deterministic_tools_only`.
-
-## API v0.9
-
-```text
-GET  /api/v1/datasets/{id}/ai/capabilities
-POST /api/v1/datasets/{id}/ai/analyze
-```
-
-Exemple :
-
-```json
-{
-  "question": "Quelles sont les corrélations les plus importantes entre age, score et cost ?",
-  "variables": ["age", "score", "cost"],
-  "mode": "fast"
-}
-```
-
-Exemple avec forecasting :
-
-```json
-{
-  "question": "Prévois les ventes sur les 12 prochaines périodes",
-  "target": "sales",
-  "date_column": "date",
-  "horizon": 12,
-  "mode": "auto"
-}
-```
-
-## Fonctionnalités déjà présentes
-
-- CSV / XLSX / JSON / Parquet / TXT ;
-- profiling automatique ;
-- Data Quality ;
-- versioning immuable et rollback ;
-- pipelines de préparation sauvegardables/rejouables ;
-- feature engineering sécurisé ;
-- GroupBy, pivot, unpivot, jointures et concaténations ;
-- régression, ANOVA, ACP, K-means ;
-- Statistical Test Advisor ;
-- tests paramétriques/non paramétriques et corrélations ;
+- ACP ;
+- clustering K-means ;
 - Visualization Studio ;
 - SQL Workspace read-only ;
+- NLQ/Text-to-SQL v1.0 ;
 - DuckDB / Polars ;
-- AutoML, CV, tuning et train/validation/test ;
+- AutoML ;
+- cross-validation et tuning ;
+- train/validation/test ;
 - guardrails ML ;
-- Model Cards et registre local ;
+- Model Cards ;
+- registre local de modèles ;
 - prédictions ;
 - forecasting ;
 - anomalies ;
 - XAI global/local ;
-- AI Analyst avec orchestration d'outils, Critic et provenance.
+- AI Analyst avec orchestration, Critic et provenance ;
+- historique AI Analyst ;
+- rapports reproductibles PDF/DOCX/HTML/Markdown.
 
-## Validation v0.9
+## Installation Windows recommandée
 
-Backend :
+Dans PowerShell, à la racine du projet :
 
-```text
-12 passed
+```powershell
+Set-ExecutionPolicy -Scope Process Bypass
+.\install-windows.ps1
 ```
 
-Les nouveaux scénarios v0.9 vérifient :
+Ou manuellement :
 
-- endpoint des capacités AI Analyst ;
-- routage d'une demande de corrélation ;
-- exécution réelle du moteur de corrélation ;
-- provenance des résultats ;
-- `llm_used_for_numeric_calculation = false` ;
-- exécution d'une régression demandée en langage naturel ;
-- R² provenant réellement du moteur statistique.
-
-Compilation Python : `OK`.
-
-## Lancer avec Docker
-
-```bash
-cp .env.example .env
-docker compose up --build
+```powershell
+Copy-Item .env.example .env
+docker compose up --build -d
 ```
 
 Puis ouvrir :
 
 ```text
-Interface : http://localhost:3005
-API       : http://localhost:8005
-OpenAPI   : http://localhost:8005/docs
+http://localhost:3005
 ```
 
-## Tests
+## Démarrage / arrêt ultérieur
 
-```bash
-cd backend
-PYTHONPATH=. pytest -q
+```powershell
+.\start-datavision.ps1
 ```
+
+```powershell
+.\stop-datavision.ps1
+```
+
+## API v1.0 ajoutée
+
+```text
+POST /api/v1/datasets/{id}/workspace/nlq
+
+GET  /api/v1/datasets/{id}/ai/history
+GET  /api/v1/datasets/{id}/ai/history/{session_id}
+
+GET  /api/v1/datasets/{id}/reports
+POST /api/v1/datasets/{id}/reports
+GET  /api/v1/datasets/{id}/reports/{report_id}
+GET  /api/v1/datasets/{id}/reports/{report_id}/export/{format}
+```
+
+Formats d'export : `pdf`, `docx`, `html`, `md`.
+
+## Validation
+
+Backend :
+
+```text
+16 passed
+```
+
+Les tests couvrent notamment :
+
+- tout le socle v0.1 → v0.9 ;
+- persistance de l'historique AI Analyst ;
+- NLQ → SQL → exécution ;
+- génération de rapport verrouillée sur le dataset ;
+- exports PDF, DOCX, HTML et Markdown.
+
+Compilation Python : `OK`.
+
+La syntaxe de `page.tsx` et `lib/api.ts` a été validée par transpilation TypeScript après les ajustements v1.0.2. Le build Docker/Next complet reste à valider dans votre environnement Docker, qui constitue désormais l’environnement de référence.
 
 ## Documentation incluse
 
@@ -206,18 +275,22 @@ docs/
 ├── CHANGELOG.md
 ├── FORECASTING_ANOMALY_XAI.md
 ├── ML_AUTOML.md
+├── UI_VISUAL_ANALYTICS.md
+├── REPORTING_NLQ.md
 ├── README_DEVELOPPEMENT.md
 ├── ROADMAP_EXECUTION.md
 └── VALIDATION.md
 ```
 
-## Limites explicites de v0.9
+## Limites explicites de v1.0
 
-- le routeur de langage naturel est déterministe : un LLM configurable n'est pas encore nécessaire au fonctionnement du module ;
-- NLQ/Text-to-SQL général reste `partial` ;
-- SHAP complet reste `partial` ;
-- rapports reproductibles, authentification/workspaces et packaging desktop renforcé restent à développer.
+- le NLQ est déterministe et ne couvre pas encore toute la grammaire SQL ;
+- aucune couche sémantique métier avancée n'est encore utilisée pour désambiguïser les métriques ;
+- SHAP complet reste partiel ;
+- authentification, vrais workspaces multi-utilisateurs, RBAC, collaboration et SSO restent à implémenter ;
+- l'installation actuelle est Docker/PowerShell, pas encore un exécutable Windows natif `.exe` ;
+- l'exécution asynchrone Celery/Redis des jobs lourds reste à renforcer.
 
-## Règle de fiabilité
+## Principe de fiabilité
 
-Le LLM n'effectue jamais lui-même les calculs statistiques, ML ou de forecasting. Les nombres proviennent des moteurs déterministes ; toute couche IA conversationnelle future restera limitée à la compréhension, la planification, l'orchestration et l'explication.
+Les calculs statistiques, SQL, ML, forecasting et métriques restent exécutés par des moteurs programmatiques. La couche IA sert à comprendre, planifier, orchestrer, contrôler et expliquer — jamais à inventer les résultats numériques.

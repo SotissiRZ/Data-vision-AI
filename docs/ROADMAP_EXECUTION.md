@@ -1,6 +1,6 @@
 # Roadmap d'exécution
 
-## Terminé jusqu'à v0.9
+## Terminé jusqu'à v1.0
 
 - socle FastAPI / Next.js ;
 - interface inspirée du DataVision historique ;
@@ -12,31 +12,47 @@
 - AutoML, train/validation/test, CV et tuning ;
 - guardrails ML, Model Cards et registre local ;
 - prediction API ;
-- forecasting et benchmark de séries temporelles ;
-- détection d'anomalies statistique/multivariée ;
-- XAI : importance, confusion matrix, ROC/PR, calibration, résidus et explications locales ;
-- AI Analyst : intent router, tool registry, orchestrateur, plan, exécution réelle, Critic et provenance.
-
-## v1.0 — reporting et produit installable renforcé
-
+- forecasting ;
+- détection d'anomalies ;
+- XAI core ;
+- AI Analyst, Critic et provenance ;
+- historique AI Analyst ;
+- NLQ/Text-to-SQL déterministe et validé ;
 - Report Builder reproductible ;
-- export HTML puis PDF/DOCX ;
-- historique d'analyses AI Analyst ;
-- Model Gateway configurable avec consentement explicite ;
-- NLQ/Text-to-SQL avec validation SQL ;
-- authentification et workspaces ;
-- PostgreSQL / stockage objet ;
-- workers asynchrones ;
-- packaging desktop/local ;
-- observabilité ;
-- hardening sécurité.
+- exports PDF / DOCX / HTML / Markdown ;
+- scripts d'installation/démarrage Windows ;
+- caches BuildKit pip/npm.
 
-## v1.1+
+## v1.1 — workspace, sécurité et jobs
+
+- authentification locale ;
+- organisations/workspaces ;
+- RBAC ;
+- PostgreSQL réellement utilisé comme metadata store ;
+- jobs asynchrones Celery/Redis ;
+- suivi des jobs et streaming des logs ;
+- audit log ;
+- gestion des secrets ;
+- limites de ressources et sandbox renforcée.
+
+## v1.2 — semantic layer et AI Gateway
+
+- couche sémantique métriques/dimensions ;
+- NLQ avancé ;
+- Model Gateway configurable ;
+- consentement explicite avant fournisseur IA externe ;
+- modèles locaux/Ollama ;
+- traces et coûts IA ;
+- évaluations automatiques.
+
+## v1.3+
 
 - R Workspace ;
+- notebook Python/R/SQL ;
 - collaboration ;
-- semantic layer avancée ;
 - SHAP complet ;
 - fairness avancée ;
 - multi-agent spécialisé ;
+- connecteurs bases/cloud ;
+- packaging desktop natif ;
 - gouvernance Enterprise.

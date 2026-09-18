@@ -22,6 +22,8 @@ data/uploads/*
 !data/uploads/.gitkeep
 data/models/*
 !data/models/.gitkeep
+data/reports/*
+!data/reports/.gitkeep
 
 # Claude Code local state
 .claude/scheduled_tasks.lock

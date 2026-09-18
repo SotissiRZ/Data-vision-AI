@@ -1,3 +1,35 @@
+# v1.0.2
+
+- navigation latérale regroupée : Explorer / Analyser / Modéliser / Partager ;
+- interface des tests statistiques simplifiée et plus responsive ;
+- détection des identifiants probables et exclusion des sélections analytiques automatiques ;
+- tailles d’effet : Cohen d, rank-biserial, eta², epsilon², r/rho, V de Cramér, odds ratio et Cohen dz selon le test ;
+- visualisations adaptées aux tests : boxplots, scatterplots et heatmap de contingence ;
+- régression enrichie : forest plot coefficients + IC 95 %, Q-Q plot, histogramme des résidus et distance de Cook ;
+- ANOVA enrichie : eta² / eta² partiel et intervalles de confiance Tukey ;
+- forecasting : benchmark graphique RMSE + MAE ;
+- XAI régression : résidus vs prédictions et observé vs prédit ;
+- tableaux techniques rendus repliables lorsque pertinent ;
+- 16 tests backend passent.
+
+# v1.0.1
+
+- interface visuellement épurée ;
+- correction des risques de superposition dans les formulaires et panneaux ;
+- responsive amélioré ;
+- dashboard dataset enrichi ;
+- graphiques qualité ajoutés ;
+- heatmap de corrélation ;
+- densité KDE, heatmap et area chart dans Visualization Studio ;
+- tri temporel amélioré des courbes ;
+- scree plot ACP enrichi avec variance cumulée ;
+- heatmap de covariance ACP ;
+- graphiques clustering : taille, silhouette, inertie ;
+- benchmark graphique AutoML ;
+- graphique de scores d'anomalie ;
+- labels et boxplots rendus anti-chevauchement ;
+- 14 tests backend.
+
 # v0.9.2
 
 - Correction du build Next.js en mode TypeScript strict dans `XaiView`.
@@ -103,3 +135,15 @@
 ## v0.2
 - Refonte UI inspirée de l'application historique.
 - Statistiques descriptives et interface de navigation modulaire.
+## v1.0.0
+
+- Report Builder reproductible ;
+- exports PDF, DOCX, HTML, Markdown ;
+- persistance et consultation de l'historique AI Analyst ;
+- NLQ/Text-to-SQL déterministe avec validation read-only ;
+- interface Rapports activée ;
+- NLQ intégré au SQL Workspace ;
+- scripts PowerShell installation/start/stop Windows ;
+- caches BuildKit pip/npm ;
+- ports conservés à 3005/8005 ;
+- 13 tests backend.
