@@ -30,7 +30,7 @@ def queue_status() -> dict[str, Any]:
 
 
 def submit_job(*, user_id: str, organization_id: str | None, workspace_id: str | None, job_type: str, dataset_id: str | None, payload: dict[str, Any]) -> dict[str, Any]:
-    if job_type not in {"automl", "ai_analysis", "forecast", "report"}:
+    if job_type not in {"automl", "ai_analysis", "forecast", "report", "proactive_scan"}:
         raise ValueError("Type de job non supporté")
     job_id = str(uuid.uuid4()); now = utcnow()
     execute("""INSERT INTO jobs(id,organization_id,workspace_id,user_id,job_type,status,progress,dataset_id,payload_json,created_at,cancel_requested)
@@ -92,6 +92,7 @@ def run_job(job_id: str) -> dict[str, Any]:
     from app.services.semantic_layer import get_semantic_model
     from app.services.forecasting import forecast_series
     from app.services.report_builder import build_report
+    from app.services.proactive_intelligence import scan as proactive_scan
 
     job = get_job(job_id)
     if job["cancel_requested"] or job["status"] == "cancelled":
@@ -155,6 +156,12 @@ def run_job(job_id: str) -> dict[str, Any]:
                 raise ValueError("dataset_id requis pour le rapport")
             _update(job_id, progress=15)
             result = build_report(dataset_id, **payload)
+        elif job["job_type"] == "proactive_scan":
+            if not dataset_id:
+                raise ValueError("dataset_id requis pour le scan proactif")
+            _update(job_id, progress=15)
+            df = load_dataframe(dataset_id)
+            result = proactive_scan(dataset_id, df, payload.get("watch_ids") or None, bool(payload.get("auto_configure", True)))
         else:
             raise ValueError("Type de job non supporté")
         current = get_job(job_id)

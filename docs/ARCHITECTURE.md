@@ -151,3 +151,57 @@ La couche sémantique reste locale et dataset-root-aware. Les métriques calcul�
 ### Professional shell
 
 La structure d'information passe à six espaces : Vue d'ensemble, Données, Analyser, Modéliser, Décider, Publier. La sidebar affiche les espaces ; les modules sont exposés dans une sous-navigation contextuelle. `Ctrl/Cmd + K` permet navigation et handoff vers AI Analyst.
+
+## v2.3 — Semantic Model Runtime
+
+Le runtime sémantique est situé dans `backend/app/services/semantic_layer.py`.
+
+```text
+Dataset base
+  + tables liées visibles dans le workspace
+        ↓
+Semantic Model JSON (versionné par root dataset)
+        ↓
+Validator
+  - colonnes
+  - cardinalité
+  - fan-out
+  - formules
+  - cycles
+  - hiérarchies
+        ↓
+Semantic Query Engine
+  - relations sûres
+  - filtres
+  - agrégations
+  - métriques calculées
+  - time intelligence
+        ↓
+API /semantic/query
+```
+
+Toutes les tables liées passent par `storage.load_dataframe()`. En contexte Enterprise, elles reçoivent donc le même boundary tenant-aware (RBAC/RLS/CLS) que les autres moteurs.
+
+## v2.4 — Semantic Orchestration Runtime
+
+La couche sémantique devient un service transversal utilisé par trois surfaces principales :
+
+```text
+                  Semantic Model v2
+                         │
+          ┌──────────────┼──────────────┐
+          │              │              │
+         NLQ         AI Analyst     Dashboards
+          │              │              │
+          └──────────────┼──────────────┘
+                         │
+                 Semantic Query Engine
+                         │
+                  Safe join closure
+                         │
+             Governed tenant-aware data
+```
+
+Le moteur calcule automatiquement les tables intermédiaires requises pour un chemin de relation multi-hop. Les relations N:N restent interdites dans l'exécution automatique.
+
+Le Dashboard Builder peut projeter après filtre les colonnes de la table de faits afin que les widgets physiques et les widgets sémantiques partagent le même contexte analytique.

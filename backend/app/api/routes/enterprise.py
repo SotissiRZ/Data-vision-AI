@@ -66,7 +66,7 @@ class PolicyRequest(BaseModel):
 class JobSubmitRequest(BaseModel):
     workspace_id: str | None = None
     organization_id: str | None = None
-    job_type: str = Field(pattern="^(automl|ai_analysis|forecast|report)$")
+    job_type: str = Field(pattern="^(automl|ai_analysis|forecast|report|proactive_scan)$")
     dataset_id: str | None = None
     payload: dict[str, Any] = {}
 

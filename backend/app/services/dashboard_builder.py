@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.services.storage import get_meta
 from app.services.visualization import build_visualization
 from app.services.quality import quality_report
+from app.services.semantic_layer import get_semantic_model, query_semantic_metric, semantic_filtered_base
 
 
 def _now() -> str:
@@ -209,13 +210,99 @@ def _kpi(df: pd.DataFrame, config: dict[str, Any]) -> dict[str, Any]:
     return {"type": "kpi", "metric": metric, "column": column, "value": value, "detail": detail}
 
 
-def preview_dashboard(df: pd.DataFrame, *, filters: list[dict[str, Any]] | None, widgets: list[dict[str, Any]]) -> dict[str, Any]:
-    filtered, applied = apply_filters(df, filters)
+def _semantic_filters(filters: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
+    out: list[dict[str, Any]] = []
+    for raw in filters or []:
+        ref = str(raw.get("dimension") or raw.get("column") or "")
+        if not ref:
+            continue
+        op = str(raw.get("operator") or "eq")
+        # Semantic engine uses ne while legacy dashboard builder uses neq.
+        if op == "neq": op = "ne"
+        value = raw.get("value")
+        if op == "between":
+            value = [raw.get("value"), raw.get("value2")]
+        out.append({"dimension": ref, "operator": op, "value": value, "min": raw.get("value"), "max": raw.get("value2")})
+    return out
+
+
+def _semantic_widget(dataset_id: str, df: pd.DataFrame, raw: dict[str, Any], filters: list[dict[str, Any]] | None) -> dict[str, Any]:
+    cfg = dict(raw.get("config") or {})
+    metric_id = str(cfg.get("metric_id") or "")
+    if not metric_id:
+        raise ValueError("Le widget sémantique nécessite une métrique métier.")
+    model = get_semantic_model(dataset_id, df)
+    widget_type = str(raw.get("type") or "semantic_chart")
+    if widget_type == "semantic_kpi":
+        query = query_semantic_metric(dataset_id, df, metric_id, [], _semantic_filters(filters), 1)
+        metric = query.get("metric") or {}
+        return {
+            "type": "kpi", "semantic": True, "metric_id": metric_id, "value": query.get("value"),
+            "detail": metric.get("label") or metric.get("name") or metric_id,
+            "unit": metric.get("unit") or "", "semantic_model_version": query.get("semantic_model_version"),
+        }
+
+    hierarchy_id = str(cfg.get("hierarchy_id") or "")
+    hierarchy = next((h for h in model.get("hierarchies", []) if h.get("id") == hierarchy_id), None) if hierarchy_id else None
+    level = max(0, int(cfg.get("hierarchy_level") or 0))
+    dimension = str(cfg.get("dimension") or "")
+    drill = None
+    if hierarchy and hierarchy.get("levels"):
+        levels = list(hierarchy.get("levels") or [])
+        level = min(level, len(levels)-1)
+        dimension = str(levels[level])
+        drill = {
+            "hierarchy_id": hierarchy_id, "level": level, "dimension": dimension,
+            "next_dimension": levels[level+1] if level+1 < len(levels) else None,
+            "next_level": level+1 if level+1 < len(levels) else None,
+            "levels": levels,
+        }
+    date_dimension = str(cfg.get("date_dimension") or "") or None
+    time_grain = str(cfg.get("time_grain") or "") or None
+    if date_dimension and not time_grain:
+        time_grain = "month"
+    dimensions = [dimension] if dimension else []
+    query = query_semantic_metric(
+        dataset_id, df, metric_id, dimensions, _semantic_filters(filters), int(cfg.get("limit") or 100),
+        date_dimension, time_grain, str(cfg.get("comparison") or "none"),
+        str(cfg.get("time_calculation") or "none"), int(cfg.get("rolling_window") or 3),
+    )
+    metric = query.get("metric") or {}
+    chart_type = str(cfg.get("chart_type") or ("line" if date_dimension else "bar"))
+    rows = query.get("result") or []
+    x_key = date_dimension if date_dimension else dimension
+    value_key = "time_value" if str(cfg.get("display_value") or "value") == "time_value" else "value"
+    data = []
+    for row in rows:
+        label = row.get(x_key) if x_key else metric.get("label") or metric_id
+        data.append({"label": label, "value": row.get(value_key), **row})
+    return {
+        "type": chart_type, "semantic": True, "metric_id": metric_id, "metric_label": metric.get("label") or metric_id,
+        "unit": metric.get("unit") or "", "x": x_key, "value_label": metric.get("label") or metric_id,
+        "data": data, "query": {k: query.get(k) for k in ("dimensions","comparison","time_calculation","time_grain","semantic_model_version")},
+        "drill": drill,
+    }
+
+
+def preview_dashboard(dataset_id: str, df: pd.DataFrame, *, filters: list[dict[str, Any]] | None, widgets: list[dict[str, Any]]) -> dict[str, Any]:
+    # Semantic filtering is applied first so a cross-filter on a linked dimension constrains legacy
+    # KPI/charts too. Safe N:1/1:1 relationships preserve fact-row cardinality.
+    try:
+        filtered = semantic_filtered_base(dataset_id, df, filters or []) if filters else df.copy()
+        applied = list(filters or [])
+    except Exception:
+        # Fail closed for an explicitly semantic filter; keep backward compatibility for purely
+        # physical dashboards only when no dimension marker is present.
+        if any(f.get("dimension") or f.get("source") in {"semantic", "drill"} for f in filters or []):
+            raise
+        filtered, applied = apply_filters(df, filters)
     rendered: list[dict[str, Any]] = []
     for raw in _normalize_layout(widgets):
         item = {"id": raw["id"], "title": raw.get("title"), "type": raw.get("type"), "size": raw.get("size"), "order": raw.get("order")}
         try:
-            if raw.get("type") == "kpi":
+            if raw.get("type") in {"semantic_kpi", "semantic_chart"}:
+                item["result"] = _semantic_widget(dataset_id, df, raw, filters)
+            elif raw.get("type") == "kpi":
                 item["result"] = _kpi(filtered, raw.get("config") or {})
             elif raw.get("type") == "text":
                 item["result"] = {"type": "text", "text": str((raw.get("config") or {}).get("text") or "")}
@@ -231,7 +318,10 @@ def preview_dashboard(df: pd.DataFrame, *, filters: list[dict[str, Any]] | None,
         except Exception as exc:
             item["status"] = "error"; item["error"] = str(exc); item["result"] = None
         rendered.append(item)
+    semantic_count = sum(1 for w in widgets if w.get("type") in {"semantic_kpi", "semantic_chart"})
     return {
         "rows_before": int(len(df)), "rows_after": int(len(filtered)), "filter_count": len(applied),
-        "filters_applied": applied, "widgets": rendered, "calculation_policy": "deterministic_engines_only",
+        "filters_applied": applied, "widgets": rendered, "semantic_widgets": semantic_count,
+        "calculation_policy": "deterministic_engines_only",
     }
+

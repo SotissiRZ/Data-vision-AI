@@ -18,6 +18,7 @@ from app.services.modeling import automl_train
 from app.services.profiling import profile_dataframe
 from app.services.quality import quality_report
 from app.services.statistics_engine import correlation_analysis
+from app.services.semantic_nlq import plan_semantic_question, execute_semantic_question
 
 
 @dataclass
@@ -216,6 +217,7 @@ def tool_registry() -> list[dict[str, Any]]:
         {"name": "forecast", "status": "implemented", "purpose": "Forecasting chronologique avec benchmark"},
         {"name": "anomalies", "status": "implemented", "purpose": "IQR, z-score robuste et Isolation Forest"},
         {"name": "decision_support", "status": "implemented", "purpose": "Priorisation d'actions basée sur les résultats calculés"},
+        {"name": "semantic_query", "status": "implemented", "purpose": "Requête métier multi-table via la couche sémantique gouvernée"},
     ]
 
 
@@ -288,6 +290,16 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
         raise ValueError("La question analytique ne peut pas être vide")
 
     intent = detect_intent(question)
+    semantic_plan = None
+    if ctx.semantic_model and ctx.dataset.get("id"):
+        try:
+            semantic_plan = plan_semantic_question(str(ctx.dataset.get("id")), df, question, 200, ctx.semantic_model)
+        except Exception:
+            semantic_plan = None
+    # A pure business-metric question should use the semantic layer before generic profiling tools.
+    # Explicit statistical/ML/forecast intents keep priority so "prévoir le CA" still means forecast.
+    if semantic_plan and intent == "overview":
+        intent = "semantic_query"
     profile = profile_dataframe(df)
     quality = quality_report(df)
     findings: list[dict[str, Any]] = []
@@ -301,6 +313,7 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
             "version": ctx.semantic_model.get("version"),
             "matched_columns": semantic_matches,
             "certified_metrics": [m.get("id") for m in ctx.semantic_model.get("metrics", []) if m.get("certified")],
+            "resolved_plan": semantic_plan,
         }
 
     def execute(step: str, tool: str, fn: Callable[[], Any]) -> Any:
@@ -321,7 +334,36 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
     execute("Contrôler la qualité avant interprétation", "quality", lambda: quality)
     findings.extend(_overview_findings(profile, quality))
 
-    if intent in {"overview", "correlation"}:
+    if intent == "semantic_query":
+        semantic = execute(
+            "Interroger le modèle sémantique gouverné",
+            "semantic_query",
+            lambda: execute_semantic_question(str(ctx.dataset.get("id")), df, question, 200, ctx.semantic_model),
+        )
+        if semantic:
+            plan_sem, qsem = semantic["plan"], semantic["query"]
+            metric_label = plan_sem.get("metric_label") or plan_sem.get("metric_id")
+            dims = plan_sem.get("dimensions") or []
+            if dims and qsem.get("result"):
+                top = qsem["result"][0]
+                dim_label = " / ".join(str(top.get(d)) for d in dims if d in top)
+                findings.append(_finding(
+                    "high" if plan_sem.get("metric_certified") else "info",
+                    "Métrique métier",
+                    f"{metric_label} = {qsem.get('value')!s}. Premier segment: {dim_label} → {top.get('value')!s}.",
+                    "semantic_query",
+                    {"metric_id": plan_sem.get("metric_id"), "dimensions": dims, "value": qsem.get("value"), "first_segment": top, "semantic_model_version": qsem.get("semantic_model_version")},
+                ))
+            else:
+                findings.append(_finding(
+                    "high" if plan_sem.get("metric_certified") else "info",
+                    "Métrique métier",
+                    f"{metric_label} = {qsem.get('value')!s}.",
+                    "semantic_query",
+                    {"metric_id": plan_sem.get("metric_id"), "value": qsem.get("value"), "semantic_model_version": qsem.get("semantic_model_version")},
+                ))
+
+    elif intent in {"overview", "correlation"}:
         variables = [c for c in (ctx.variables or _resolved_columns(question, df, ctx.semantic_model)) if c in df.columns and pd.api.types.is_numeric_dtype(df[c])]
         if len(variables) < 2:
             variables = _numeric_columns(df)[:8]

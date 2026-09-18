@@ -1,3 +1,50 @@
+# Changelog
+
+## v2.5.0
+
+- Inbox analytique proactive dans l'espace Décider ;
+- surveillances persistantes sur métriques sémantiques ;
+- configuration automatique à partir des métriques certifiées ;
+- seuils de variation, anomalie robuste médiane/MAD et détection de rupture ;
+- priorités medium/high/critical ;
+- déduplication des alertes par fingerprint ;
+- workflow open / acknowledged / resolved / dismissed ;
+- tendance et preuve déterministes dans chaque alerte ;
+- recommandations d'investigation par dimensions sémantiques ;
+- endpoints de watches, scans, summary et Inbox ;
+- type de job Redis `proactive_scan` ;
+- nouvelle interface professionnelle Proactive Intelligence ;
+- 37 tests backend passent.
+
+## v2.4.0
+
+- NLQ semantic-first avec exécution multi-table ;
+- planificateur sémantique déterministe FR/EN ;
+- agrégation explicite temporaire sans modifier la métrique gouvernée ;
+- AI Analyst raccordé au Semantic Query Engine ;
+- Tool Registry enrichi avec `semantic_query` ;
+- widgets `semantic_kpi` et `semantic_chart` ;
+- filtres dashboard sur dimensions liées ;
+- cross-filter multi-table ;
+- drill-down hiérarchique ;
+- jointures multi-hop dans les schémas en flocon ;
+- projection sécurisée vers la table de faits pour synchroniser widgets physiques et sémantiques ;
+- 35 tests backend passent.
+
+## v2.3.0
+
+- Semantic Model Studio v2 multi-tables.
+- Relations N:1 / 1:1 validées avec protection anti fan-out.
+- Métriques calculées via AST sûr, sans eval/exec.
+- Dimensions certifiées et hiérarchies métier.
+- Semantic Query Engine multi-table.
+- Time intelligence : previous period, YoY, running total, YTD, rolling mean/sum.
+- Catalogue de tables tenant-aware.
+- Validateur de modèle sémantique et score de santé.
+- Trust Center enrichi par la validation sémantique.
+- Interface Semantic Studio réorganisée en cinq onglets.
+- 31 tests backend.
+
 # v2.2.0
 
 - middleware tenant-aware pour toutes les routes dataset ;

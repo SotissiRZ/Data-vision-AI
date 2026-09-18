@@ -1,85 +1,44 @@
-# Roadmap d'exécution — après v2.2.0
+# Roadmap d'exécution — après v2.5.0
 
-## Implémenté
+## État actuel
 
-Le socle local couvre maintenant : import et profiling, qualité, préparation versionnée, lineage/pipelines, statistiques descriptives et inférentielles, régression/ANOVA/ACP/clustering, Visualization Studio, SQL/NLQ, AutoML, forecasting, anomalies, XAI core, AI Analyst/Critic, Dashboard Builder, Report Intelligence, couche sémantique v1, Metric Pulse, Trust Center et Decision Lab.
+DataVision dispose maintenant d'un runtime sémantique multi-tables relié au NLQ, à AI Analyst et aux dashboards, ainsi que d'une Inbox analytique proactive avec surveillance persistante des métriques.
 
-L'interface v2 est organisée par **workflow** plutôt que par liste exhaustive de modules.
+## v2.5 — Proactive Intelligence — livré
 
-## P0 — fiabilité Enterprise
+- watches sur métriques certifiées ;
+- règles de seuil et anomalies temporelles ;
+- alertes persistées et dédupliquées ;
+- Inbox analytique ;
+- contexte explicatif et provenance ;
+- investigations recommandées ;
+- job asynchrone `proactive_scan`.
 
-Implémenté en v2.1 :
+Reste à compléter : scheduler calendaire et actions sortantes gouvernées.
 
-- authentification locale signée ;
-- organisations et workspaces ;
-- PostgreSQL metadata store + fallback SQLite ;
-- RBAC sur les nouvelles ressources Enterprise ;
-- registre RLS/permissions colonnes + governed preview ;
-- audit log consolidé ;
-- jobs asynchrones Redis Worker ;
-- suivi des jobs et annulation des jobs en file.
+## v2.6 — Collaboration & Review
 
-À terminer :
+- commentaires sur métriques, analyses et dashboards ;
+- workflow draft / review / approved ;
+- certification avec propriétaire et date d'expiration ;
+- mentions et approbations ;
+- historique de décisions.
 
-- OIDC/SSO et refresh tokens ;
-- enforcement tenant-aware/RLS/CLS sur toutes les routes analytiques historiques ;
-- secrets chiffrés / vault ;
-- annulation préemptive d'un job en cours ;
-- limites de ressources et sandbox renforcée ;
-- tests E2E Docker/Next.js automatisés dans CI.
+## v2.7 — Connectors & Refresh
 
-## P1 — Semantic Layer v2
+- PostgreSQL / MySQL de production ;
+- refresh planifié ;
+- incremental refresh ;
+- observabilité des connecteurs ;
+- gestion des secrets par fournisseur.
 
-- relations multi-tables ;
-- métriques calculées et métriques dérivées ;
-- hiérarchies ;
-- time intelligence / calendrier ;
-- validation de formules ;
-- workflow d'approbation/certification ;
-- règles de sécurité sémantiques ;
-- import/export de définitions.
+## v3 — Enterprise Analytics Platform
 
-## P1 — Proactive Analytics
-
-- scheduler ;
-- alertes sur seuil / variation / anomalie ;
-- abonnements/digests ;
-- règles par audience ;
-- webhooks ;
-- historique des alertes et acquittement.
-
-## P1 — Action Layer
-
-- actions externes avec permissions : webhook, Slack/Teams, ticketing, CRM et APIs métier ;
-- prévisualisation de l'action ;
-- approbation humaine obligatoire pour les actions sensibles ;
-- journal d'exécution et rollback lorsque le système cible le permet.
-
-## P1 — AI Gateway
-
-- fournisseurs OpenAI-compatible / Anthropic-compatible / Gemini / Ollama ;
-- consentement explicite avant transfert de données ;
-- politiques de rétention ;
-- redaction/sampling contextuel ;
-- traces, tokens, coûts et latence ;
-- evals/golden datasets ;
-- fallback local.
-
-## P2 — Data Science & Causal
-
-- notebook Python/R/SQL ;
-- R Workspace complet ;
-- SHAP complet ;
-- fairness avancée ;
-- causal inference séparée du what-if prédictif ;
-- optimisation sous contraintes ;
-- survival analysis, géospatial et plugins spécialisés.
-
-## P2 — Collaboration & distribution
-
-- commentaires, mentions et validation ;
-- partage de dashboards/rapports ;
-- connecteurs bases/cloud ;
+- SSO/OIDC ;
+- semantic cache distribué ;
+- object storage S3-compatible ;
+- Kubernetes optionnel ;
+- private AI ;
 - plugin/MCP runtime avec permissions ;
-- packaging desktop natif ;
-- Kubernetes/SSO/SLA pour Enterprise.
+- lineage cross-system ;
+- SLA et observabilité avancée.

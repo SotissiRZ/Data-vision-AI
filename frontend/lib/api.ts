@@ -321,10 +321,26 @@ export async function getSemanticModel(id: string) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/semantic`), 'Couche sémantique indisponible');
 }
 
-export async function saveSemanticModel(id: string, payload: { metrics: any[]; dimensions: any[]; business_glossary?: any[] }) {
+export async function saveSemanticModel(id: string, payload: { tables?: any[]; relationships?: any[]; metrics: any[]; dimensions: any[]; hierarchies?: any[]; business_glossary?: any[] }) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/semantic`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }), 'Enregistrement de la couche sémantique impossible');
+}
+
+export async function getSemanticTableCatalog(id: string) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/semantic/tables`), 'Catalogue sémantique indisponible');
+}
+
+export async function validateSemanticModel(id: string, payload: { tables?: any[]; relationships?: any[]; metrics: any[]; dimensions: any[]; hierarchies?: any[]; business_glossary?: any[] }) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/semantic/validate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }), 'Validation du modèle sémantique impossible');
+}
+
+export async function querySemanticMetric(id: string, payload: { metric_id: string; dimensions?: string[]; filters?: any[]; limit?: number; date_dimension?: string | null; time_grain?: string | null; comparison?: string; time_calculation?: string; rolling_window?: number }) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/semantic/query`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }), 'Requête sémantique impossible');
 }
 
 export async function evaluateSemanticMetric(id: string, payload: { metric_id: string; dimensions?: string[]; filters?: any[]; limit?: number }) {
@@ -353,6 +369,48 @@ export async function runModelSensitivity(modelId: string, payload: { base_row: 
   return parse<any>(await apiFetch(`${API}/datasets/models/${modelId}/sensitivity`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }), 'Analyse de sensibilité impossible');
+}
+
+
+export async function getProactiveSummary(id: string) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/proactive/summary`), 'Synthèse proactive indisponible');
+}
+
+export async function getProactiveWatches(id: string) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/proactive/watches`), 'Surveillances indisponibles');
+}
+
+export async function autoConfigureProactiveWatches(id: string, payload: { threshold_pct?: number; time_grain?: string } = {}) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/proactive/watches/auto`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload),
+  }), 'Configuration automatique des surveillances impossible');
+}
+
+export async function saveProactiveWatch(id: string, payload: Record<string, unknown>) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/proactive/watches`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload),
+  }), 'Enregistrement de la surveillance impossible');
+}
+
+export async function deleteProactiveWatch(id: string, watchId: string) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/proactive/watches/${watchId}`, { method:'DELETE' }), 'Suppression de la surveillance impossible');
+}
+
+export async function scanProactiveSignals(id: string, payload: { watch_ids?: string[]; auto_configure?: boolean } = {}) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/proactive/scan`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload),
+  }), 'Scan proactif impossible');
+}
+
+export async function getProactiveInbox(id: string, status='all', limit=100) {
+  const params=new URLSearchParams({status,limit:String(limit)});
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/proactive/inbox?${params.toString()}`), 'Inbox analytique indisponible');
+}
+
+export async function updateProactiveAlertStatus(id: string, alertId: string, status: 'open'|'acknowledged'|'dismissed'|'resolved') {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/proactive/inbox/${alertId}/status`, {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status}),
+  }), 'Mise à jour de l’alerte impossible');
 }
 
 function enterpriseHeaders(token?: string): Record<string,string> {

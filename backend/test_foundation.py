@@ -1197,3 +1197,335 @@ def test_v220_background_job_reuses_tenant_access_context(tmp_path, monkeypatch)
     # RLS removed sales 1..6 before the worker reached forecasting.
     assert len(history)==18
     assert min(float(x["value"]) for x in history)>=7
+
+
+def test_v230_semantic_multitable_relationship_and_query(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+
+    fact = pd.DataFrame({
+        "product_id": [1, 1, 2, 3],
+        "revenue": [100.0, 50.0, 200.0, 80.0],
+        "date": ["2026-01-05", "2026-01-20", "2026-02-03", "2026-02-10"],
+    })
+    products = pd.DataFrame({"product_id": [1, 2, 3], "category": ["A", "B", "A"]})
+    f = client.post("/api/v1/datasets", files={"file": ("sales.csv", io.BytesIO(fact.to_csv(index=False).encode()), "text/csv")})
+    d = client.post("/api/v1/datasets", files={"file": ("products.csv", io.BytesIO(products.to_csv(index=False).encode()), "text/csv")})
+    assert f.status_code == 200 and d.status_code == 200
+    fact_id, dim_id = f.json()["dataset"]["id"], d.json()["dataset"]["id"]
+
+    catalog = client.get(f"/api/v1/datasets/{fact_id}/semantic/tables")
+    assert catalog.status_code == 200, catalog.text
+    assert dim_id in {x["dataset_id"] for x in catalog.json()["tables"]}
+
+    model = {
+        "tables": [
+            {"id": "base", "dataset_id": fact_id, "label": "Sales", "role": "fact", "active": True},
+            {"id": "product", "dataset_id": dim_id, "label": "Products", "role": "dimension", "active": True},
+        ],
+        "relationships": [{
+            "id": "sales_product", "from_table": "base", "from_column": "product_id",
+            "to_table": "product", "to_column": "product_id", "cardinality": "many_to_one",
+            "join_type": "left", "active": True,
+        }],
+        "metrics": [{
+            "id": "revenue", "name": "Revenue", "label": "Revenue", "type": "base", "table": "base",
+            "column": "revenue", "aggregation": "sum", "unit": "EUR", "description": "Revenue", "synonyms": ["CA"], "certified": True,
+        }],
+        "dimensions": [
+            {"id": "category", "table": "product", "column": "category", "label": "Category", "kind": "categorical", "hidden": False, "certified": True, "synonyms": []},
+            {"id": "date", "table": "base", "column": "date", "label": "Date", "kind": "date", "hidden": False, "certified": True, "synonyms": []},
+        ],
+        "hierarchies": [], "business_glossary": [],
+    }
+    valid = client.post(f"/api/v1/datasets/{fact_id}/semantic/validate", json=model)
+    assert valid.status_code == 200, valid.text
+    assert valid.json()["valid"] is True
+    saved = client.post(f"/api/v1/datasets/{fact_id}/semantic", json=model)
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["semantic_version"] == 2
+
+    query = client.post(f"/api/v1/datasets/{fact_id}/semantic/query", json={"metric_id": "revenue", "dimensions": ["category"]})
+    assert query.status_code == 200, query.text
+    rows = {r["category"]: r["value"] for r in query.json()["result"]}
+    assert rows["A"] == 230.0
+    assert rows["B"] == 200.0
+
+
+def test_v230_calculated_metric_and_time_intelligence(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+
+    frame = pd.DataFrame({
+        "date": ["2025-01-15", "2025-02-15", "2026-01-15", "2026-02-15"],
+        "revenue": [100.0, 120.0, 150.0, 180.0],
+        "cost": [60.0, 72.0, 90.0, 90.0],
+    })
+    upload = client.post("/api/v1/datasets", files={"file": ("finance.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    dataset_id = upload.json()["dataset"]["id"]
+    model = {
+        "tables": [{"id": "base", "dataset_id": dataset_id, "label": "Finance", "role": "fact", "active": True}],
+        "relationships": [],
+        "metrics": [
+            {"id": "revenue", "label": "Revenue", "name": "Revenue", "type": "base", "table": "base", "column": "revenue", "aggregation": "sum", "unit": "EUR", "certified": True, "description": "", "synonyms": []},
+            {"id": "cost", "label": "Cost", "name": "Cost", "type": "base", "table": "base", "column": "cost", "aggregation": "sum", "unit": "EUR", "certified": True, "description": "", "synonyms": []},
+            {"id": "margin_pct", "label": "Margin %", "name": "Margin %", "type": "calculated", "table": "base", "column": "", "aggregation": "sum", "formula": "(revenue - cost) / revenue * 100", "unit": "%", "certified": True, "description": "", "synonyms": ["marge"]},
+        ],
+        "dimensions": [{"id": "date", "table": "base", "column": "date", "label": "Date", "kind": "date", "hidden": False, "certified": True, "synonyms": []}],
+        "hierarchies": [{"id": "calendar", "name": "Calendar", "levels": ["date", "date"], "certified": True}],
+        "business_glossary": [],
+    }
+    saved = client.post(f"/api/v1/datasets/{dataset_id}/semantic", json=model)
+    assert saved.status_code == 200, saved.text
+
+    margin = client.post(f"/api/v1/datasets/{dataset_id}/semantic/query", json={"metric_id": "margin_pct"})
+    assert margin.status_code == 200, margin.text
+    assert round(margin.json()["value"], 2) == 43.27
+
+    trend = client.post(f"/api/v1/datasets/{dataset_id}/semantic/query", json={
+        "metric_id": "revenue", "date_dimension": "date", "time_grain": "month",
+        "comparison": "yoy", "time_calculation": "ytd", "rolling_window": 3,
+    })
+    assert trend.status_code == 200, trend.text
+    rows = trend.json()["result"]
+    assert len(rows) == 4
+    jan_2026 = next(r for r in rows if str(r["date"]).startswith("2026-01"))
+    assert jan_2026["comparison_value"] == 100.0
+    assert round(jan_2026["delta_pct"], 1) == 50.0
+    feb_2026 = next(r for r in rows if str(r["date"]).startswith("2026-02"))
+    assert feb_2026["time_value"] == 330.0
+
+
+def test_v230_semantic_blocks_fanout_relationship(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+
+    fact = pd.DataFrame({"product_id": [1, 2], "revenue": [10, 20]})
+    bad_dim = pd.DataFrame({"product_id": [1, 1, 2], "category": ["A", "A2", "B"]})
+    f = client.post("/api/v1/datasets", files={"file": ("fact.csv", io.BytesIO(fact.to_csv(index=False).encode()), "text/csv")})
+    d = client.post("/api/v1/datasets", files={"file": ("bad_dim.csv", io.BytesIO(bad_dim.to_csv(index=False).encode()), "text/csv")})
+    fact_id, dim_id = f.json()["dataset"]["id"], d.json()["dataset"]["id"]
+    model = {
+        "tables": [{"id":"base","dataset_id":fact_id,"label":"Fact","role":"fact","active":True},{"id":"dim","dataset_id":dim_id,"label":"Dim","role":"dimension","active":True}],
+        "relationships": [{"id":"bad","from_table":"base","from_column":"product_id","to_table":"dim","to_column":"product_id","cardinality":"many_to_one","join_type":"left","active":True}],
+        "metrics": [{"id":"revenue","label":"Revenue","name":"Revenue","type":"base","table":"base","column":"revenue","aggregation":"sum","unit":"","description":"","synonyms":[],"certified":True}],
+        "dimensions": [{"id":"category","table":"dim","column":"category","label":"Category","kind":"categorical","hidden":False,"certified":True,"synonyms":[]}],
+        "hierarchies": [], "business_glossary": [],
+    }
+    validation = client.post(f"/api/v1/datasets/{fact_id}/semantic/validate", json=model)
+    assert validation.status_code == 200
+    assert validation.json()["valid"] is False
+    assert any("fan-out" in e for e in validation.json()["errors"])
+    saved = client.post(f"/api/v1/datasets/{fact_id}/semantic", json=model)
+    assert saved.status_code == 400
+
+
+def _v240_make_semantic_sales(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+
+    fact = pd.DataFrame({
+        "product_id": [1, 1, 2, 3],
+        "revenue": [100.0, 50.0, 200.0, 80.0],
+        "date": ["2026-01-05", "2026-01-20", "2026-02-03", "2026-02-10"],
+    })
+    products = pd.DataFrame({
+        "product_id": [1, 2, 3],
+        "category_id": [10, 20, 10],
+        "category": ["A", "B", "A"],
+        "subcategory": ["A1", "B1", "A2"],
+    })
+    f = client.post("/api/v1/datasets", files={"file": ("sales.csv", io.BytesIO(fact.to_csv(index=False).encode()), "text/csv")})
+    d = client.post("/api/v1/datasets", files={"file": ("products.csv", io.BytesIO(products.to_csv(index=False).encode()), "text/csv")})
+    assert f.status_code == 200 and d.status_code == 200
+    fact_id, dim_id = f.json()["dataset"]["id"], d.json()["dataset"]["id"]
+    model = {
+        "tables": [
+            {"id":"base","dataset_id":fact_id,"label":"Sales","role":"fact","active":True},
+            {"id":"product","dataset_id":dim_id,"label":"Products","role":"dimension","active":True},
+        ],
+        "relationships": [{
+            "id":"sales_product","from_table":"base","from_column":"product_id",
+            "to_table":"product","to_column":"product_id","cardinality":"many_to_one","join_type":"left","active":True,
+        }],
+        "metrics": [{
+            "id":"revenue","name":"Revenue","label":"Chiffre d'affaires","type":"base","table":"base",
+            "column":"revenue","aggregation":"sum","unit":"EUR","description":"CA net","synonyms":["CA","ventes"],"certified":True,
+        }],
+        "dimensions": [
+            {"id":"category","table":"product","column":"category","label":"Catégorie","kind":"categorical","hidden":False,"certified":True,"synonyms":["famille"]},
+            {"id":"subcategory","table":"product","column":"subcategory","label":"Sous-catégorie","kind":"categorical","hidden":False,"certified":True,"synonyms":["sous famille"]},
+            {"id":"date","table":"base","column":"date","label":"Date","kind":"date","hidden":False,"certified":True,"synonyms":[]},
+        ],
+        "hierarchies": [{"id":"catalog","name":"Catalogue","levels":["category","subcategory"],"certified":True}],
+        "business_glossary": [],
+    }
+    saved = client.post(f"/api/v1/datasets/{fact_id}/semantic", json=model)
+    assert saved.status_code == 200, saved.text
+    return fact_id, dim_id
+
+
+def test_v240_nlq_uses_multitable_semantic_engine(tmp_path, monkeypatch):
+    fact_id, _ = _v240_make_semantic_sales(tmp_path, monkeypatch)
+    r = client.post(f"/api/v1/datasets/{fact_id}/workspace/nlq", json={"question":"Quel est le CA par catégorie ?", "limit":50})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["execution_mode"] == "semantic"
+    assert body["sql_executable"] is False
+    assert "SEMANTIC_MODEL" in body["sql"]
+    assert body["semantic_grounding"]["metric_id"] == "revenue"
+    rows = {row["category"]: row["value"] for row in body["result"]["rows"]}
+    assert rows == {"A": 230.0, "B": 200.0}
+    assert body["result"]["engine"] == "semantic_query_engine_v2"
+
+
+def test_v240_ai_analyst_semantic_first(tmp_path, monkeypatch):
+    fact_id, _ = _v240_make_semantic_sales(tmp_path, monkeypatch)
+    r = client.post(f"/api/v1/datasets/{fact_id}/ai/analyze", json={"question":"Donne le chiffre d'affaires par catégorie", "mode":"auto"})
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["intent"] == "semantic_query"
+    assert "semantic_query" in body["provenance"]["tools_executed"]
+    semantic_findings = [x for x in body["findings"] if x["evidence"].get("tool") == "semantic_query"]
+    assert semantic_findings
+    assert semantic_findings[0]["evidence"]["metric_id"] == "revenue"
+    assert body["critic"]["status"] == "passed"
+
+
+def test_v240_semantic_dashboard_cross_filter_and_drill(tmp_path, monkeypatch):
+    fact_id, _ = _v240_make_semantic_sales(tmp_path, monkeypatch)
+    widgets = [
+        {"id":"k1","title":"CA","type":"semantic_kpi","size":"small","config":{"metric_id":"revenue"}},
+        {"id":"c1","title":"CA catalogue","type":"semantic_chart","size":"medium","config":{"metric_id":"revenue","hierarchy_id":"catalog","hierarchy_level":0,"chart_type":"bar"}},
+        {"id":"rows","title":"Lignes","type":"kpi","size":"small","config":{"metric":"rows"}},
+    ]
+    preview = client.post(f"/api/v1/datasets/{fact_id}/dashboards/preview", json={"filters":[],"widgets":widgets})
+    assert preview.status_code == 200, preview.text
+    body = preview.json()
+    assert body["semantic_widgets"] == 2
+    by_id = {x["id"]: x for x in body["widgets"]}
+    assert by_id["k1"]["result"]["value"] == 430.0
+    assert by_id["c1"]["result"]["drill"]["next_dimension"] == "subcategory"
+    cats = {x["label"]: x["value"] for x in by_id["c1"]["result"]["data"]}
+    assert cats == {"A":230.0,"B":200.0}
+
+    drilled_widgets = [
+        widgets[0],
+        {**widgets[1], "config": {**widgets[1]["config"], "hierarchy_level":1}},
+        widgets[2],
+    ]
+    filtered = client.post(f"/api/v1/datasets/{fact_id}/dashboards/preview", json={
+        "filters":[{"source":"drill","dimension":"category","operator":"eq","value":"A"}],
+        "widgets":drilled_widgets,
+    })
+    assert filtered.status_code == 200, filtered.text
+    fb = filtered.json(); fby = {x["id"]:x for x in fb["widgets"]}
+    assert fb["rows_after"] == 3
+    assert fby["rows"]["result"]["value"] == 3
+    assert fby["k1"]["result"]["value"] == 230.0
+    subs = {x["label"]:x["value"] for x in fby["c1"]["result"]["data"]}
+    assert subs == {"A1":150.0,"A2":80.0}
+
+
+def test_v240_semantic_multihop_snowflake_join(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings(); monkeypatch.setattr(settings, "data_root", tmp_path)
+    fact = pd.DataFrame({"product_id":[1,2,3],"revenue":[100.,200.,50.]})
+    products = pd.DataFrame({"product_id":[1,2,3],"category_id":[10,20,10]})
+    cats = pd.DataFrame({"category_id":[10,20],"sector":["Consumer","Enterprise"]})
+    a=client.post("/api/v1/datasets", files={"file":("fact.csv",io.BytesIO(fact.to_csv(index=False).encode()),"text/csv")})
+    b=client.post("/api/v1/datasets", files={"file":("products.csv",io.BytesIO(products.to_csv(index=False).encode()),"text/csv")})
+    c=client.post("/api/v1/datasets", files={"file":("categories.csv",io.BytesIO(cats.to_csv(index=False).encode()),"text/csv")})
+    aid,bid,cid=a.json()["dataset"]["id"],b.json()["dataset"]["id"],c.json()["dataset"]["id"]
+    model={
+        "tables":[{"id":"base","dataset_id":aid,"role":"fact","active":True},{"id":"product","dataset_id":bid,"role":"dimension","active":True},{"id":"category","dataset_id":cid,"role":"dimension","active":True}],
+        "relationships":[
+            {"id":"r1","from_table":"base","from_column":"product_id","to_table":"product","to_column":"product_id","cardinality":"many_to_one","join_type":"left","active":True},
+            {"id":"r2","from_table":"product","from_column":"category_id","to_table":"category","to_column":"category_id","cardinality":"many_to_one","join_type":"left","active":True},
+        ],
+        "metrics":[{"id":"revenue","name":"Revenue","label":"Revenue","type":"base","table":"base","column":"revenue","aggregation":"sum","certified":True,"synonyms":[]}],
+        "dimensions":[{"id":"sector","table":"category","column":"sector","label":"Sector","kind":"categorical","hidden":False,"certified":True,"synonyms":[]}],
+        "hierarchies":[],"business_glossary":[],
+    }
+    saved=client.post(f"/api/v1/datasets/{aid}/semantic", json=model)
+    assert saved.status_code==200, saved.text
+    q=client.post(f"/api/v1/datasets/{aid}/semantic/query", json={"metric_id":"revenue","dimensions":["sector"]})
+    assert q.status_code==200, q.text
+    rows={x["sector"]:x["value"] for x in q.json()["result"]}
+    assert rows=={"Enterprise":200.0,"Consumer":150.0}
+
+
+def test_v250_proactive_inbox_detects_metric_change(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings(); monkeypatch.setattr(settings, "data_root", tmp_path)
+    frame = pd.DataFrame({
+        "date": ["2026-01-01","2026-02-01","2026-03-01","2026-04-01","2026-05-01","2026-06-01"],
+        "revenue": [100.0,102.0,99.0,101.0,103.0,180.0],
+        "region": ["A","A","B","B","A","B"],
+    })
+    up = client.post("/api/v1/datasets", files={"file": ("pulse.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    assert up.status_code == 200, up.text
+    dataset_id = up.json()["dataset"]["id"]
+    model = {
+        "tables":[{"id":"base","dataset_id":dataset_id,"label":"Sales","role":"fact","active":True}],
+        "relationships":[],
+        "metrics":[{"id":"revenue","name":"Revenue","label":"Chiffre d'affaires","type":"base","table":"base","column":"revenue","aggregation":"sum","unit":"EUR","description":"","synonyms":["CA"],"certified":True}],
+        "dimensions":[
+            {"id":"date","table":"base","column":"date","label":"Date","kind":"date","hidden":False,"certified":True,"synonyms":[]},
+            {"id":"region","table":"base","column":"region","label":"Région","kind":"categorical","hidden":False,"certified":True,"synonyms":[]},
+        ],
+        "hierarchies":[],"business_glossary":[],
+    }
+    saved = client.post(f"/api/v1/datasets/{dataset_id}/semantic", json=model)
+    assert saved.status_code == 200, saved.text
+    auto = client.post(f"/api/v1/datasets/{dataset_id}/proactive/watches/auto", json={"threshold_pct":20,"time_grain":"month"})
+    assert auto.status_code == 200, auto.text
+    assert auto.json()["count"] == 1
+    scan = client.post(f"/api/v1/datasets/{dataset_id}/proactive/scan", json={"auto_configure":False})
+    assert scan.status_code == 200, scan.text
+    body = scan.json()
+    assert body["new_alerts"] == 1
+    alert = body["alerts"][0]
+    assert alert["metric_id"] == "revenue"
+    assert alert["severity"] in {"high","critical"}
+    assert alert["delta_pct"] > 50
+    assert any(x["type"] == "semantic_breakdown" for x in alert["investigations"])
+    inbox = client.get(f"/api/v1/datasets/{dataset_id}/proactive/inbox?status=open")
+    assert inbox.status_code == 200
+    assert inbox.json()["count"] == 1
+    assert inbox.json()["summary"]["open_alerts"] == 1
+
+
+def test_v250_proactive_alert_dedup_and_status(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    settings = get_settings(); monkeypatch.setattr(settings, "data_root", tmp_path)
+    frame = pd.DataFrame({
+        "date": ["2026-01-01","2026-02-01","2026-03-01","2026-04-01","2026-05-01"],
+        "sales": [10.0,10.5,9.8,10.2,30.0],
+    })
+    up = client.post("/api/v1/datasets", files={"file": ("watch.csv", io.BytesIO(frame.to_csv(index=False).encode()), "text/csv")})
+    dataset_id = up.json()["dataset"]["id"]
+    sem={
+        "tables":[{"id":"base","dataset_id":dataset_id,"role":"fact","active":True}],"relationships":[],
+        "metrics":[{"id":"sales","name":"Sales","label":"Sales","type":"base","table":"base","column":"sales","aggregation":"sum","certified":True,"synonyms":[]}],
+        "dimensions":[{"id":"date","table":"base","column":"date","label":"Date","kind":"date","hidden":False,"certified":True,"synonyms":[]}],
+        "hierarchies":[],"business_glossary":[],
+    }
+    assert client.post(f"/api/v1/datasets/{dataset_id}/semantic", json=sem).status_code == 200
+    first = client.post(f"/api/v1/datasets/{dataset_id}/proactive/scan", json={"auto_configure":True})
+    assert first.status_code == 200, first.text
+    second = client.post(f"/api/v1/datasets/{dataset_id}/proactive/scan", json={"auto_configure":True})
+    assert second.status_code == 200
+    assert second.json()["new_alerts"] == 0
+    inbox = client.get(f"/api/v1/datasets/{dataset_id}/proactive/inbox?status=open").json()
+    assert inbox["count"] == 1
+    alert_id = inbox["alerts"][0]["id"]
+    changed = client.post(f"/api/v1/datasets/{dataset_id}/proactive/inbox/{alert_id}/status", json={"status":"acknowledged"})
+    assert changed.status_code == 200
+    assert changed.json()["status"] == "acknowledged"
+    assert client.get(f"/api/v1/datasets/{dataset_id}/proactive/inbox?status=open").json()["count"] == 0
+    assert client.get(f"/api/v1/datasets/{dataset_id}/proactive/inbox?status=acknowledged").json()["count"] == 1

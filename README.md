@@ -1,8 +1,6 @@
-# DataVision AI — v2.2.0
+# DataVision AI — v2.5.0
 
-DataVision AI est un **Data Intelligence Workspace local et installable** réunissant import, profiling, qualité, préparation versionnée, statistiques, SQL, visualisation, Machine Learning, forecasting, détection d'anomalies, XAI, prédiction, AI Analyst et reporting reproductible dans une même interface.
-
-L'interface conserve l'esprit du DataVision R/Shiny historique tout en utilisant une architecture **Next.js + FastAPI + Python**.
+DataVision AI est un **Data Intelligence Workspace local, installable et gouverné** qui relie préparation, statistiques, SQL, visualisation, ML, forecasting, XAI, AI Analyst, couche sémantique, dashboards, reporting reproductible et désormais **surveillance proactive des métriques**.
 
 ## Ports
 
@@ -13,6 +11,242 @@ OpenAPI   : http://localhost:8005/docs
 ```
 
 Les ports 3000 et 8000 ne sont pas utilisés.
+
+## Nouveau dans v2.5.0 — Proactive Intelligence
+
+La zone **Décider** s'ouvre maintenant sur une **Inbox analytique**. DataVision peut surveiller les métriques certifiées du modèle sémantique, détecter des changements significatifs et conserver les alertes avec leur preuve, leur tendance, leur provenance et les investigations recommandées.
+
+### Détection déterministe
+
+Chaque scan combine :
+
+- variation dernière période / période précédente ;
+- anomalie robuste du niveau via médiane/MAD ;
+- rupture de la variation par rapport à l'historique ;
+- niveaux `medium`, `high`, `critical`.
+
+Aucun LLM n'est utilisé pour produire les valeurs, les seuils ou les scores.
+
+### Inbox persistante
+
+Les alertes peuvent être reconnues, résolues ou ignorées. Un fingerprint empêche la duplication d'une alerte identique lors de scans successifs.
+
+### Investigation guidée
+
+Lorsqu'un signal est détecté, DataVision propose des ventilations par dimensions sémantiques certifiées et un contrôle qualité comme étapes suivantes. Ces suggestions sont des pistes analytiques et ne sont pas présentées comme des conclusions causales.
+
+### Worker Redis
+
+Le type de job `proactive_scan` est désormais disponible pour exécuter une surveillance en arrière-plan. Le scheduler calendaire récurrent reste volontairement marqué `partial`.
+
+### Validation v2.5.0
+
+```text
+Backend pytest           : 37 passed
+Python compile/syntax    : OK
+TS/TSX transpilation     : OK
+CSS                      : OK
+```
+
+Le build Next.js/Docker complet doit être confirmé dans l'environnement Docker cible.
+
+---
+
+## Historique — v2.4.0 Semantic Orchestration
+
+La v2.4 branche réellement le **Semantic Model Studio v2** sur les expériences utilisées au quotidien : langage naturel, AI Analyst et dashboards. L'utilisateur peut maintenant raisonner en vocabulaire métier sans connaître les tables physiques ni les jointures.
+
+### NLQ multi-tables semantic-first
+
+Une question comme :
+
+```text
+Quel est le CA par catégorie ?
+```
+
+peut résoudre `CA` vers la métrique certifiée `revenue`, `catégorie` vers une dimension d'une table liée, puis exécuter le Semantic Query Engine. Les jointures sûres sont déterminées par le modèle sémantique ; elles ne sont pas inventées par un LLM.
+
+Le résultat expose :
+
+- le mode d'exécution (`semantic` ou `sql`) ;
+- la métrique résolue ;
+- les dimensions utilisées ;
+- les tables traversées ;
+- la version du modèle sémantique ;
+- la provenance du calcul.
+
+Une représentation SQL logique peut être affichée pour expliquer le plan, mais elle est marquée non exécutable lorsque l'exécution réelle passe par le moteur sémantique.
+
+### AI Analyst semantic-first
+
+Pour une question métier simple, AI Analyst utilise maintenant `semantic_query` avant de tomber sur une exploration générique. Les intentions explicitement statistiques ou ML gardent la priorité : « prévoir le CA » reste un problème de forecasting, alors que « CA par catégorie » est une requête sémantique.
+
+### Semantic Dashboard Builder
+
+Les dashboards acceptent désormais :
+
+- KPI métier certifiés ;
+- graphiques métier multi-tables ;
+- filtres sur dimensions liées ;
+- cross-filtering sémantique ;
+- drill-down sur hiérarchies ;
+- comparaison temporelle et YoY sur widgets sémantiques.
+
+Un filtre sur une dimension liée est appliqué au niveau du Semantic Query Engine puis projeté sur la table de faits. Les widgets physiques du même dashboard voient donc le même périmètre de lignes.
+
+### Drill-down hiérarchique
+
+Une hiérarchie comme :
+
+```text
+Catégorie → Sous-catégorie → Produit
+```
+
+peut maintenant être utilisée directement par un graphique de dashboard. Cliquer sur une barre ajoute le filtre de niveau courant et descend au niveau suivant.
+
+### Jointures multi-hop
+
+Le moteur sémantique sait maintenant traverser un schéma en flocon :
+
+```text
+Fact Sales → Product → Category
+```
+
+pour calculer une métrique de la table de faits par une dimension située plusieurs relations plus loin. Les chemins restent limités aux relations sûres N:1 / 1:1 avec contrôle anti fan-out.
+
+### Agrégation explicite en langage naturel
+
+Une demande explicite comme « moyenne du chiffre d'affaires » peut temporairement remplacer l'agrégation par défaut d'une métrique de base, sans modifier sa définition gouvernée sauvegardée.
+
+### Validation v2.4.0
+
+```text
+Backend pytest                 : 35 passed
+Python compileall              : OK
+TS/TSX transpilation           : OK
+NLQ multi-table                : testé
+AI Analyst semantic-first      : testé
+Dashboard semantic crossfilter : testé
+Drill-down hiérarchique        : testé
+Jointure multi-hop             : testé
+```
+
+Le build Next.js/Docker complet doit être confirmé dans l'environnement Docker cible avant de considérer le frontend de production validé.
+
+---
+
+## Historique — v2.3.0 Semantic Model Studio v2
+
+La v2.3 transforme la couche sémantique initiale en **modèle métier multi-tables exécutable**. L'objectif est de séparer clairement le schéma physique (fichiers, colonnes, clés) de la logique métier réutilisée par l'analytics.
+
+### Modèle multi-tables
+
+Un modèle sémantique peut maintenant contenir :
+
+```text
+Fact table (base)
+   │
+   ├── N:1 → Dimension Produit
+   ├── N:1 → Dimension Client
+   └── N:1 → Dimension Calendrier
+          │
+          ├── Année
+          ├── Trimestre
+          └── Mois
+```
+
+Les relations automatiques sont volontairement limitées à `many_to_one` et `one_to_one`. DataVision vérifie l'unicité de la clé côté dimension et **bloque les jointures qui créeraient un fan-out** susceptible de gonfler artificiellement les métriques.
+
+### Métriques de base et calculées
+
+Les métriques physiques restent déterministes :
+
+```text
+Revenue = SUM(sales.revenue)
+Cost    = SUM(sales.cost)
+```
+
+Les métriques calculées utilisent une expression sûre basée sur les IDs de métriques :
+
+```text
+margin_pct = (revenue - cost) / revenue * 100
+```
+
+La formule est parsée avec l'AST Python et n'utilise jamais `eval()` ou `exec()`.
+
+### Dimensions, certification et hiérarchies
+
+Chaque dimension possède désormais :
+
+- un ID sémantique stable ;
+- une table source ;
+- un type (`categorical`, `date`, `numeric`) ;
+- des synonymes ;
+- un état exposé/masqué ;
+- une certification métier.
+
+Les hiérarchies permettent de décrire des chemins comme `Année → Trimestre → Mois` ou `Région → Pays → Ville`.
+
+### Semantic Query Engine v2
+
+Le nouvel endpoint `/semantic/query` calcule les métriques à travers les relations du modèle et prend en charge :
+
+- ventilation par dimensions de la table de faits ou des tables liées ;
+- filtres sémantiques ;
+- métriques calculées ;
+- granularité jour/semaine/mois/trimestre/année ;
+- comparaison période précédente ;
+- comparaison YoY ;
+- cumul ;
+- YTD ;
+- moyenne mobile ;
+- somme mobile.
+
+### Semantic Model Health
+
+Le Studio dispose maintenant d'un validateur qui contrôle :
+
+- tables et colonnes référencées ;
+- cardinalité des relations ;
+- risque de fan-out ;
+- formules calculées et dépendances ;
+- cycles entre métriques ;
+- dimensions temporelles ;
+- hiérarchies ;
+- connectivité du graphe depuis la table de faits.
+
+Le Trust Center utilise ce contrôle pour enrichir le score de maturité sémantique.
+
+### Interface professionnelle
+
+Le Semantic Studio est maintenant organisé en onglets :
+
+```text
+Modèle & relations
+Métriques
+Dimensions
+Hiérarchies
+Query Lab
+```
+
+Les tables, relations, métriques calculées et tests de requêtes ne sont donc plus mélangés dans un seul écran dense.
+
+### Validation v2.3.0
+
+```text
+Backend pytest          : 31 passed
+Python compileall       : OK
+TS/TSX transpilation    : OK
+Semantic multi-table    : testé
+Calculated metrics      : testé
+YoY / YTD               : testé
+Fan-out protection      : testé
+Ports                   : 3005 / 8005
+```
+
+Documentation détaillée : `docs/SEMANTIC_LAYER_V2.md`.
+
+---
 
 
 ## Nouveau dans v2.2.0 — Tenant-Aware Data Access

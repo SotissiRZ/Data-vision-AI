@@ -7,6 +7,7 @@ from typing import Any
 import pandas as pd
 
 from app.services.data_workspace import run_sql
+from app.services.semantic_nlq import execute_semantic_question, semantic_result_as_table
 
 
 def _norm(value: str) -> str:
@@ -171,7 +172,39 @@ def translate_nlq(df: pd.DataFrame, question: str, limit: int = 200, semantic: d
     }
 
 
-def run_nlq(df: pd.DataFrame, question: str, limit: int = 200, semantic: dict[str, Any] | None = None) -> dict[str, Any]:
+def run_nlq(df: pd.DataFrame, question: str, limit: int = 200, semantic: dict[str, Any] | None = None, dataset_id: str | None = None) -> dict[str, Any]:
+    # Prefer the governed semantic engine when a business metric is resolved. This enables
+    # multi-table NLQ without exposing physical joins or guessing SQL across unrelated schemas.
+    if dataset_id and semantic:
+        semantic_execution = execute_semantic_question(dataset_id, df, question, limit, semantic)
+        if semantic_execution:
+            plan = semantic_execution["plan"]
+            query = semantic_execution["query"]
+            table = semantic_result_as_table(semantic_execution)
+            dims = plan.get("dimensions") or []
+            time = plan.get("date_dimension")
+            grouping = [*dims, *([time] if time else [])]
+            reasoning = f"Métrique sémantique gouvernée {plan['metric_label']}" + (f" ventilée par {', '.join(grouping)}." if grouping else ".")
+            return {
+                "question": question,
+                "execution_mode": "semantic",
+                "sql": semantic_execution.get("display_sql"),
+                "sql_executable": False,
+                "reasoning": reasoning,
+                "assumptions": [],
+                "confidence": plan.get("confidence", "high"),
+                "mentioned_columns": [],
+                "semantic_grounding": {
+                    "metric_id": plan.get("metric_id"),
+                    "dimensions": grouping,
+                    "certified": plan.get("metric_certified"),
+                    "model_version": plan.get("semantic_model_version"),
+                    "tables": plan.get("tables"),
+                },
+                "semantic_plan": plan,
+                "semantic_query": query,
+                "result": table,
+            }
     translation = translate_nlq(df, question, limit, semantic)
     result = run_sql(df, translation["sql"], limit)
-    return {"question": question, **translation, "result": result}
+    return {"question": question, "execution_mode": "sql", "sql_executable": True, **translation, "result": result}

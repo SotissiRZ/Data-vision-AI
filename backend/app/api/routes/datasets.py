@@ -27,10 +27,18 @@ from app.services.report_builder import build_report, list_reports, get_report, 
 from app.services.dashboard import dashboard_overview
 from app.services.saved_visualizations import save_visualization, list_visualizations
 from app.services.dashboard_builder import save_dashboard, list_dashboards, get_dashboard_definition, delete_dashboard, preview_dashboard
-from app.services.semantic_layer import get_semantic_model, save_semantic_model, evaluate_metric, metric_pulse
+from app.services.semantic_layer import (
+    get_semantic_model, save_semantic_model, evaluate_metric, metric_pulse,
+    semantic_table_catalog, validate_semantic_model, query_semantic_metric,
+)
 from app.services.trust_center import trust_center
 from app.services.decision_lab import model_what_if, sensitivity_curve
 from app.services.tenant_access import access_summary
+from app.services.proactive_intelligence import (
+    list_watches as proactive_list_watches, save_watch as proactive_save_watch, delete_watch as proactive_delete_watch,
+    auto_configure_watches as proactive_auto_configure, scan as proactive_scan, list_alerts as proactive_list_alerts,
+    update_alert_status as proactive_update_alert_status, proactive_summary,
+)
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
 
@@ -188,9 +196,24 @@ class DashboardPreviewRequest(BaseModel):
     widgets: list[dict] = []
 
 class SemanticSaveRequest(BaseModel):
+    tables: list[dict] = []
+    relationships: list[dict] = []
     metrics: list[dict] = []
     dimensions: list[dict] = []
+    hierarchies: list[dict] = []
     business_glossary: list[dict] = []
+
+
+class SemanticQueryRequest(BaseModel):
+    metric_id: str
+    dimensions: list[str] = []
+    filters: list[dict] = []
+    limit: int = Field(default=500, ge=1, le=5000)
+    date_dimension: str | None = None
+    time_grain: str | None = Field(default=None, pattern="^(day|week|month|quarter|year)?$")
+    comparison: str = Field(default="none", pattern="^(none|previous_period|yoy)$")
+    time_calculation: str = Field(default="none", pattern="^(none|running_total|ytd|rolling_mean|rolling_sum)$")
+    rolling_window: int = Field(default=3, ge=2, le=36)
 
 
 class MetricEvaluateRequest(BaseModel):
@@ -216,6 +239,35 @@ class SensitivityRequest(BaseModel):
     feature: str
     values: list
 
+
+
+
+class ProactiveWatchRequest(BaseModel):
+    id: str | None = None
+    name: str | None = None
+    metric_id: str
+    date_dimension: str
+    time_grain: str = Field(default="month", pattern="^(day|week|month|quarter|year)$")
+    direction: str = Field(default="both", pattern="^(both|up|down)$")
+    threshold_pct: float = Field(default=10.0, ge=0.1, le=1000)
+    anomaly_z_threshold: float = Field(default=2.5, ge=1.0, le=10.0)
+    min_history: int = Field(default=4, ge=3, le=120)
+    filters: list[dict] = []
+    enabled: bool = True
+
+
+class ProactiveAutoRequest(BaseModel):
+    threshold_pct: float = Field(default=10.0, ge=0.1, le=1000)
+    time_grain: str = Field(default="month", pattern="^(day|week|month|quarter|year)$")
+
+
+class ProactiveScanRequest(BaseModel):
+    watch_ids: list[str] = []
+    auto_configure: bool = True
+
+
+class ProactiveAlertStatusRequest(BaseModel):
+    status: str = Field(pattern="^(open|acknowledged|dismissed|resolved)$")
 
 class AIAnalysisRequest(BaseModel):
     question: str = Field(min_length=1, max_length=2000)
@@ -515,7 +567,7 @@ def dataset_ai_history_item(dataset_id: str, session_id: str):
 def dataset_workspace_nlq(dataset_id: str, request: NLQRequest):
     try:
         df = load_dataframe(dataset_id)
-        return run_nlq(df, request.question, request.limit, get_semantic_model(dataset_id, df))
+        return run_nlq(df, request.question, request.limit, get_semantic_model(dataset_id, df), dataset_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
     except ValueError as exc:
@@ -598,13 +650,45 @@ def dataset_dashboard_delete(dataset_id: str, dashboard_id: str):
 @router.post("/{dataset_id}/dashboards/preview")
 def dataset_dashboard_preview(dataset_id: str, request: DashboardPreviewRequest):
     try:
-        return preview_dashboard(load_dataframe(dataset_id), filters=request.filters, widgets=request.widgets)
+        return preview_dashboard(dataset_id, load_dataframe(dataset_id), filters=request.filters, widgets=request.widgets)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Aperçu dashboard impossible: {exc}") from exc
+
+
+@router.get("/{dataset_id}/semantic/tables")
+def dataset_semantic_tables(dataset_id: str):
+    try:
+        get_meta(dataset_id)
+        return semantic_table_catalog(dataset_id)
+    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        code = 403 if isinstance(exc, PermissionError) else 404 if isinstance(exc, FileNotFoundError) else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/semantic/validate")
+def dataset_validate_semantic_model(dataset_id: str, body: SemanticSaveRequest):
+    try:
+        return validate_semantic_model(dataset_id, load_dataframe(dataset_id), body.model_dump())
+    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        code = 403 if isinstance(exc, PermissionError) else 404 if isinstance(exc, FileNotFoundError) else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/semantic/query")
+def dataset_semantic_query(dataset_id: str, body: SemanticQueryRequest):
+    try:
+        return query_semantic_metric(
+            dataset_id, load_dataframe(dataset_id), body.metric_id, body.dimensions, body.filters,
+            body.limit, body.date_dimension, body.time_grain, body.comparison, body.time_calculation,
+            body.rolling_window,
+        )
+    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        code = 403 if isinstance(exc, PermissionError) else 404 if isinstance(exc, FileNotFoundError) else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
 
 
 @router.get("/{dataset_id}/semantic")
@@ -637,6 +721,82 @@ def dataset_metric_pulse(dataset_id: str, body: MetricPulseRequest):
         return metric_pulse(dataset_id, load_dataframe(dataset_id), body.metric_id, body.date_column, body.periods)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404 if isinstance(exc, FileNotFoundError) else 400, detail=str(exc)) from exc
+
+
+@router.get("/{dataset_id}/proactive/summary")
+def dataset_proactive_summary(dataset_id: str):
+    try:
+        get_meta(dataset_id)
+        return proactive_summary(dataset_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.get("/{dataset_id}/proactive/watches")
+def dataset_proactive_watches(dataset_id: str):
+    try:
+        get_meta(dataset_id)
+        rows = proactive_list_watches(dataset_id)
+        return {"watches": rows, "count": len(rows)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.post("/{dataset_id}/proactive/watches")
+def dataset_proactive_watch_save(dataset_id: str, body: ProactiveWatchRequest):
+    try:
+        return proactive_save_watch(dataset_id, load_dataframe(dataset_id), body.model_dump())
+    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        code = 403 if isinstance(exc, PermissionError) else 404 if isinstance(exc, FileNotFoundError) else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/proactive/watches/auto")
+def dataset_proactive_watch_auto(dataset_id: str, body: ProactiveAutoRequest):
+    try:
+        rows = proactive_auto_configure(dataset_id, load_dataframe(dataset_id), body.threshold_pct, body.time_grain)
+        return {"watches": rows, "count": len(rows)}
+    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        code = 403 if isinstance(exc, PermissionError) else 404 if isinstance(exc, FileNotFoundError) else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+
+
+@router.delete("/{dataset_id}/proactive/watches/{watch_id}")
+def dataset_proactive_watch_delete(dataset_id: str, watch_id: str):
+    try:
+        proactive_delete_watch(dataset_id, watch_id)
+        return {"deleted": True, "watch_id": watch_id}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Surveillance introuvable") from exc
+
+
+@router.post("/{dataset_id}/proactive/scan")
+def dataset_proactive_scan(dataset_id: str, body: ProactiveScanRequest):
+    try:
+        return proactive_scan(dataset_id, load_dataframe(dataset_id), body.watch_ids or None, body.auto_configure)
+    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        code = 403 if isinstance(exc, PermissionError) else 404 if isinstance(exc, FileNotFoundError) else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+
+
+@router.get("/{dataset_id}/proactive/inbox")
+def dataset_proactive_inbox(dataset_id: str, status: str = "all", limit: int = 100):
+    try:
+        get_meta(dataset_id)
+        rows = proactive_list_alerts(dataset_id, status, limit)
+        return {"alerts": rows, "count": len(rows), "summary": proactive_summary(dataset_id)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.post("/{dataset_id}/proactive/inbox/{alert_id}/status")
+def dataset_proactive_alert_status(dataset_id: str, alert_id: str, body: ProactiveAlertStatusRequest):
+    try:
+        return proactive_update_alert_status(dataset_id, alert_id, body.status)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Alerte introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{dataset_id}/trust")

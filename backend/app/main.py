@@ -16,7 +16,7 @@ from app.services.tenant_access import (
 )
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="2.2.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.5.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -41,7 +41,11 @@ def _dataset_permission(path: str, method: str) -> str:
     if "/models/" in path and any(x in path for x in ("/predict", "/diagnostics", "/explain", "/what-if", "/sensitivity")):
         return "analysis:run"
     if method in {"POST", "PUT", "PATCH", "DELETE"}:
-        if any(x in path for x in ("/transform", "/combine", "/pipelines")):
+        if any(x in path for x in ("/transform", "/combine", "/pipelines", "/proactive/watches")):
+            return "dataset:write"
+        if "/proactive/scan" in path:
+            return "analysis:run"
+        if "/proactive/inbox/" in path and path.endswith("/status"):
             return "dataset:write"
         if path.rstrip("/").endswith("/semantic"):
             return "dataset:write"
@@ -124,7 +128,7 @@ async def tenant_aware_data_access(request: Request, call_next):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": settings.app_name, "version": "2.2.0"}
+    return {"status": "ok", "product": settings.app_name, "version": "2.5.0"}
 
 
 @app.get("/api/v1/capabilities")
@@ -152,9 +156,13 @@ def capabilities():
             "queued_job_cancellation", "governance_center_ui",
             "tenant_aware_dataset_access", "global_row_level_security", "global_column_level_security",
             "workspace_catalog_isolation", "derived_version_policy_inheritance", "governed_background_jobs",
+            "proactive_metric_watches", "analytical_inbox", "deterministic_change_detection", "semantic_metric_monitoring",
+            "alert_acknowledgement", "investigation_recommendations",
+            "semantic_layer", "semantic_multitable", "semantic_calculated_metrics", "semantic_time_intelligence",
+            "semantic_nlq_multitable", "semantic_dashboard_widgets", "semantic_drilldown",
         ],
         "partial": [
-            "shap", "fairness", "nlq", "running_job_preemptive_cancellation", "refresh_tokens", "secret_vault",
+            "scheduled_proactive_scans", "shap", "fairness", "nlq", "running_job_preemptive_cancellation", "refresh_tokens", "secret_vault",
             "model_artifact_policy_snapshot", "database_native_rls",
         ],
         "planned": [
