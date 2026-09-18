@@ -1,13 +1,14 @@
-# Validation actuelle — DataVision AI v2.9.0
+# Validation actuelle — DataVision AI v2.12.0
 
-La référence détaillée est `VALIDATION_V290.md`.
+La référence détaillée est `VALIDATION_V2120.md`.
 
 ```text
-Backend pytest                  : 52 passed
+Backend pytest                  : 64 passed
 Python compileall               : OK
-TS/TSX transpilation --noCheck  : OK
-strictNullChecks ciblé          : OK
+TS/TSX ciblé strictNullChecks   : OK
 Ports                           : 3005 / 8005
 ```
 
-Le build Docker/Next complet doit encore être confirmé sur la machine cible disposant des dépendances npm et de Docker Desktop.
+Les tests v2.12 couvrent sessions persistantes, rotation/revocation de refresh tokens, OIDC Authorization Code + PKCE, vérification cryptographique RS256/JWKS, provisioning JIT, secret vault versionné, références environnement et HashiCorp Vault KV v2.
+
+Le build Docker/Next complet, un IdP OIDC réel et un serveur Vault externe doivent encore être confirmés sur la machine cible avec réseau et credentials réels.

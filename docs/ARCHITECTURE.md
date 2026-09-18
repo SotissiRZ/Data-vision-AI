@@ -320,3 +320,70 @@ Proactive / Reliability / Review / Certification / Manual event
 ```
 
 Les destinations webhook sont protégées par chiffrement du secret, HTTPS hors localhost, résolution DNS et garde SSRF. Chaque livraison utilise HMAC-SHA256, timestamp et clé d'idempotence. Les retries utilisent la mécanique asynchrone v2.9 et chaque tentative est persistée. Les connecteurs OAuth natifs Slack/Teams/Jira restent une extension prévue, et non simulée par cette version.
+
+## v2.11 — Enterprise Action Connectors
+
+La v2.11 remplace le transport webhook unique par un adaptateur de destinations gouverné :
+
+```text
+Governed Event
+    ↓
+Action Rule
+    ↓
+Approval Policy
+    ├── single approval
+    └── staged chain (role/user ordered steps)
+    ↓
+Delivery Adapter
+    ├── Webhook + HMAC
+    ├── Slack Incoming Webhook
+    ├── Slack Web API
+    ├── Microsoft Teams Workflow/Webhook
+    ├── Jira Cloud REST v3
+    └── SMTP / OAuth2 SMTP
+    ↓
+Attempts + retry/backoff + replay
+```
+
+Trois tables additives séparent la configuration sensible du modèle v2.10 : `action_destination_options`, `action_rule_approval_chains` et `action_approval_steps`. Les endpoints webhook sensibles sont chiffrés au même titre que les credentials ; les réponses de lecture ne retournent qu'une représentation masquée. Le grant OAuth2 supporté est `client_credentials` ; le flow Authorization Code interactif reste hors v2.11.
+
+## v2.12 — Identity, SSO & Secret Management
+
+La v2.12 ajoute un plan d'identité distinct du plan analytique :
+
+```text
+Browser
+  │
+  ├── local login ─────────────┐
+  │                            │
+  └── OIDC Authorization Code │
+          + PKCE + nonce       │
+              ↓                │
+         External IdP          │
+              ↓                │
+       RS256 / JWKS verify     │
+              └──────┬─────────┘
+                     ↓
+              auth_sessions
+              ├── access token + sid
+              └── hashed rotating refresh token
+                     ↓
+              Tenant boundary
+                     ↓
+         Data / SQL / ML / AI / Actions
+```
+
+Les sessions sont validées côté serveur sur chaque requête Enterprise. Une révocation invalide donc un access token encore cryptographiquement valide dès la prochaine requête.
+
+Le Secret Vault est séparé des configurations consommant les secrets :
+
+```text
+secret_vault_items
+      ↓ logical id
+secret_vault_versions
+      ├── local_encrypted → ciphertext
+      ├── env             → environment reference
+      └── vault_kv2       → encrypted Vault credential + external reference
+```
+
+Les composants consommateurs ne doivent recevoir une valeur résolue qu'au moment de l'exécution. Les endpoints de catalogue ne retournent ni plaintext ni ciphertext. La v2.12 ne remplace pas encore la clé locale par un KMS/HSM externe ; cette intégration reste un prochain palier d'exploitation Enterprise.

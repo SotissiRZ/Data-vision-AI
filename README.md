@@ -1,4 +1,4 @@
-# DataVision AI — v2.10.0
+# DataVision AI — v2.12.0
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
 
@@ -12,54 +12,153 @@ OpenAPI   : http://localhost:8005/docs
 
 Les ports 3000 et 8000 ne sont pas utilisés.
 
-## Nouveau dans v2.10.0 — Governed Actions & Automation
+## Nouveau dans v2.12.0 — Identity, SSO & Secret Management
 
-La zone **Décider → Actions & Automation** transforme les insights en actions externes contrôlées. DataVision ne passe jamais directement d'une détection à un effet externe sans appliquer les règles du workspace.
+La zone **Gouverner → Identité & Secrets** ajoute une couche d'identité Enterprise complète au-dessus de l'authentification locale existante : sessions persistantes révocables, refresh tokens rotatifs, SSO OIDC Authorization Code + PKCE, provisioning JIT et coffre de secrets versionné.
 
-### Pipeline d'action gouverné
+### Sessions persistantes et refresh rotation
 
 ```text
-Signal / événement
+Login / SSO
+   ↓
+Session serveur
+   ├── access token court
+   └── refresh token rotatif
+            ↓
+          refresh
+            ↓
+ancien refresh invalidé + nouveau refresh émis
+```
+
+Le refresh token brut n'est jamais stocké. Seul son hash est conservé dans `auth_sessions`. Les access tokens v2.12 portent un identifiant de session et sont refusés dès que la session est révoquée. L'utilisateur peut voir ses sessions, en fermer une ou fermer toutes les autres sessions.
+
+### SSO OIDC moderne
+
+Les Owner/Admin peuvent configurer un fournisseur OIDC par workspace. Le flux v2.12 supporte discovery, Authorization Code, PKCE S256, state/nonce, JWKS, validation cryptographique RS256, restrictions de domaines email, provisioning JIT et mapping durable de l'identité externe.
+
+```text
+DataVision → IdP → authorization code → token endpoint
+                     ↓
+                ID token RS256
+                     ↓
+              JWKS + iss/aud/exp/nonce
+                     ↓
+              session DataVision
+```
+
+Le client secret OIDC reste chiffré au repos. Les fournisseurs actifs sont proposés directement sur l'écran de connexion Enterprise.
+
+### Secret Vault versionné
+
+Le coffre de secrets supporte trois backends :
+
+- `local_encrypted` pour un secret chiffré par DataVision ;
+- `env` pour référencer une variable d'environnement ;
+- `vault_kv2` pour résoudre un champ depuis HashiCorp Vault KV v2.
+
+Une rotation crée une nouvelle version et retire l'ancienne. Les valeurs, ciphertexts et tokens externes ne sont jamais renvoyés par les APIs de lecture.
+
+### Sécurité réseau
+
+Les appels externes OIDC/Vault exigent HTTPS hors développement et appliquent une garde SSRF : credentials dans URL, loopback, réseaux privés, link-local, multicast et plages réservées sont refusés.
+
+### Limites explicites
+
+La v2.12 ne revendique pas encore SCIM, MFA/WebAuthn, KMS/HSM externe ni routage automatique des IdP par domaine. Le support ID token est volontairement limité à RS256. Le `next build` Docker complet et les connexions à un IdP/Vault réels restent à valider dans l'environnement cible.
+
+## Validation v2.12.0
+
+```text
+Backend pytest                       : 64 passed
+Python compileall                    : OK
+TS/TSX syntax                        : OK
+strictNullChecks ciblé               : OK
+Persistent sessions                  : testé
+Refresh token rotation               : testé
+Server-side revocation               : testé
+OIDC PKCE + one-time state            : testé
+RS256/JWKS verification               : testé
+OIDC JIT provisioning                 : testé
+Versioned secret vault                : testé
+Environment secret references         : testé
+HashiCorp Vault KV v2 adapter         : testé
+Ports                                : 3005 / 8005
+```
+
+La documentation détaillée est dans `docs/IDENTITY_SSO_SECRETS_V2120.md` et `docs/VALIDATION_V2120.md`.
+
+## Nouveau dans v2.11.0 — Enterprise Action Connectors
+
+La zone **Décider → Actions & Automation** devient un véritable hub d'intégration gouverné. Les règles v2.10 sont conservées, mais les destinations peuvent maintenant être des connecteurs natifs **Slack, Microsoft Teams, Jira, Email SMTP** ou un webhook générique.
+
+### Connecteurs natifs
+
+```text
+Insight / événement
       ↓
-Règle + conditions
+Règle déterministe
       ↓
-Dedupe / throttling / quiet hours
+Policy d'approbation
       ↓
-Approbation humaine si requise
-      ↓
-Webhook HTTPS signé HMAC
+┌────────┬─────────┬──────┬───────┬─────────┐
+│ Slack  │ Teams   │ Jira │ Email │ Webhook │
+└────────┴─────────┴──────┴───────┴─────────┘
       ↓
 Delivery audit + retry/backoff + replay
 ```
 
-Les événements natifs supportés sont `proactive_alert`, `reliability_failure`, `review_approved`, `certification_created` et `manual`. Les règles peuvent être liées à un dataset précis et filtrer les événements par conditions déterministes (`eq`, `neq`, `contains`, `in`, comparaisons numériques, `exists`).
+Les adaptateurs actuellement implémentés sont :
 
-### Human-in-the-loop
+- Slack Incoming Webhook ;
+- Slack Web API `chat.postMessage` avec Bearer/OAuth2 client credentials ;
+- Microsoft Teams Workflow/Webhook ;
+- Jira Cloud `POST /rest/api/3/issue` ;
+- SMTP / SMTP STARTTLS / SMTP SSL ;
+- webhook HTTPS générique signé HMAC.
 
-Trois politiques sont disponibles : `always`, `critical_only` et `none`. Une action en `pending_approval` ne peut pas être exécutée par le worker. Owner/Admin/Data Scientist peuvent approuver ou rejeter selon RBAC ; les Analysts peuvent déclencher les événements autorisés mais pas approuver.
+### Credential vault gouverné
 
-### Sécurité de livraison
+Les credentials sont stockés chiffrés côté serveur et ne sont jamais renvoyés par l'API. Les profils supportent `bearer`, `basic`, `smtp` et `oauth2_client_credentials`. Les URL Slack/Teams/webhook contenant des secrets sont elles aussi chiffrées au lieu d'être exposées dans le catalogue des destinations. Les headers sensibles sont masqués.
 
+Le flux OAuth2 des **connecteurs d’action v2.11** reste `client_credentials`. Le SSO interactif **OIDC Authorization Code + PKCE** est désormais implémenté séparément par la v2.12 pour l’identité utilisateur.
+
+### Approbations multi-étapes
+
+Une règle peut utiliser `approval_mode = chain` et définir jusqu'à six étapes ordonnées. Chaque étape cible un rôle ou un utilisateur précis.
+
+```text
+Action proposée
+   ↓
+1. Revue technique · data_scientist
+   ↓
+2. Validation administrative · admin
+   ↓
+Quiet hours / throttling
+   ↓
+Exécution externe
+```
+
+L'étape suivante ne peut pas être contournée par un approbateur ayant un autre rôle. Un rejet arrête la chaîne et marque les étapes restantes comme `skipped`. Le détail d'un run expose l'avancement étape par étape.
+
+### Sécurité et contrôle opérationnel
+
+La v2.11 conserve et renforce :
+
+- RBAC workspace ;
+- chiffrement des secrets ;
 - HTTPS obligatoire hors localhost en développement ;
-- blocage DNS/IP des destinations privées, loopback, link-local, réservées ou multicast ;
-- secret webhook chiffré au repos avec la même enveloppe que les credentials connecteurs ;
-- signature `X-DataVision-Signature: v1=<HMAC-SHA256>` ;
-- timestamp signé et `Idempotency-Key` stable ;
-- headers sensibles protégés contre l'écrasement ;
-- payload métier templatable sans exposer automatiquement les données brutes.
+- garde SSRF pour les destinations HTTP ;
+- HMAC + timestamp + idempotency key pour les webhooks génériques ;
+- déduplication et throttling ;
+- quiet hours timezone-aware ;
+- retries exponentiels non bloquants via Redis ;
+- audit des tentatives ;
+- replay gouverné ;
+- test explicite d'une destination par Owner/Admin.
 
-### Contrôle du bruit et des effets
+### Limites explicites
 
-Chaque règle peut définir une fenêtre de déduplication, un throttling, des quiet hours avec timezone IANA, ainsi qu'une politique de retry/backoff. Les quiet hours créent une action `scheduled`; le worker la remet en file lorsqu'elle devient exécutable. Un replay manuel crée une nouvelle exécution liée à l'originale, avec un fingerprint distinct et un audit explicite.
-
-### Déclenchements natifs
-
-- une alerte de l'Inbox proactive peut déclencher une règle `proactive_alert` en mode Enterprise ;
-- un Data Contract en échec émet `reliability_failure` ;
-- une revue approuvée émet `review_approved` ;
-- une certification émet `certification_created`.
-
-La règle essentielle reste : **DataVision peut recommander et préparer une action, mais les politiques d'approbation du workspace gardent le contrôle de l'effet externe.**
+Le package ne prétend pas valider une livraison réelle vers Slack/Teams/Jira/SMTP sans credentials et réseau externes disponibles. Les adaptateurs, payloads, contrôles RBAC, chiffrement et enchaînements sont testés localement avec doubles de transport. Le build Next.js complet reste à confirmer sur la machine Docker cible.
 
 ## Nouveau dans v2.9.0 — Observability, Evaluation & Operational Intelligence
 
@@ -232,10 +331,10 @@ Les Data Contracts sont évalués sur le data product du workspace, pas sur une 
 | Analyst | ✓ | — | — |
 | Viewer | ✓ | — | — |
 
-## Validation v2.10.0
+## Validation v2.11.0
 
 ```text
-Backend pytest                       : 55 passed
+Backend pytest                       : 59 passed
 Python compileall                    : OK
 TS/TSX syntax                        : OK
 strictNullChecks ciblé               : OK

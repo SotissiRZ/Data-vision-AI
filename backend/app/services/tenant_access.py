@@ -4,7 +4,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Any
 
-from app.services.auth_service import decode_token, get_user, has_permission, workspace_role
+from app.services.auth_service import decode_token, get_user, has_permission, workspace_role, validate_session_payload
 from app.services.metadata_store import fetch_all, fetch_one, execute, utcnow
 
 
@@ -46,6 +46,7 @@ def build_access_context(authorization: str | None, workspace_id: str | None) ->
     if not workspace_id:
         raise PermissionError("X-Workspace-ID est requis pour l'accès gouverné.")
     payload = decode_token(authorization.split(" ", 1)[1].strip())
+    validate_session_payload(payload)
     user = get_user(payload.get("sub", ""))
     if not user or not user.get("is_active", True):
         raise PermissionError("Utilisateur introuvable ou désactivé.")

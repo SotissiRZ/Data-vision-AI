@@ -534,6 +534,138 @@ SCHEMA_SQL = [
         UNIQUE(run_id, attempt_number)
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS action_destination_options (
+        destination_id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        config_json TEXT NOT NULL,
+        credential_type TEXT NOT NULL DEFAULT 'none',
+        credential_ciphertext TEXT NOT NULL DEFAULT '',
+        oauth_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS action_rule_approval_chains (
+        rule_id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        steps_json TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS action_approval_steps (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        step_order INTEGER NOT NULL,
+        label TEXT NOT NULL,
+        required_role TEXT,
+        required_user_id TEXT,
+        status TEXT NOT NULL DEFAULT 'pending',
+        acted_by TEXT,
+        note TEXT,
+        acted_at TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(run_id, step_order)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS auth_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'local',
+        refresh_token_hash TEXT NOT NULL,
+        device_label TEXT,
+        user_agent TEXT,
+        created_at TEXT NOT NULL,
+        last_seen_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        revoked_at TEXT,
+        rotated_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS oidc_providers (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        issuer TEXT NOT NULL,
+        client_id TEXT NOT NULL,
+        client_secret_ciphertext TEXT NOT NULL,
+        authorization_endpoint TEXT NOT NULL,
+        token_endpoint TEXT NOT NULL,
+        jwks_uri TEXT NOT NULL,
+        scopes_json TEXT NOT NULL,
+        email_claim TEXT NOT NULL DEFAULT 'email',
+        name_claim TEXT NOT NULL DEFAULT 'name',
+        groups_claim TEXT,
+        allowed_domains_json TEXT NOT NULL,
+        default_role TEXT NOT NULL DEFAULT 'viewer',
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_tested_at TEXT,
+        last_error TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS oidc_login_states (
+        state_hash TEXT PRIMARY KEY,
+        provider_id TEXT NOT NULL,
+        code_verifier_ciphertext TEXT NOT NULL,
+        redirect_uri TEXT NOT NULL,
+        nonce_hash TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS external_identities (
+        provider_id TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        email TEXT,
+        created_at TEXT NOT NULL,
+        last_login_at TEXT NOT NULL,
+        PRIMARY KEY(provider_id, subject)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS secret_vault_items (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        provider TEXT NOT NULL DEFAULT 'local_encrypted',
+        reference_json TEXT NOT NULL DEFAULT '{}',
+        current_version INTEGER NOT NULL DEFAULT 0,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(workspace_id, name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS secret_vault_versions (
+        id TEXT PRIMARY KEY,
+        secret_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        version INTEGER NOT NULL,
+        ciphertext TEXT NOT NULL,
+        checksum TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'active',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        rotated_from INTEGER,
+        UNIQUE(secret_id, version)
+    )
+    """,
 ]
 
 

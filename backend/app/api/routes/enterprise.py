@@ -7,7 +7,10 @@ from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
 
-from app.services.auth_service import bootstrap, decode_token, get_user, login, session_payload, has_permission, workspace_role
+from app.services.auth_service import (
+    bootstrap, decode_token, get_user, login, session_payload, has_permission, workspace_role,
+    validate_session_payload, refresh_authenticated_session, list_user_sessions, revoke_user_session, revoke_all_user_sessions,
+)
 from app.services.audit_service import list_events, record_event
 from app.services.job_service import get_job, list_jobs, request_cancel, submit_job, queue_status
 from app.services.metadata_store import metadata_backend, fetch_one
@@ -33,7 +36,11 @@ from app.services.data_reliability import (
 from app.services.governed_actions import (
     action_summary, approve_run, create_destination, delete_destination, delete_rule, dispatch_event,
     get_run as get_action_run, list_destinations, list_rules as list_action_rules, list_runs as list_action_runs,
-    reject_run, replay_run, save_rule as save_action_rule,
+    reject_run, replay_run, save_rule as save_action_rule, test_destination_delivery,
+)
+from app.services.identity_service import (
+    create_oidc_provider, list_oidc_providers, list_public_oidc_providers, delete_oidc_provider, oidc_start, oidc_exchange,
+    create_secret, list_secrets, rotate_secret, test_secret,
 )
 from app.services.workspace_service import (
     bind_dataset,
@@ -79,6 +86,49 @@ class BootstrapRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=200)
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(min_length=20, max_length=1000)
+
+
+class OIDCProviderRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    issuer: str = Field(min_length=5, max_length=2000)
+    client_id: str = Field(min_length=1, max_length=1000)
+    client_secret: str = Field(default="", max_length=4000)
+    authorization_endpoint: str | None = Field(default=None, max_length=2000)
+    token_endpoint: str | None = Field(default=None, max_length=2000)
+    jwks_uri: str | None = Field(default=None, max_length=2000)
+    scopes: list[str] = ["openid", "profile", "email"]
+    allowed_domains: list[str] = []
+    default_role: str = Field(default="viewer", pattern="^(owner|admin|data_scientist|analyst|viewer)$")
+    email_claim: str = Field(default="email", max_length=120)
+    name_claim: str = Field(default="name", max_length=120)
+    groups_claim: str | None = Field(default=None, max_length=120)
+    enabled: bool = True
+
+
+class OIDCStartRequest(BaseModel):
+    redirect_uri: str = Field(min_length=5, max_length=2000)
+
+
+class OIDCExchangeRequest(BaseModel):
+    provider_id: str
+    code: str = Field(min_length=1, max_length=10000)
+    state: str = Field(min_length=10, max_length=1000)
+    redirect_uri: str = Field(min_length=5, max_length=2000)
+
+
+class SecretCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    provider: str = Field(default="local_encrypted", pattern="^(local_encrypted|env|vault_kv2)$")
+    value: str = Field(default="", max_length=12000)
+    reference: dict[str, Any] = {}
+
+
+class SecretRotateRequest(BaseModel):
+    value: str = Field(default="", max_length=12000)
 
 
 class WorkspaceCreateRequest(BaseModel):
@@ -173,9 +223,14 @@ class CertificationRevokeRequest(BaseModel):
 
 class ActionDestinationRequest(BaseModel):
     name: str = Field(min_length=1, max_length=180)
-    webhook_url: str = Field(min_length=8, max_length=2000)
+    kind: str = Field(default="webhook", pattern="^(webhook|slack|teams|jira|email)$")
+    webhook_url: str = Field(default="", max_length=2000)
     secret: str = Field(default="", max_length=2000)
     headers: dict[str, str] = {}
+    config: dict[str, Any] = {}
+    credential_type: str = Field(default="none", pattern="^(none|hmac|bearer|basic|oauth2_client_credentials|smtp)$")
+    credential: dict[str, Any] = {}
+    oauth: dict[str, Any] = {}
     enabled: bool = True
 
 
@@ -187,7 +242,8 @@ class ActionRuleRequest(BaseModel):
     dataset_id: str | None = None
     destination_id: str
     conditions: list[dict[str, Any]] = []
-    approval_mode: str = Field(default="always", pattern="^(always|critical_only|none)$")
+    approval_mode: str = Field(default="always", pattern="^(always|critical_only|none|chain)$")
+    approval_chain: list[dict[str, Any]] = []
     throttle_minutes: int = Field(default=15, ge=0, le=10080)
     dedupe_minutes: int = Field(default=1440, ge=0, le=43200)
     quiet_hours: dict[str, Any] | None = None
@@ -259,6 +315,7 @@ def current_user(authorization: str | None = Header(default=None)) -> dict[str, 
     token = authorization.split(" ", 1)[1].strip()
     try:
         payload = decode_token(token)
+        validate_session_payload(payload)
         user = get_user(payload["sub"])
         if not user or not user.get("is_active"):
             raise ValueError("Compte inactif")
@@ -310,13 +367,77 @@ def auth_me(user=Depends(current_user)):
         _handle(exc)
 
 
+@router.post("/auth/refresh")
+def auth_refresh(req: RefreshTokenRequest):
+    try:
+        return refresh_authenticated_session(req.refresh_token)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/auth/sessions")
+def auth_sessions(user=Depends(current_user)):
+    try:
+        return {"sessions": list_user_sessions(user["id"])}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/auth/sessions/{session_id}/revoke")
+def auth_session_revoke(session_id: str, user=Depends(current_user)):
+    try:
+        revoke_user_session(user["id"], session_id)
+        return {"status": "revoked", "session_id": session_id}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/auth/logout-all")
+def auth_logout_all(authorization: str | None = Header(default=None), user=Depends(current_user)):
+    try:
+        current_sid = None
+        if authorization and authorization.lower().startswith("bearer "):
+            current_sid = decode_token(authorization.split(" ", 1)[1].strip()).get("sid")
+        count = revoke_all_user_sessions(user["id"], except_session_id=current_sid)
+        return {"status": "ok", "revoked": count, "current_session_kept": bool(current_sid)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/auth/oidc/providers")
+def auth_oidc_public_providers():
+    try:
+        return {"providers": list_public_oidc_providers()}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/auth/oidc/{provider_id}/start")
+def auth_oidc_start(provider_id: str, req: OIDCStartRequest):
+    try:
+        return oidc_start(provider_id, req.redirect_uri)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/auth/oidc/exchange")
+def auth_oidc_exchange(req: OIDCExchangeRequest):
+    try:
+        out = oidc_exchange(req.provider_id, req.code, req.state, req.redirect_uri)
+        record_event("auth.oidc_login", user_id=out["user"]["id"], organization_id=out.get("organization_id"), workspace_id=out.get("workspace_id"), resource_type="oidc_provider", resource_id=req.provider_id, payload={"email": out["user"]["email"]})
+        return out
+    except Exception as exc:
+        _handle(exc)
+
+
 @router.get("/enterprise/status")
 def enterprise_status():
     try:
         return {
             "metadata": metadata_backend(),
-            "auth": "local_bearer",
-            "oidc": "planned",
+            "auth": "persistent_sessions_with_refresh_rotation",
+            "oidc": "authorization_code_pkce_rs256_jit_v2.12",
+            "secret_vault": "versioned_local_env_vault_kv2",
             "rbac": "implemented_for_enterprise_resources",
             "row_column_policies": "policy_metadata_and_preview_ready",
             "async_jobs": "redis_worker",
@@ -326,12 +447,13 @@ def enterprise_status():
             "data_contracts": "implemented_v2.8",
             "lineage_impact": "implemented_v2.8",
             "publication_gate": "contract_aware_v2.8",
-            "governed_actions": "signed_webhooks_with_human_approval_v2.10",
+            "governed_actions": "native_action_connectors_and_staged_approval_v2.11",
             "action_safety": "dedupe_throttle_quiet_hours_ssrf_guard",
             "connector_secret_key": "dedicated" if bool(get_settings().connector_secret_key) else "auth_secret_fallback",
             "refresh_scheduler": "worker_polling_with_atomic_schedule_claim",
             "queue": queue_status(),
             "token_expiry_minutes": get_settings().access_token_minutes,
+            "refresh_token_days": get_settings().refresh_token_days,
             "security_warning": "AUTH_SECRET doit être remplacé avant tout déploiement partagé." if get_settings().auth_secret.startswith("change-") else None,
         }
     except Exception as exc:
@@ -344,6 +466,79 @@ def workspace_create(req: WorkspaceCreateRequest, user=Depends(current_user)):
         ws = create_workspace(user["id"], req.organization_id, req.name)
         record_event("workspace.create", user_id=user["id"], organization_id=req.organization_id, workspace_id=ws["id"], resource_type="workspace", resource_id=ws["id"], payload={"name": ws["name"]})
         return {"workspace": ws}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/identity/oidc")
+def workspace_oidc_list(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return {"providers": list_oidc_providers(workspace_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/identity/oidc")
+def workspace_oidc_create(workspace_id: str, req: OIDCProviderRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        item = create_oidc_provider(user["id"], workspace_id, **req.model_dump())
+        record_event("identity.oidc_provider_create", user_id=user["id"], workspace_id=workspace_id, resource_type="oidc_provider", resource_id=item["id"], payload={"name": item["name"], "issuer": item["issuer"]})
+        return {"provider": item}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/workspaces/{workspace_id}/identity/oidc/{provider_id}")
+def workspace_oidc_delete(workspace_id: str, provider_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        delete_oidc_provider(workspace_id, provider_id)
+        record_event("identity.oidc_provider_disable", user_id=user["id"], workspace_id=workspace_id, resource_type="oidc_provider", resource_id=provider_id)
+        return {"status": "disabled"}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/secrets")
+def workspace_secrets_list(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return {"secrets": list_secrets(workspace_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/secrets")
+def workspace_secret_create(workspace_id: str, req: SecretCreateRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        item = create_secret(user["id"], workspace_id, **req.model_dump())
+        record_event("secret.create", user_id=user["id"], workspace_id=workspace_id, resource_type="secret", resource_id=item["id"], payload={"name": item["name"], "provider": item["provider"]})
+        return {"secret": item}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/secrets/{secret_id}/rotate")
+def workspace_secret_rotate(workspace_id: str, secret_id: str, req: SecretRotateRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        item = rotate_secret(user["id"], workspace_id, secret_id, value=req.value)
+        record_event("secret.rotate", user_id=user["id"], workspace_id=workspace_id, resource_type="secret", resource_id=secret_id, payload={"version": item.get("current_version")})
+        return {"secret": item}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/secrets/{secret_id}/test")
+def workspace_secret_test(workspace_id: str, secret_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        result = test_secret(workspace_id, secret_id)
+        record_event("secret.test", user_id=user["id"], workspace_id=workspace_id, resource_type="secret", resource_id=secret_id, payload={"ok": result.get("ok")})
+        return result
     except Exception as exc:
         _handle(exc)
 
@@ -722,7 +917,7 @@ def _connector_catalog_for_user(user_id: str, workspace_id: str) -> tuple[list[d
     return safe_connectors, safe_sources
 
 
-# ---------------------------- Governed actions & automation v2.10 ----------------------------
+# ---------------------------- Enterprise action connectors v2.11 ----------------------------
 
 @router.get("/workspaces/{workspace_id}/actions/summary")
 def actions_summary(workspace_id: str, user=Depends(current_user)):
@@ -746,9 +941,20 @@ def actions_destinations_list(workspace_id: str, user=Depends(current_user)):
 def actions_destinations_create(workspace_id: str, req: ActionDestinationRequest, user=Depends(current_user)):
     try:
         _workspace_permission(user["id"], workspace_id, "actions:manage")
-        dest = create_destination(user["id"], workspace_id, name=req.name, webhook_url=req.webhook_url, secret=req.secret, headers=req.headers, enabled=req.enabled)
+        dest = create_destination(user["id"], workspace_id, **req.model_dump())
         record_event("action.destination.create", user_id=user["id"], workspace_id=workspace_id, resource_type="action_destination", resource_id=dest["id"], payload={"name":req.name})
         return {"destination": dest}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/actions/destinations/{destination_id}/test")
+def actions_destination_test(workspace_id: str, destination_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:manage")
+        out = test_destination_delivery(workspace_id, destination_id, user["id"])
+        record_event("action.destination.test", user_id=user["id"], workspace_id=workspace_id, resource_type="action_destination", resource_id=destination_id, payload={"ok":out.get("ok"),"kind":out.get("kind")})
+        return out
     except Exception as exc:
         _handle(exc)
 

@@ -2092,3 +2092,270 @@ def test_v2100_action_rbac_and_internal_job_submission_guard(tmp_path, monkeypat
     assert internal.status_code==422
     summary=client.get(f'/api/v1/workspaces/{ws}/actions/summary',headers=ah)
     assert summary.status_code==200 and summary.json()['security']['human_approval'] is True
+
+
+def test_v2110_native_slack_connector_encrypted_credentials_and_delivery(tmp_path, monkeypatch):
+    from app.services import governed_actions, job_service
+    token,ws,h=_bootstrap_v2100(tmp_path,monkeypatch,'v211-slack')
+    dest=client.post(f'/api/v1/workspaces/{ws}/actions/destinations',headers=h,json={
+        'name':'Slack Finance','kind':'slack','webhook_url':'','credential_type':'bearer',
+        'credential':{'token':'xoxb-super-secret-token'},'config':{'mode':'api','channel':'C123FIN'},'enabled':True
+    })
+    assert dest.status_code==200,dest.text
+    d=dest.json()['destination']
+    assert d['kind']=='slack' and d['credential_type']=='bearer' and d['has_credential'] is True
+    assert 'xoxb-super-secret-token' not in json.dumps(d)
+    rule=client.post(f'/api/v1/workspaces/{ws}/actions/rules',headers=h,json={
+        'name':'Slack no approval','event_type':'manual','destination_id':d['id'],'approval_mode':'none','throttle_minutes':0,'dedupe_minutes':0,
+        'payload_template':{'message':'{{event.message}}','severity':'${event.severity}'}
+    })
+    assert rule.status_code==200,rule.text
+    fired=governed_actions.dispatch_event(client.get('/api/v1/auth/me',headers=h).json()['user']['id'],ws,event_type='manual',event_id='slack-1',payload={'message':'Margin alert','severity':'high'},enqueue=False)
+    run=fired['runs'][0]
+    captured={}
+    def fake_post_json(url,payload,headers=None,timeout=10.0):
+        captured.update({'url':url,'payload':payload,'headers':headers or {}}); return 200,json.dumps({'ok':True,'ts':'1'})
+    monkeypatch.setattr(governed_actions,'_post_json',fake_post_json)
+    out=governed_actions.execute_action_run(run['id'])
+    assert out['status']=='completed'
+    assert captured['url']=='https://slack.com/api/chat.postMessage'
+    assert captured['payload']['channel']=='C123FIN' and captured['payload']['text']=='Margin alert'
+    assert captured['headers']['Authorization']=='Bearer xoxb-super-secret-token'
+
+
+def test_v2110_native_jira_payload_and_email_smtp_adapter(tmp_path, monkeypatch):
+    from app.services import governed_actions
+    token,ws,h=_bootstrap_v2100(tmp_path,monkeypatch,'v211-native')
+    jira=client.post(f'/api/v1/workspaces/{ws}/actions/destinations',headers=h,json={
+        'name':'Jira Ops','kind':'jira','webhook_url':'https://acme.atlassian.net','credential_type':'basic',
+        'credential':{'username':'ops@example.com','api_token':'jira-secret'},'config':{'project_key':'DATA','issue_type':'Incident'}
+    })
+    assert jira.status_code==200,jira.text
+    jd=jira.json()['destination']; assert jd['kind']=='jira' and 'jira-secret' not in json.dumps(jd)
+    rule=client.post(f'/api/v1/workspaces/{ws}/actions/rules',headers=h,json={'name':'Jira manual','event_type':'manual','destination_id':jd['id'],'approval_mode':'none','throttle_minutes':0,'dedupe_minutes':0,'payload_template':{'summary':'{{event.title}}','description':'{{event.message}}'}})
+    assert rule.status_code==200,rule.text
+    run=governed_actions.dispatch_event(client.get('/api/v1/auth/me',headers=h).json()['user']['id'],ws,event_type='manual',event_id='jira-1',payload={'title':'Contract failure','message':'Revenue contract failed'},enqueue=False)['runs'][0]
+    captured={}
+    def fake_post_json(url,payload,headers=None,timeout=10.0):
+        captured.update({'url':url,'payload':payload,'headers':headers or {}}); return 201,'{"id":"10001"}'
+    monkeypatch.setattr(governed_actions,'_post_json',fake_post_json)
+    done=governed_actions.execute_action_run(run['id']); assert done['status']=='completed'
+    assert captured['url'].endswith('/rest/api/3/issue')
+    assert captured['payload']['fields']['project']['key']=='DATA'
+    assert captured['payload']['fields']['summary']=='Contract failure'
+    assert captured['headers']['Authorization'].startswith('Basic ')
+
+    email=governed_actions.create_destination(client.get('/api/v1/auth/me',headers=h).json()['user']['id'],ws,name='Mail Ops',kind='email',credential_type='smtp',credential={'username':'mailer','password':'smtp-secret'},config={'smtp_host':'smtp.example.com','smtp_port':587,'from_email':'datavision@example.com','to':['ops@example.com'],'starttls':True})
+    secret=governed_actions._get_destination_secret(ws,email['id'])
+    events=[]
+    class FakeSMTP:
+        def __init__(self,host,port,timeout=10): events.append(('connect',host,port))
+        def __enter__(self): return self
+        def __exit__(self,*args): return False
+        def starttls(self): events.append(('starttls',))
+        def login(self,u,p): events.append(('login',u,p))
+        def send_message(self,msg): events.append(('send',msg['To'],msg['Subject'],msg.get_content().strip()))
+    monkeypatch.setattr(governed_actions._smtplib,'SMTP',FakeSMTP)
+    code,msg=governed_actions._deliver_email(secret,{'message':'Daily KPI ready','subject':'KPI'})
+    assert code==250 and ('login','mailer','smtp-secret') in events
+    assert any(x[0]=='send' and x[1]=='ops@example.com' for x in events)
+
+
+def test_v2110_staged_approval_chain_enforces_order_and_role(tmp_path, monkeypatch):
+    from app.services import job_service
+    token,ws,h=_bootstrap_v2100(tmp_path,monkeypatch,'v211-chain')
+    # Provision two distinct reviewers to prove ordered separation of duties.
+    ds=client.post(f'/api/v1/workspaces/{ws}/members',headers=h,json={'email':'ds-chain@datavision.local','role':'data_scientist','display_name':'Data Scientist','password':'DataSciPass123!'})
+    adm=client.post(f'/api/v1/workspaces/{ws}/members',headers=h,json={'email':'admin-chain@datavision.local','role':'admin','display_name':'Admin','password':'AdminPass123!'})
+    assert ds.status_code==200 and adm.status_code==200
+    dlogin=client.post('/api/v1/auth/login',json={'email':'ds-chain@datavision.local','password':'DataSciPass123!'}).json()
+    alogin=client.post('/api/v1/auth/login',json={'email':'admin-chain@datavision.local','password':'AdminPass123!'}).json()
+    dh={'Authorization':f"Bearer {dlogin['access_token']}"}; ah={'Authorization':f"Bearer {alogin['access_token']}"}
+    dest=client.post(f'/api/v1/workspaces/{ws}/actions/destinations',headers=h,json={'name':'Approval hook','kind':'webhook','webhook_url':'https://example.com/action','secret':'sig'}).json()['destination']
+    rule=client.post(f'/api/v1/workspaces/{ws}/actions/rules',headers=h,json={
+        'name':'Two-person approval','event_type':'manual','destination_id':dest['id'],'approval_mode':'chain','throttle_minutes':0,'dedupe_minutes':0,
+        'approval_chain':[{'label':'Peer review','role':'data_scientist'},{'label':'Administrative approval','role':'admin'}]
+    })
+    assert rule.status_code==200,rule.text
+    fired=client.post(f'/api/v1/workspaces/{ws}/actions/events',headers=h,json={'event_type':'manual','event_id':'chain-1','payload':{'severity':'critical','message':'Publish externally'}})
+    assert fired.status_code==200,fired.text
+    run=fired.json()['runs'][0]
+    assert run['status']=='pending_approval' and len(run['approval_steps'])==2
+    wrong=client.post(f'/api/v1/workspaces/{ws}/actions/runs/{run["id"]}/approve',headers=ah,json={'note':'too early'})
+    assert wrong.status_code==403,wrong.text
+    first=client.post(f'/api/v1/workspaces/{ws}/actions/runs/{run["id"]}/approve',headers=dh,json={'note':'peer checked'})
+    assert first.status_code==200,first.text
+    fr=first.json()['run']; assert fr['status']=='pending_approval' and fr['approval_steps'][0]['status']=='approved' and fr['approval_steps'][1]['status']=='pending'
+    class FakeRedis:
+        def __init__(self): self.items=[]
+        def rpush(self,key,value): self.items.append((key,value)); return len(self.items)
+        def zadd(self,*args,**kwargs): return 1
+        def zrem(self,*args,**kwargs): return 1
+    fake=FakeRedis(); monkeypatch.setattr(job_service,'_redis',lambda:fake)
+    second=client.post(f'/api/v1/workspaces/{ws}/actions/runs/{run["id"]}/approve',headers=ah,json={'note':'admin approved'})
+    assert second.status_code==200,second.text
+    sr=second.json()['run']; assert sr['status']=='queued' and all(x['status']=='approved' for x in sr['approval_steps'])
+    assert sr['job_id'] and fake.items[-1][1]==sr['job_id']
+
+
+def test_v2110_sensitive_webhook_endpoints_are_encrypted_and_masked(tmp_path, monkeypatch):
+    from app.services import governed_actions, metadata_store
+    token,ws,h=_bootstrap_v2100(tmp_path,monkeypatch,'v211-mask')
+    secret_url='https://example.com/hooks/teams/super-secret-token-123'
+    created=client.post(f'/api/v1/workspaces/{ws}/actions/destinations',headers=h,json={'name':'Teams Finance','kind':'teams','webhook_url':secret_url,'credential_type':'none'})
+    assert created.status_code==200,created.text
+    d=created.json()['destination']
+    assert 'super-secret-token-123' not in json.dumps(d)
+    row=metadata_store.fetch_one('SELECT webhook_url FROM action_destinations WHERE id=:id',{'id':d['id']})
+    assert row and row['webhook_url']=='encrypted://teams-endpoint'
+    internal=governed_actions._get_destination_secret(ws,d['id'])
+    assert internal['webhook_url']==secret_url
+
+
+def _bootstrap_v212(tmp_path, monkeypatch, suffix="identity"):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+    settings=get_settings(); monkeypatch.setattr(settings,'data_root',tmp_path); monkeypatch.setattr(settings,'database_url',f"sqlite:///{tmp_path/f'identity-{suffix}.db'}"); monkeypatch.setattr(settings,'auth_secret','test-v212-identity-secret-with-enough-entropy'); monkeypatch.setattr(settings,'connector_secret_key','test-v212-connector-secret-with-enough-entropy'); monkeypatch.setattr(settings,'app_env','development'); monkeypatch.setattr(settings,'frontend_url','http://localhost:3005')
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+    boot=client.post('/api/v1/auth/bootstrap',json={'email':f'owner-{suffix}@datavision.local','password':'EnterprisePass123!','display_name':'Owner','organization_name':f'Identity {suffix}'})
+    assert boot.status_code==200,boot.text
+    body=boot.json(); token=body['access_token']; ws=body['workspace_id']; return body,token,ws,{'Authorization':f'Bearer {token}'}
+
+
+def test_v212_refresh_rotation_and_server_side_session_revocation(tmp_path, monkeypatch):
+    boot,token,ws,h=_bootstrap_v212(tmp_path,monkeypatch,'sessions')
+    assert boot.get('refresh_token') and boot.get('session_id')
+    sessions=client.get('/api/v1/auth/sessions',headers=h)
+    assert sessions.status_code==200,sessions.text
+    assert any(x['id']==boot['session_id'] and x['active'] for x in sessions.json()['sessions'])
+
+    refreshed=client.post('/api/v1/auth/refresh',json={'refresh_token':boot['refresh_token']})
+    assert refreshed.status_code==200,refreshed.text
+    newer=refreshed.json(); assert newer['refresh_token']!=boot['refresh_token']
+    replay=client.post('/api/v1/auth/refresh',json={'refresh_token':boot['refresh_token']})
+    assert replay.status_code==400
+
+    h2={'Authorization':f"Bearer {newer['access_token']}"}
+    revoked=client.post(f"/api/v1/auth/sessions/{newer['session_id']}/revoke",headers=h2)
+    assert revoked.status_code==200,revoked.text
+    me=client.get('/api/v1/auth/me',headers=h2)
+    assert me.status_code==401
+
+
+def test_v212_versioned_secret_vault_local_and_env(tmp_path, monkeypatch):
+    boot,token,ws,h=_bootstrap_v212(tmp_path,monkeypatch,'secrets')
+    local=client.post(f'/api/v1/workspaces/{ws}/secrets',headers=h,json={'name':'finance-api','provider':'local_encrypted','value':'alpha-secret','reference':{}})
+    assert local.status_code==200,local.text
+    item=local.json()['secret']; sid=item['id']
+    assert item['current_version']==1 and 'ciphertext' not in json.dumps(item)
+    tested=client.post(f'/api/v1/workspaces/{ws}/secrets/{sid}/test',headers=h)
+    assert tested.status_code==200 and tested.json()['length']==len('alpha-secret')
+    rotated=client.post(f'/api/v1/workspaces/{ws}/secrets/{sid}/rotate',headers=h,json={'value':'beta-secret'})
+    assert rotated.status_code==200 and rotated.json()['secret']['current_version']==2
+
+    monkeypatch.setenv('DATAVISION_TEST_SECRET','from-environment')
+    env=client.post(f'/api/v1/workspaces/{ws}/secrets',headers=h,json={'name':'env-secret','provider':'env','value':'','reference':{'variable':'DATAVISION_TEST_SECRET'}})
+    assert env.status_code==200,env.text
+    envtest=client.post(f"/api/v1/workspaces/{ws}/secrets/{env.json()['secret']['id']}/test",headers=h)
+    assert envtest.status_code==200 and envtest.json()['length']==len('from-environment')
+    listing=client.get(f'/api/v1/workspaces/{ws}/secrets',headers=h).json()['secrets']
+    assert len(listing)==2 and all('ciphertext' not in json.dumps(x) for x in listing)
+
+
+def test_v212_oidc_pkce_jit_provisioning(tmp_path, monkeypatch):
+    boot,token,ws,h=_bootstrap_v212(tmp_path,monkeypatch,'oidc')
+    created=client.post(f'/api/v1/workspaces/{ws}/identity/oidc',headers=h,json={
+        'name':'Corporate SSO','issuer':'http://localhost:9999','client_id':'datavision-client','client_secret':'oidc-secret',
+        'authorization_endpoint':'http://localhost:9999/authorize','token_endpoint':'http://localhost:9999/token','jwks_uri':'http://localhost:9999/jwks',
+        'allowed_domains':['example.com'],'default_role':'analyst'
+    })
+    assert created.status_code==200,created.text
+    provider=created.json()['provider']; pid=provider['id']
+    assert provider['has_client_secret'] is True and 'client_secret' not in provider and 'client_secret_ciphertext' not in provider
+    public=client.get('/api/v1/auth/oidc/providers')
+    assert public.status_code==200 and any(x['id']==pid for x in public.json()['providers'])
+
+    started=client.post(f'/api/v1/auth/oidc/{pid}/start',json={'redirect_uri':'http://localhost:3005'})
+    assert started.status_code==200,started.text
+    start=started.json(); assert 'code_challenge=' in start['authorization_url'] and start['state']
+
+    import app.services.identity_service as ids
+    class FakeResponse:
+        def raise_for_status(self): return None
+        def json(self): return {'id_token':'header.payload.signature'}
+    class FakeClient:
+        def __init__(self,*a,**k): pass
+        def __enter__(self): return self
+        def __exit__(self,*a): return False
+        def post(self,*a,**k): return FakeResponse()
+    monkeypatch.setattr(ids.httpx,'Client',FakeClient)
+    monkeypatch.setattr(ids,'_verify_id_token',lambda token,provider,nonce_hash:{'sub':'corp-user-123','email':'analyst@example.com','name':'Enterprise Analyst','iss':provider['issuer'],'aud':provider['client_id'],'exp':9999999999,'nonce':'ignored'})
+
+    exchange=client.post('/api/v1/auth/oidc/exchange',json={'provider_id':pid,'code':'auth-code','state':start['state'],'redirect_uri':'http://localhost:3005'})
+    assert exchange.status_code==200,exchange.text
+    body=exchange.json(); assert body['workspace_id']==ws and body['user']['email']=='analyst@example.com' and body.get('refresh_token')
+    session=client.get('/api/v1/auth/me',headers={'Authorization':f"Bearer {body['access_token']}"})
+    assert session.status_code==200,session.text
+    roles={x['id']:x['role'] for x in session.json()['workspaces']}
+    assert roles[ws]=='analyst'
+    replay=client.post('/api/v1/auth/oidc/exchange',json={'provider_id':pid,'code':'auth-code','state':start['state'],'redirect_uri':'http://localhost:3005'})
+    assert replay.status_code==400
+
+
+def test_v212_oidc_rs256_signature_validation(tmp_path, monkeypatch):
+    boot,token,ws,h=_bootstrap_v212(tmp_path,monkeypatch,'rs256')
+    import time as _time
+    import base64 as _base64
+    import app.services.identity_service as ids
+    from cryptography.hazmat.primitives.asymmetric import rsa, padding
+    from cryptography.hazmat.primitives import hashes
+
+    private=rsa.generate_private_key(public_exponent=65537,key_size=2048)
+    pub=private.public_key().public_numbers()
+    def b64int(v:int):
+        raw=v.to_bytes((v.bit_length()+7)//8,'big')
+        return _base64.urlsafe_b64encode(raw).rstrip(b'=').decode()
+    def b64json(obj):
+        return _base64.urlsafe_b64encode(json.dumps(obj,separators=(',',':')).encode()).rstrip(b'=').decode()
+    nonce='nonce-212'; header={'alg':'RS256','kid':'k1','typ':'JWT'}
+    claims={'sub':'s1','email':'u@example.com','iss':'http://localhost:9999','aud':'client-1','exp':int(_time.time())+600,'nonce':nonce}
+    h64,p64=b64json(header),b64json(claims); signing=f'{h64}.{p64}'.encode()
+    sig=private.sign(signing,padding.PKCS1v15(),hashes.SHA256())
+    token_jwt=f"{h64}.{p64}.{_base64.urlsafe_b64encode(sig).rstrip(b'=').decode()}"
+
+    class FakeResponse:
+        def raise_for_status(self): return None
+        def json(self): return {'keys':[{'kid':'k1','kty':'RSA','n':b64int(pub.n),'e':b64int(pub.e)}]}
+    class FakeClient:
+        def __init__(self,*a,**k): pass
+        def __enter__(self): return self
+        def __exit__(self,*a): return False
+        def get(self,*a,**k): return FakeResponse()
+    monkeypatch.setattr(ids.httpx,'Client',FakeClient)
+    provider={'jwks_uri':'http://localhost:9999/jwks','issuer':'http://localhost:9999','client_id':'client-1'}
+    verified=ids._verify_id_token(token_jwt,provider,ids._hash(nonce))
+    assert verified['sub']=='s1' and verified['email']=='u@example.com'
+
+
+def test_v212_hashicorp_vault_kv2_reference_resolution(tmp_path, monkeypatch):
+    boot,token,ws,h=_bootstrap_v212(tmp_path,monkeypatch,'vault')
+    import app.services.identity_service as ids
+    class FakeResponse:
+        def raise_for_status(self): return None
+        def json(self): return {'data':{'data':{'api_key':'vault-value-123'}}}
+    class FakeClient:
+        def __init__(self,*a,**k): pass
+        def __enter__(self): return self
+        def __exit__(self,*a): return False
+        def get(self,*a,**k): return FakeResponse()
+    monkeypatch.setattr(ids.httpx,'Client',FakeClient)
+    created=client.post(f'/api/v1/workspaces/{ws}/secrets',headers=h,json={
+        'name':'vault/openai','provider':'vault_kv2','value':'vault-token-secret',
+        'reference':{'url':'http://localhost:8200','mount':'secret','path':'prod/openai','field':'api_key'}
+    })
+    assert created.status_code==200,created.text
+    sid=created.json()['secret']['id']
+    tested=client.post(f'/api/v1/workspaces/{ws}/secrets/{sid}/test',headers=h)
+    assert tested.status_code==200,tested.text
+    assert tested.json()['length']==len('vault-value-123')
+    assert 'vault-value-123' not in tested.text

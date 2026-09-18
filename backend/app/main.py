@@ -18,7 +18,7 @@ from app.services.tenant_access import (
 )
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="2.10.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.12.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -175,7 +175,7 @@ async def tenant_aware_data_access(request: Request, call_next):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": settings.app_name, "version": "2.10.0"}
+    return {"status": "ok", "product": settings.app_name, "version": "2.12.0"}
 
 
 @app.get("/api/v1/capabilities")
@@ -215,13 +215,18 @@ def capabilities():
             "semantic_nlq_multitable", "semantic_dashboard_widgets", "semantic_drilldown",
             "governed_actions", "human_approval_actions", "signed_webhooks", "action_idempotency", "action_deduplication",
             "action_throttling", "action_quiet_hours", "action_replay", "webhook_ssrf_guard", "action_delivery_audit",
+            "native_slack_actions", "native_teams_actions", "native_jira_actions", "native_email_actions",
+            "encrypted_action_credentials", "oauth2_client_credentials", "staged_action_approvals", "action_connector_tests",
+            "persistent_auth_sessions", "rotating_refresh_tokens", "server_side_session_revocation",
+            "oidc_sso", "oidc_authorization_code_pkce", "oidc_rs256_validation", "oidc_jit_provisioning",
+            "versioned_secret_vault", "environment_secret_references", "hashicorp_vault_kv2_references",
         ],
         "partial": [
-            "scheduled_proactive_scans", "shap", "fairness", "nlq", "running_job_preemptive_cancellation", "refresh_tokens", "external_secret_vault",
-            "model_artifact_policy_snapshot", "database_native_rls", "provider_token_cost_instrumentation", "oauth_action_connectors", "native_slack_teams_actions",
+            "scheduled_proactive_scans", "shap", "fairness", "nlq", "running_job_preemptive_cancellation",
+            "model_artifact_policy_snapshot", "database_native_rls", "provider_token_cost_instrumentation", "external_kms_key_management",
         ],
         "planned": [
-            "multi_agent", "r_workspace", "oidc_sso", "kubernetes_enterprise",
+            "multi_agent", "r_workspace", "kubernetes_enterprise", "scim_provisioning",
         ],
     }
 

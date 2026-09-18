@@ -1,7 +1,13 @@
 # Roadmap d'exécution
 
-## Livré — v2.10 Governed Actions & Automation
-Actions gouvernées, human approval, webhooks signés, déduplication, throttling, quiet hours, replay et audit de livraison sont implémentés. La prochaine priorité est v2.11 : **Action Connectors & Enterprise Integrations** (Slack/Teams/Jira/Email avec OAuth/secret vault externe, politiques d'action par connecteur et modèles d'approbation multi-étapes).
+## Livré — v2.12 Identity, SSO & Secret Management
+
+Sessions persistantes révocables, refresh tokens rotatifs, SSO OIDC Authorization Code + PKCE, vérification RS256/JWKS, provisioning JIT et coffre de secrets versionné sont maintenant implémentés. Le coffre supporte stockage local chiffré, références environnement et HashiCorp Vault KV v2.
+
+La prochaine priorité est **v2.13 — Enterprise Administration & Identity Lifecycle** : SCIM 2.0, politiques de session/appareil, routage IdP par organisation/domaine, MFA/WebAuthn optionnel, intégration KMS externe et événements de sécurité consolidés.
+
+## Livré — v2.11 Enterprise Action Connectors
+Slack, Teams, Jira, Email SMTP, webhook générique, credentials chiffrés, OAuth2 client credentials et approbations multi-étapes sont implémentés.
 
 
 ## État actuel
@@ -71,7 +77,7 @@ Reste à compléter : lineage cross-system, contrats SQL personnalisés, drift m
 
 Reste à compléter : OpenTelemetry/Prometheus externe, coût provider-native complet, alertes sortantes gouvernées et tests expected SQL/chart dédiés.
 
-## v2.10 — Governed Actions & Automation
+## v2.10 — Governed Actions & Automation — livré
 
 - règles événementielles à partir de Reliability, Proactive Inbox et SLO ;
 - actions sortantes gouvernées avec approbation ;
@@ -84,7 +90,7 @@ Reste à compléter : OpenTelemetry/Prometheus externe, coût provider-native co
 
 ## v3 — Enterprise Analytics Platform
 
-- SSO/OIDC ;
+- fédération d’identité avancée / SCIM ;
 - semantic cache distribué ;
 - object storage S3-compatible ;
 - Kubernetes optionnel ;

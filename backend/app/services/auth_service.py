@@ -55,7 +55,7 @@ def _token_secret() -> bytes:
     return settings.auth_secret.encode()
 
 
-def issue_token(user_id: str, email: str) -> str:
+def issue_token(user_id: str, email: str, session_id: str | None = None) -> str:
     settings = get_settings()
     now = datetime.now(timezone.utc)
     payload = {
@@ -64,6 +64,7 @@ def issue_token(user_id: str, email: str) -> str:
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(minutes=settings.access_token_minutes)).timestamp()),
         "iss": "datavision-ai",
+        **({"sid": session_id} if session_id else {}),
     }
     header = {"alg": "HS256", "typ": "JWT"}
     h = _b64(json.dumps(header, separators=(",", ":")).encode())
@@ -84,6 +85,118 @@ def decode_token(token: str) -> dict[str, Any]:
     if int(payload.get("exp", 0)) < int(datetime.now(timezone.utc).timestamp()):
         raise ValueError("Token expiré")
     return payload
+
+
+def _hash_refresh_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+
+def validate_session_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
+    """Validate persistent session state when the access token carries a session id.
+
+    Tokens created before v2.12 may not contain ``sid``; they remain valid until their normal
+    expiration to avoid breaking an in-place upgrade. New sessions are revocable server-side.
+    """
+    sid = str(payload.get("sid") or "")
+    if not sid:
+        return None
+    row = fetch_one("SELECT * FROM auth_sessions WHERE id=:id", {"id": sid})
+    if not row or row.get("revoked_at"):
+        raise ValueError("Session révoquée")
+    exp = _parse_dt(row.get("expires_at"))
+    if not exp or exp <= datetime.now(timezone.utc):
+        raise ValueError("Session expirée")
+    if str(row.get("user_id")) != str(payload.get("sub") or ""):
+        raise ValueError("Session incohérente")
+    execute("UPDATE auth_sessions SET last_seen_at=:now WHERE id=:id", {"now": utcnow(), "id": sid})
+    return row
+
+
+def create_authenticated_session(user_id: str, email: str, *, provider: str = "local", device_label: str = "", user_agent: str = "") -> dict[str, Any]:
+    settings = get_settings()
+    sid = str(uuid.uuid4())
+    refresh_token = secrets.token_urlsafe(48)
+    now = datetime.now(timezone.utc)
+    expires = now + timedelta(days=max(1, settings.refresh_token_days))
+    execute(
+        """INSERT INTO auth_sessions(id,user_id,provider,refresh_token_hash,device_label,user_agent,created_at,last_seen_at,expires_at)
+           VALUES(:id,:user,:provider,:refresh,:device,:ua,:created,:seen,:expires)""",
+        {"id": sid, "user": user_id, "provider": provider, "refresh": _hash_refresh_token(refresh_token),
+         "device": (device_label or "")[:160], "ua": (user_agent or "")[:1000],
+         "created": now.isoformat(), "seen": now.isoformat(), "expires": expires.isoformat()},
+    )
+    return {
+        "access_token": issue_token(user_id, email, sid),
+        "refresh_token": refresh_token,
+        "token_type": "bearer",
+        "expires_in": int(settings.access_token_minutes * 60),
+        "session_id": sid,
+    }
+
+
+def refresh_authenticated_session(refresh_token: str) -> dict[str, Any]:
+    token_hash = _hash_refresh_token(refresh_token.strip())
+    row = fetch_one("SELECT * FROM auth_sessions WHERE refresh_token_hash=:h", {"h": token_hash})
+    if not row or row.get("revoked_at"):
+        raise ValueError("Refresh token invalide ou révoqué")
+    exp = _parse_dt(row.get("expires_at"))
+    if not exp or exp <= datetime.now(timezone.utc):
+        raise ValueError("Session expirée")
+    user = get_user(str(row["user_id"]))
+    if not user or not user.get("is_active"):
+        raise ValueError("Utilisateur introuvable ou inactif")
+    next_refresh = secrets.token_urlsafe(48)
+    now = utcnow()
+    execute(
+        "UPDATE auth_sessions SET refresh_token_hash=:h,last_seen_at=:now,rotated_at=:now WHERE id=:id",
+        {"h": _hash_refresh_token(next_refresh), "now": now, "id": row["id"]},
+    )
+    return {
+        "access_token": issue_token(user["id"], user["email"], str(row["id"])),
+        "refresh_token": next_refresh,
+        "token_type": "bearer",
+        "expires_in": int(get_settings().access_token_minutes * 60),
+        "session_id": str(row["id"]),
+        "user": user,
+    }
+
+
+def list_user_sessions(user_id: str) -> list[dict[str, Any]]:
+    rows = fetch_all(
+        "SELECT id,provider,device_label,user_agent,created_at,last_seen_at,expires_at,revoked_at,rotated_at FROM auth_sessions WHERE user_id=:u ORDER BY created_at DESC",
+        {"u": user_id},
+    )
+    for row in rows:
+        row["active"] = not bool(row.get("revoked_at")) and bool(_parse_dt(row.get("expires_at")) and _parse_dt(row.get("expires_at")) > datetime.now(timezone.utc))
+    return rows
+
+
+def revoke_user_session(user_id: str, session_id: str) -> None:
+    row = fetch_one("SELECT user_id FROM auth_sessions WHERE id=:id", {"id": session_id})
+    if not row or str(row.get("user_id")) != str(user_id):
+        raise KeyError("Session introuvable")
+    execute("UPDATE auth_sessions SET revoked_at=:now WHERE id=:id", {"now": utcnow(), "id": session_id})
+
+
+def revoke_all_user_sessions(user_id: str, *, except_session_id: str | None = None) -> int:
+    rows = fetch_all("SELECT id FROM auth_sessions WHERE user_id=:u AND revoked_at IS NULL", {"u": user_id})
+    count = 0
+    for row in rows:
+        if except_session_id and row["id"] == except_session_id:
+            continue
+        execute("UPDATE auth_sessions SET revoked_at=:now WHERE id=:id", {"now": utcnow(), "id": row["id"]})
+        count += 1
+    return count
 
 
 def get_user(user_id: str) -> dict[str, Any] | None:
@@ -113,16 +226,16 @@ def bootstrap(email: str, password: str, display_name: str, organization_name: s
     execute("INSERT INTO organization_members(organization_id,user_id,role,created_at) VALUES(:org,:user,'owner',:created)", {"org": org_id, "user": user_id, "created": now})
     execute("INSERT INTO workspaces(id,organization_id,name,slug,created_by,created_at) VALUES(:id,:org,'Workspace principal','principal',:user,:created)", {"id": workspace_id, "org": org_id, "user": user_id, "created": now})
     execute("INSERT INTO workspace_members(workspace_id,user_id,role,created_at) VALUES(:ws,:user,'owner',:created)", {"ws": workspace_id, "user": user_id, "created": now})
-    token = issue_token(user_id, email.strip().lower())
-    return {"access_token": token, "token_type": "bearer", "user": get_user(user_id), "organization_id": org_id, "workspace_id": workspace_id}
+    auth = create_authenticated_session(user_id, email.strip().lower(), provider="local", device_label="bootstrap")
+    return {**auth, "user": get_user(user_id), "organization_id": org_id, "workspace_id": workspace_id}
 
 
 def login(email: str, password: str) -> dict[str, Any]:
     row = get_user_by_email(email)
     if not row or not row.get("is_active") or not verify_password(password, row["password_hash"]):
         raise ValueError("Email ou mot de passe incorrect.")
-    token = issue_token(row["id"], row["email"])
-    return {"access_token": token, "token_type": "bearer", "user": get_user(row["id"])}
+    auth = create_authenticated_session(row["id"], row["email"], provider="local", device_label="password")
+    return {**auth, "user": get_user(row["id"])}
 
 
 def organizations_for_user(user_id: str) -> list[dict[str, Any]]:

@@ -5,7 +5,7 @@ function enterpriseContextHeaders(init?: RequestInit): Headers {
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('dv_enterprise_token') || '';
     const workspace = localStorage.getItem('dv_enterprise_workspace') || '';
-    if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
+    if (token) headers.set('Authorization', `Bearer ${token}`);
     if (workspace && !headers.has('X-Workspace-ID')) headers.set('X-Workspace-ID', workspace);
   }
   return headers;
@@ -14,8 +14,40 @@ function enterpriseContextHeaders(init?: RequestInit): Headers {
 /** Every API call carries the active Enterprise context when one exists.
  * This prevents legacy analysis calls from accidentally bypassing v2.2 governance.
  */
+let enterpriseRefreshPromise: Promise<any> | null = null;
+
+async function refreshEnterpriseTokens() {
+  if (typeof window === 'undefined') return null;
+  const refresh = localStorage.getItem('dv_enterprise_refresh') || '';
+  if (!refresh) return null;
+  if (!enterpriseRefreshPromise) {
+    enterpriseRefreshPromise = fetch(`${API}/auth/refresh`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({refresh_token: refresh}),
+    }).then(async res => {
+      if (!res.ok) throw new Error('Session expirée');
+      const body = await res.json();
+      localStorage.setItem('dv_enterprise_token', body.access_token);
+      localStorage.setItem('dv_enterprise_refresh', body.refresh_token);
+      return body;
+    }).finally(() => { enterpriseRefreshPromise = null; });
+  }
+  return enterpriseRefreshPromise;
+}
+
 async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
-  return fetch(input, { ...init, headers: enterpriseContextHeaders(init) });
+  let res = await fetch(input, { ...init, headers: enterpriseContextHeaders(init) });
+  const target = String(input);
+  if (res.status === 401 && typeof window !== 'undefined' && !target.includes('/auth/refresh') && !target.includes('/auth/login') && !target.includes('/auth/bootstrap')) {
+    try {
+      const refreshed = await refreshEnterpriseTokens();
+      if (refreshed) { const headers=enterpriseContextHeaders(init); headers.set('Authorization',`Bearer ${refreshed.access_token}`); res = await fetch(input, { ...init, headers }); }
+    } catch {
+      localStorage.removeItem('dv_enterprise_token');
+      localStorage.removeItem('dv_enterprise_refresh');
+      window.dispatchEvent(new Event('datavision-enterprise-session'));
+    }
+  }
+  return res;
 }
 
 async function parse<T>(res: Response, fallback: string): Promise<T> {
@@ -435,6 +467,49 @@ export async function getEnterpriseStatus() {
   return parse<any>(await apiFetch(`${API}/enterprise/status`), 'Statut Enterprise indisponible');
 }
 
+export async function refreshEnterpriseSession(refresh_token:string) {
+  return parse<any>(await fetch(`${API}/auth/refresh`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({refresh_token}) }), 'Rafraîchissement de session impossible');
+}
+export async function getEnterpriseAuthSessions(token:string) {
+  return parse<any>(await apiFetch(`${API}/auth/sessions`, { headers:enterpriseHeaders(token) }), 'Sessions indisponibles');
+}
+export async function revokeEnterpriseAuthSession(token:string, session_id:string) {
+  return parse<any>(await apiFetch(`${API}/auth/sessions/${session_id}/revoke`, { method:'POST', headers:enterpriseHeaders(token) }), 'Révocation de session impossible');
+}
+export async function logoutAllEnterpriseSessions(token:string) {
+  return parse<any>(await apiFetch(`${API}/auth/logout-all`, { method:'POST', headers:enterpriseHeaders(token) }), 'Révocation globale impossible');
+}
+export async function getPublicOIDCProviders() {
+  return parse<any>(await apiFetch(`${API}/auth/oidc/providers`), 'Fournisseurs SSO indisponibles');
+}
+export async function startEnterpriseOIDC(provider_id:string, redirect_uri:string) {
+  return parse<any>(await apiFetch(`${API}/auth/oidc/${provider_id}/start`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({redirect_uri}) }), 'Démarrage SSO impossible');
+}
+export async function exchangeEnterpriseOIDC(payload:{provider_id:string;code:string;state:string;redirect_uri:string}) {
+  return parse<any>(await apiFetch(`${API}/auth/oidc/exchange`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }), 'Connexion SSO impossible');
+}
+export async function getWorkspaceOIDCProviders(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/identity/oidc`, { headers:enterpriseHeaders(token) }), 'Fournisseurs OIDC indisponibles');
+}
+export async function createWorkspaceOIDCProvider(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/identity/oidc`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Création OIDC impossible');
+}
+export async function disableWorkspaceOIDCProvider(token:string, workspace_id:string, provider_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/identity/oidc/${provider_id}`, { method:'DELETE', headers:enterpriseHeaders(token) }), 'Désactivation OIDC impossible');
+}
+export async function getWorkspaceSecrets(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/secrets`, { headers:enterpriseHeaders(token) }), 'Secrets indisponibles');
+}
+export async function createWorkspaceSecret(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/secrets`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Création du secret impossible');
+}
+export async function rotateWorkspaceSecret(token:string, workspace_id:string, secret_id:string, value:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/secrets/${secret_id}/rotate`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({value}) }), 'Rotation du secret impossible');
+}
+export async function testWorkspaceSecret(token:string, workspace_id:string, secret_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/secrets/${secret_id}/test`, { method:'POST', headers:enterpriseHeaders(token) }), 'Test du secret impossible');
+}
+
 export async function createEnterpriseWorkspace(token:string, organization_id:string, name:string) {
   return parse<any>(await apiFetch(`${API}/workspaces`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({organization_id,name}) }), 'Création du workspace impossible');
 }
@@ -650,7 +725,7 @@ export async function getEvaluationRun(token:string, workspace_id:string, run_id
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/evaluations/runs/${run_id}`, { headers:enterpriseHeaders(token) }), "Run d'évaluation indisponible");
 }
 
-// ---------------------------- Governed Actions & Automation v2.10 ----------------------------
+// ---------------------------- Enterprise Action Connectors v2.11 ----------------------------
 export async function getActionSummary(token:string, workspace_id:string) {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/summary`, { headers:enterpriseHeaders(token) }), 'Synthèse des actions indisponible');
 }
@@ -690,4 +765,9 @@ export async function rejectActionRun(token:string, workspace_id:string, run_id:
 }
 export async function replayActionRun(token:string, workspace_id:string, run_id:string) {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/runs/${run_id}/replay`, { method:'POST', headers:enterpriseHeaders(token) }), 'Replay impossible');
+}
+
+// ---------------------------- Enterprise Action Connectors v2.11 ----------------------------
+export async function testActionDestination(token:string, workspace_id:string, destination_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/destinations/${destination_id}/test`, { method:'POST', headers:enterpriseHeaders(token) }), 'Test de la destination impossible');
 }

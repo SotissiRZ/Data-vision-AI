@@ -1,15 +1,34 @@
 # Changelog
 
-## 2.10.0 — Governed Actions & Automation
-- Actions Center professionnel dans l'espace Décider.
-- Destinations webhook HTTPS avec secrets chiffrés et signatures HMAC-SHA256.
-- Règles événementielles, conditions déterministes et templates de payload.
-- Human approval (`always`, `critical_only`, `none`) avec RBAC.
-- Dedupe, throttling, quiet hours timezone-aware et idempotency keys.
-- Delivery attempts persistantes, retry/backoff via les jobs Redis et replay gouverné.
-- Garde SSRF pour les destinations privées/réservées.
-- Triggers natifs depuis Proactive Intelligence, Data Reliability, Review Center et Certification.
-- 55 tests backend validés.
+## 2.12.0 — Identity, SSO & Secret Management
+- Sessions Enterprise persistantes avec identifiant serveur et révocation immédiate.
+- Access tokens courts et refresh tokens rotatifs ; seul le hash du refresh token est stocké.
+- Endpoints de liste/révocation de sessions et fermeture globale.
+- SSO OIDC Authorization Code + PKCE S256.
+- State à usage unique, nonce et discovery OIDC.
+- Validation cryptographique RS256 via JWKS avec contrôle issuer/audience/expiration/nonce.
+- Provisioning JIT et mapping d'identités externes.
+- Restriction facultative des domaines email et rôle JIT par défaut.
+- Secret Vault versionné avec backends local chiffré, variable d'environnement et HashiCorp Vault KV v2.
+- Rotation de secret avec historique de versions et retrait de la version précédente.
+- Nouvelle interface **Gouverner → Identité & Secrets**.
+- API frontend avec refresh automatique après 401.
+- Garde SSRF/HTTPS pour appels externes OIDC et Vault.
+- 64 tests backend validés.
+
+## 2.11.0 — Enterprise Action Connectors
+- Connecteurs natifs Slack, Microsoft Teams, Jira et Email SMTP.
+- Slack Incoming Webhook et Slack Web API `chat.postMessage`.
+- Jira Cloud issue creation via REST v3.
+- SMTP/STARTTLS/SSL avec login ou OAuth2 client credentials.
+- Credentials et endpoints webhook sensibles chiffrés au repos.
+- Masquage des headers sensibles et des endpoints dans les réponses API.
+- OAuth2 `client_credentials` côté serveur ; Authorization Code reste planifié.
+- Nouveau `approval_mode=chain` avec jusqu'à 6 étapes ordonnées par rôle/utilisateur.
+- Progression d'approbation persistante et séparation stricte des rôles.
+- Endpoint de test explicite des destinations pour Owner/Admin.
+- UI Actions Center refondue avec type de connecteur, auth et stepper d'approbation.
+- 59 tests backend validés.
 
 ## v2.9.0
 

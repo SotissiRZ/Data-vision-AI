@@ -18,7 +18,10 @@ class Settings(BaseSettings):
     ai_api_key: str = ""
     auth_secret: str = "change-me-in-production-please-32chars-min"
     connector_secret_key: str = ""
-    access_token_minutes: int = 480
+    access_token_minutes: int = 60
+    refresh_token_days: int = 14
+    oidc_state_minutes: int = 10
+    frontend_url: str = "http://localhost:3005"
     metadata_fallback_sqlite: bool = True
     worker_poll_seconds: int = 5
 
