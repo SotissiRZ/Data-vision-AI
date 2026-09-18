@@ -1,0 +1,630 @@
+from __future__ import annotations
+
+import json
+import math
+import re
+import uuid
+from dataclasses import asdict, dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+
+import joblib
+import numpy as np
+import pandas as pd
+from sklearn.compose import ColumnTransformer
+from sklearn.ensemble import (
+    ExtraTreesClassifier,
+    ExtraTreesRegressor,
+    GradientBoostingClassifier,
+    GradientBoostingRegressor,
+    HistGradientBoostingClassifier,
+    HistGradientBoostingRegressor,
+    RandomForestClassifier,
+    RandomForestRegressor,
+)
+from sklearn.impute import SimpleImputer
+from sklearn.inspection import permutation_importance
+from sklearn.linear_model import LinearRegression, LogisticRegression, Ridge
+from sklearn.metrics import (
+    accuracy_score,
+    balanced_accuracy_score,
+    f1_score,
+    mean_absolute_error,
+    mean_squared_error,
+    precision_score,
+    r2_score,
+    recall_score,
+    roc_auc_score,
+)
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, KFold, cross_val_score, train_test_split
+from sklearn.pipeline import Pipeline
+from sklearn.preprocessing import OneHotEncoder, StandardScaler
+
+from app.core.config import get_settings
+
+
+@dataclass
+class TrainingResult:
+    model_id: str
+    task: str
+    algorithm: str
+    metrics: dict[str, float]
+    rows_train: int
+    rows_test: int
+    rows_validation: int = 0
+    validation_metrics: dict[str, float] | None = None
+    guardrails: list[dict[str, Any]] | None = None
+    feature_importance: list[dict[str, Any]] | None = None
+    model_card: dict[str, Any] | None = None
+
+
+CLASSIFICATION_ALGORITHMS = {
+    "logistic_regression": "Régression logistique",
+    "random_forest": "Random Forest",
+    "extra_trees": "Extra Trees",
+    "gradient_boosting": "Gradient Boosting",
+    "hist_gradient_boosting": "Histogram Gradient Boosting",
+}
+
+REGRESSION_ALGORITHMS = {
+    "linear_regression": "Régression linéaire",
+    "ridge": "Ridge",
+    "random_forest": "Random Forest",
+    "extra_trees": "Extra Trees",
+    "gradient_boosting": "Gradient Boosting",
+    "hist_gradient_boosting": "Histogram Gradient Boosting",
+}
+
+
+def _utcnow() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _task_for_target(y: pd.Series, requested: str) -> str:
+    if requested in {"classification", "regression"}:
+        return requested
+    if pd.api.types.is_numeric_dtype(y) and y.nunique(dropna=True) > max(20, int(len(y) * 0.05)):
+        return "regression"
+    return "classification"
+
+
+def _build_preprocessor(X: pd.DataFrame) -> tuple[ColumnTransformer, list[str], list[str]]:
+    numeric = list(X.select_dtypes(include=np.number).columns)
+    categorical = [c for c in X.columns if c not in numeric]
+    transformers: list[tuple[str, Pipeline, list[str]]] = []
+    if numeric:
+        transformers.append(("num", Pipeline([
+            ("imputer", SimpleImputer(strategy="median")),
+            ("scale", StandardScaler()),
+        ]), numeric))
+    if categorical:
+        transformers.append(("cat", Pipeline([
+            ("imputer", SimpleImputer(strategy="most_frequent")),
+            ("onehot", OneHotEncoder(handle_unknown="ignore", sparse_output=False)),
+        ]), categorical))
+    if not transformers:
+        raise ValueError("Aucune variable explicative exploitable.")
+    return ColumnTransformer(transformers=transformers, remainder="drop"), numeric, categorical
+
+
+def _estimator(task: str, algorithm: str):
+    if task == "classification":
+        if algorithm == "logistic_regression":
+            return LogisticRegression(max_iter=2500, class_weight="balanced", random_state=42)
+        if algorithm == "random_forest":
+            return RandomForestClassifier(n_estimators=300, random_state=42, class_weight="balanced", n_jobs=-1)
+        if algorithm == "extra_trees":
+            return ExtraTreesClassifier(n_estimators=300, random_state=42, class_weight="balanced", n_jobs=-1)
+        if algorithm == "gradient_boosting":
+            return GradientBoostingClassifier(random_state=42)
+        if algorithm == "hist_gradient_boosting":
+            return HistGradientBoostingClassifier(random_state=42)
+        raise ValueError(f"Algorithme de classification non supporté: {algorithm}")
+    if algorithm == "linear_regression":
+        return LinearRegression()
+    if algorithm == "ridge":
+        return Ridge(alpha=1.0)
+    if algorithm == "random_forest":
+        return RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1)
+    if algorithm == "extra_trees":
+        return ExtraTreesRegressor(n_estimators=300, random_state=42, n_jobs=-1)
+    if algorithm == "gradient_boosting":
+        return GradientBoostingRegressor(random_state=42)
+    if algorithm == "hist_gradient_boosting":
+        return HistGradientBoostingRegressor(random_state=42)
+    raise ValueError(f"Algorithme de régression non supporté: {algorithm}")
+
+
+def _candidate_algorithms(task: str, max_candidates: int = 5) -> list[str]:
+    values = list(CLASSIFICATION_ALGORITHMS if task == "classification" else REGRESSION_ALGORITHMS)
+    return values[: max(1, min(max_candidates, len(values)))]
+
+
+def _primary_metric(task: str, y: pd.Series, requested: str) -> str:
+    allowed_class = {"accuracy", "balanced_accuracy", "f1_weighted", "roc_auc"}
+    allowed_reg = {"rmse", "mae", "r2"}
+    if task == "classification":
+        if requested in allowed_class:
+            if requested == "roc_auc" and y.nunique() != 2:
+                return "f1_weighted"
+            return requested
+        return "roc_auc" if y.nunique() == 2 else "f1_weighted"
+    return requested if requested in allowed_reg else "rmse"
+
+
+def _scoring_name(task: str, metric: str) -> str:
+    if task == "classification":
+        return {
+            "accuracy": "accuracy",
+            "balanced_accuracy": "balanced_accuracy",
+            "f1_weighted": "f1_weighted",
+            "roc_auc": "roc_auc",
+        }[metric]
+    return {"rmse": "neg_root_mean_squared_error", "mae": "neg_mean_absolute_error", "r2": "r2"}[metric]
+
+
+def _metric_value(metrics: dict[str, float], metric: str) -> float:
+    value = float(metrics.get(metric, float("nan")))
+    if math.isnan(value):
+        return -float("inf")
+    return -value if metric in {"rmse", "mae"} else value
+
+
+def _evaluate(pipe: Pipeline, X: pd.DataFrame, y: pd.Series, task: str) -> dict[str, float]:
+    pred = pipe.predict(X)
+    if task == "classification":
+        result: dict[str, float] = {
+            "accuracy": round(float(accuracy_score(y, pred)), 6),
+            "balanced_accuracy": round(float(balanced_accuracy_score(y, pred)), 6),
+            "precision_weighted": round(float(precision_score(y, pred, average="weighted", zero_division=0)), 6),
+            "recall_weighted": round(float(recall_score(y, pred, average="weighted", zero_division=0)), 6),
+            "f1_weighted": round(float(f1_score(y, pred, average="weighted", zero_division=0)), 6),
+        }
+        if y.nunique() == 2 and hasattr(pipe, "predict_proba"):
+            try:
+                probs = pipe.predict_proba(X)[:, 1]
+                result["roc_auc"] = round(float(roc_auc_score(y, probs)), 6)
+            except Exception:
+                pass
+        return result
+    rmse = mean_squared_error(y, pred) ** 0.5
+    return {
+        "mae": round(float(mean_absolute_error(y, pred)), 6),
+        "rmse": round(float(rmse), 6),
+        "r2": round(float(r2_score(y, pred)), 6),
+    }
+
+
+def _safe_split(X: pd.DataFrame, y: pd.Series, task: str):
+    stratify = None
+    if task == "classification" and y.value_counts().min() >= 3:
+        stratify = y
+    X_dev, X_test, y_dev, y_test = train_test_split(
+        X, y, test_size=0.20, random_state=42, stratify=stratify
+    )
+    stratify_dev = None
+    if task == "classification" and y_dev.value_counts().min() >= 2:
+        stratify_dev = y_dev
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_dev, y_dev, test_size=0.25, random_state=42, stratify=stratify_dev
+    )
+    return X_train, X_val, X_test, y_train, y_val, y_test
+
+
+def _cv_strategy(task: str, y: pd.Series, requested_folds: int):
+    folds = max(2, min(int(requested_folds), 10))
+    if task == "classification":
+        min_class = int(y.value_counts().min())
+        folds = min(folds, min_class)
+        if folds < 2:
+            return None, 0
+        return StratifiedKFold(n_splits=folds, shuffle=True, random_state=42), folds
+    folds = min(folds, len(y))
+    if folds < 2:
+        return None, 0
+    return KFold(n_splits=folds, shuffle=True, random_state=42), folds
+
+
+def _auto_exclusions(X: pd.DataFrame) -> list[str]:
+    excluded: list[str] = []
+    for col in X.columns:
+        s = X[col]
+        non_null = max(1, int(s.notna().sum()))
+        unique_ratio = float(s.nunique(dropna=True) / non_null)
+        name_id = bool(re.search(r"(^id$|_id$|^id_|uuid|identifier|identifiant|numero|number)", col.lower()))
+        constant = s.nunique(dropna=True) <= 1
+        high_cardinality_identifier = unique_ratio > 0.98 and (name_id or not pd.api.types.is_float_dtype(s))
+        if constant or high_cardinality_identifier:
+            excluded.append(col)
+    return excluded
+
+
+def _feature_baselines(X: pd.DataFrame) -> dict[str, Any]:
+    values: dict[str, Any] = {}
+    for col in X.columns:
+        s = X[col]
+        if pd.api.types.is_numeric_dtype(s):
+            value = s.median()
+        else:
+            mode = s.mode(dropna=True)
+            value = mode.iloc[0] if len(mode) else None
+        if hasattr(value, "item"):
+            value = value.item()
+        if pd.isna(value) if not isinstance(value, (list, dict)) else False:
+            value = None
+        values[col] = value
+    return values
+
+
+def _guardrails(df: pd.DataFrame, target: str, task: str) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    y = df[target]
+    X = df.drop(columns=[target])
+
+    if len(df) < 100:
+        warnings.append({
+            "code": "small_sample", "severity": "medium",
+            "message": f"Échantillon limité ({len(df)} lignes). Les métriques peuvent être instables.",
+        })
+
+    if task == "classification":
+        counts = y.value_counts(dropna=True)
+        if len(counts) >= 2:
+            ratio = float(counts.min() / counts.max())
+            if ratio < 0.5:
+                warnings.append({
+                    "code": "class_imbalance", "severity": "high" if ratio < 0.2 else "medium",
+                    "message": f"Déséquilibre de classes détecté (ratio minoritaire/majoritaire={ratio:.3f}).",
+                    "details": {str(k): int(v) for k, v in counts.items()},
+                })
+
+    id_like: list[str] = []
+    for col in X.columns:
+        s = X[col]
+        unique_ratio = float(s.nunique(dropna=True) / max(1, s.notna().sum()))
+        name_id = bool(re.search(r"(^id$|_id$|^id_|uuid|identifier|identifiant|numero|number)", col.lower()))
+        if unique_ratio > 0.98 and (name_id or not pd.api.types.is_float_dtype(s)):
+            id_like.append(col)
+    if id_like:
+        warnings.append({
+            "code": "identifier_features", "severity": "medium",
+            "message": "Variables potentiellement identifiantes ou quasi uniques détectées.",
+            "columns": id_like[:20],
+        })
+
+    time_like = [c for c in X.columns if pd.api.types.is_datetime64_any_dtype(X[c]) or re.search(r"date|time|timestamp|annee|year|mois|month", c.lower())]
+    if time_like:
+        warnings.append({
+            "code": "temporal_split", "severity": "medium",
+            "message": "Variables temporelles détectées. Un split chronologique peut être préférable à un split aléatoire.",
+            "columns": time_like[:20],
+        })
+
+    constant = [c for c in X.columns if X[c].nunique(dropna=True) <= 1]
+    if constant:
+        warnings.append({
+            "code": "constant_features", "severity": "low",
+            "message": "Variables constantes détectées; elles n'apportent aucun signal prédictif.",
+            "columns": constant[:20],
+        })
+
+    if pd.api.types.is_numeric_dtype(y):
+        leaks: list[dict[str, Any]] = []
+        for col in X.select_dtypes(include=np.number).columns:
+            pair = pd.concat([X[col], y], axis=1).dropna()
+            if len(pair) >= 10 and pair.iloc[:, 0].nunique() > 1:
+                corr = float(pair.iloc[:, 0].corr(pair.iloc[:, 1]))
+                if np.isfinite(corr) and abs(corr) >= 0.995:
+                    leaks.append({"column": col, "correlation": round(corr, 6)})
+        if leaks:
+            warnings.append({
+                "code": "possible_target_leakage", "severity": "high",
+                "message": "Corrélation quasi parfaite avec la cible: vérifier une fuite de cible ou une variable dérivée du résultat.",
+                "columns": leaks,
+            })
+
+    if not warnings:
+        warnings.append({"code": "no_major_guardrail", "severity": "info", "message": "Aucun risque majeur détecté par les contrôles automatiques initiaux."})
+    return warnings
+
+
+def _tuning_grid(task: str, algorithm: str) -> dict[str, list[Any]]:
+    prefix = "model__"
+    grids: dict[tuple[str, str], dict[str, list[Any]]] = {
+        ("classification", "logistic_regression"): {prefix + "C": [0.25, 1.0, 4.0]},
+        ("classification", "random_forest"): {prefix + "max_depth": [None, 8, 16], prefix + "min_samples_leaf": [1, 3]},
+        ("classification", "extra_trees"): {prefix + "max_depth": [None, 10, 20], prefix + "min_samples_leaf": [1, 2]},
+        ("classification", "gradient_boosting"): {prefix + "learning_rate": [0.05, 0.1], prefix + "n_estimators": [100, 200]},
+        ("classification", "hist_gradient_boosting"): {prefix + "learning_rate": [0.05, 0.1], prefix + "max_leaf_nodes": [15, 31]},
+        ("regression", "ridge"): {prefix + "alpha": [0.1, 1.0, 10.0]},
+        ("regression", "random_forest"): {prefix + "max_depth": [None, 8, 16], prefix + "min_samples_leaf": [1, 3]},
+        ("regression", "extra_trees"): {prefix + "max_depth": [None, 10, 20], prefix + "min_samples_leaf": [1, 2]},
+        ("regression", "gradient_boosting"): {prefix + "learning_rate": [0.05, 0.1], prefix + "n_estimators": [100, 200]},
+        ("regression", "hist_gradient_boosting"): {prefix + "learning_rate": [0.05, 0.1], prefix + "max_leaf_nodes": [15, 31]},
+    }
+    return grids.get((task, algorithm), {})
+
+
+def _feature_importance(pipe: Pipeline, X: pd.DataFrame, y: pd.Series, task: str, metric: str) -> list[dict[str, Any]]:
+    if X.empty or len(X.columns) == 0:
+        return []
+    try:
+        scoring = _scoring_name(task, metric)
+        perm = permutation_importance(pipe, X, y, scoring=scoring, n_repeats=3, random_state=42, n_jobs=1)
+        rows = [
+            {"feature": col, "importance": round(float(mean), 8), "std": round(float(std), 8)}
+            for col, mean, std in zip(X.columns, perm.importances_mean, perm.importances_std)
+        ]
+        return sorted(rows, key=lambda r: abs(r["importance"]), reverse=True)
+    except Exception:
+        return []
+
+
+def _save_model(payload: dict[str, Any], card: dict[str, Any]) -> str:
+    model_id = card["model_id"]
+    root = get_settings().model_dir
+    joblib.dump(payload, root / f"{model_id}.joblib")
+    (root / f"{model_id}.card.json").write_text(json.dumps(card, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    return model_id
+
+
+def _model_card(
+    *, model_id: str, dataset_context: dict[str, Any] | None, target: str, task: str, algorithm: str,
+    features: list[str], primary_metric: str, metrics: dict[str, float], validation_metrics: dict[str, float],
+    rows: dict[str, int], cv: dict[str, Any], guardrails: list[dict[str, Any]], importance: list[dict[str, Any]],
+    best_params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "model_id": model_id,
+        "created_at": _utcnow(),
+        "dataset": dataset_context or {},
+        "target": target,
+        "task": task,
+        "algorithm": algorithm,
+        "features": features,
+        "primary_metric": primary_metric,
+        "metrics_final_test": metrics,
+        "metrics_validation": validation_metrics,
+        "rows": rows,
+        "validation_strategy": {
+            "split": "60% train / 20% validation / 20% final test",
+            "random_state": 42,
+            "cross_validation": cv,
+            "test_policy": "Le jeu de test final n'est pas utilisé pour sélectionner ou optimiser le modèle.",
+        },
+        "best_params": best_params or {},
+        "guardrails": guardrails,
+        "feature_importance": importance,
+        "known_limitations": [
+            "Les contrôles de leakage sont heuristiques et ne remplacent pas la connaissance métier.",
+            "Les métriques peuvent varier si la distribution future diffère des données d'entraînement.",
+            "Fairness avancée reste prévue dans une version ultérieure; la calibration binaire est disponible dans les diagnostics XAI.",
+        ],
+        "fairness": {"status": "planned"},
+        "explainability": {"permutation_importance": bool(importance), "local_perturbation": True, "diagnostics": True, "shap": "optional"},
+    }
+
+
+def train_model(
+    df: pd.DataFrame,
+    target: str,
+    task: str = "auto",
+    algorithm: str = "auto",
+    dataset_context: dict[str, Any] | None = None,
+) -> TrainingResult:
+    if target not in df.columns:
+        raise ValueError("Variable cible inconnue")
+    work = df.dropna(subset=[target]).copy()
+    if len(work) < 30:
+        raise ValueError("Échantillon insuffisant: au moins 30 lignes complètes sur la cible sont requises.")
+
+    y = work[target]
+    X = work.drop(columns=[target])
+    resolved_task = _task_for_target(y, task)
+    if resolved_task == "classification" and y.nunique() < 2:
+        raise ValueError("La cible de classification doit contenir au moins deux classes")
+
+    default_algo = "logistic_regression" if resolved_task == "classification" else "linear_regression"
+    chosen = default_algo if algorithm == "auto" else algorithm
+    valid = CLASSIFICATION_ALGORITHMS if resolved_task == "classification" else REGRESSION_ALGORITHMS
+    if chosen not in valid:
+        raise ValueError(f"{chosen} n'est pas compatible avec la tâche {resolved_task}")
+
+    prep, _, _ = _build_preprocessor(X)
+    X_train, X_val, X_test, y_train, y_val, y_test = _safe_split(X, y, resolved_task)
+    pipe = Pipeline([("preprocess", prep), ("model", _estimator(resolved_task, chosen))])
+    pipe.fit(X_train, y_train)
+    validation_metrics = _evaluate(pipe, X_val, y_val, resolved_task)
+
+    # Refit on development data only after validation; final test remains untouched until now.
+    X_dev = pd.concat([X_train, X_val], axis=0)
+    y_dev = pd.concat([y_train, y_val], axis=0)
+    pipe.fit(X_dev, y_dev)
+    metrics = _evaluate(pipe, X_test, y_test, resolved_task)
+    primary = _primary_metric(resolved_task, y, "auto")
+    importance = _feature_importance(pipe, X_test, y_test, resolved_task, primary)
+    guardrails = _guardrails(work, target, resolved_task)
+    model_id = str(uuid.uuid4())
+    card = _model_card(
+        model_id=model_id, dataset_context=dataset_context, target=target, task=resolved_task, algorithm=chosen,
+        features=list(X.columns), primary_metric=primary, metrics=metrics, validation_metrics=validation_metrics,
+        rows={"train": len(X_train), "validation": len(X_val), "test": len(X_test)},
+        cv={"folds": 0, "status": "single_model_training"}, guardrails=guardrails, importance=importance,
+    )
+    payload = {"pipeline": pipe, "target": target, "features": list(X.columns), "task": resolved_task, "algorithm": chosen, "model_card": card, "feature_baselines": _feature_baselines(X_dev), "evaluation_indices": X_test.index.tolist()}
+    _save_model(payload, card)
+    return TrainingResult(model_id, resolved_task, chosen, metrics, len(X_train), len(X_test), len(X_val), validation_metrics, guardrails, importance, card)
+
+
+def automl_train(
+    df: pd.DataFrame,
+    target: str,
+    task: str = "auto",
+    primary_metric: str = "auto",
+    cv_folds: int = 5,
+    tune: bool = True,
+    max_candidates: int = 5,
+    dataset_context: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    if target not in df.columns:
+        raise ValueError("Variable cible inconnue")
+    work = df.dropna(subset=[target]).copy()
+    if len(work) < 40:
+        raise ValueError("AutoML requiert au moins 40 lignes complètes sur la cible.")
+
+    y = work[target]
+    X = work.drop(columns=[target])
+    resolved_task = _task_for_target(y, task)
+    if resolved_task == "classification" and y.nunique() < 2:
+        raise ValueError("La cible de classification doit contenir au moins deux classes")
+    if resolved_task == "classification" and y.value_counts().min() < 3:
+        raise ValueError("Chaque classe doit contenir au moins 3 observations pour AutoML.")
+
+    primary = _primary_metric(resolved_task, y, primary_metric)
+    scoring = _scoring_name(resolved_task, primary)
+    guardrails = _guardrails(work, target, resolved_task)
+    excluded_features = _auto_exclusions(X)
+    if excluded_features:
+        X = X.drop(columns=excluded_features)
+    if X.shape[1] == 0:
+        raise ValueError("Toutes les variables explicatives ont été exclues par les garde-fous (identifiants/constantes).")
+    X_train, X_val, X_test, y_train, y_val, y_test = _safe_split(X, y, resolved_task)
+    cv, actual_folds = _cv_strategy(resolved_task, y_train, cv_folds)
+    candidates = _candidate_algorithms(resolved_task, max_candidates)
+    benchmark: list[dict[str, Any]] = []
+
+    for algorithm in candidates:
+        prep, _, _ = _build_preprocessor(X_train)
+        pipe = Pipeline([("preprocess", prep), ("model", _estimator(resolved_task, algorithm))])
+        cv_mean = None
+        cv_std = None
+        if cv is not None:
+            scores = cross_val_score(pipe, X_train, y_train, scoring=scoring, cv=cv, n_jobs=1, error_score="raise")
+            # sklearn losses are negative; expose positive values for MAE/RMSE.
+            display_scores = -scores if primary in {"rmse", "mae"} else scores
+            cv_mean = float(np.mean(display_scores))
+            cv_std = float(np.std(display_scores))
+        pipe.fit(X_train, y_train)
+        val_metrics = _evaluate(pipe, X_val, y_val, resolved_task)
+        benchmark.append({
+            "algorithm": algorithm,
+            "label": (CLASSIFICATION_ALGORITHMS if resolved_task == "classification" else REGRESSION_ALGORITHMS)[algorithm],
+            "primary_metric": primary,
+            "validation_score": val_metrics.get(primary),
+            "validation_metrics": val_metrics,
+            "cv_mean": round(cv_mean, 6) if cv_mean is not None else None,
+            "cv_std": round(cv_std, 6) if cv_std is not None else None,
+            "cv_folds": actual_folds,
+        })
+
+    benchmark.sort(key=lambda row: _metric_value(row["validation_metrics"], primary), reverse=True)
+    best_algorithm = benchmark[0]["algorithm"]
+
+    # Controlled tuning uses train only and never sees validation/test.
+    prep, _, _ = _build_preprocessor(X_train)
+    base_pipe = Pipeline([("preprocess", prep), ("model", _estimator(resolved_task, best_algorithm))])
+    best_params: dict[str, Any] = {}
+    tuned_pipe = base_pipe
+    grid = _tuning_grid(resolved_task, best_algorithm) if tune else {}
+    if grid and cv is not None:
+        search = GridSearchCV(base_pipe, grid, scoring=scoring, cv=cv, n_jobs=1, refit=True, error_score="raise")
+        search.fit(X_train, y_train)
+        tuned_pipe = search.best_estimator_
+        best_params = {k.replace("model__", ""): v for k, v in search.best_params_.items()}
+    else:
+        tuned_pipe.fit(X_train, y_train)
+
+    tuned_validation_metrics = _evaluate(tuned_pipe, X_val, y_val, resolved_task)
+
+    # Final refit on train + validation after selection/tuning. Test remains untouched until final evaluation.
+    X_dev = pd.concat([X_train, X_val], axis=0)
+    y_dev = pd.concat([y_train, y_val], axis=0)
+    final_prep, _, _ = _build_preprocessor(X_dev)
+    final_model = _estimator(resolved_task, best_algorithm)
+    if best_params:
+        final_model.set_params(**best_params)
+    final_pipe = Pipeline([("preprocess", final_prep), ("model", final_model)])
+    final_pipe.fit(X_dev, y_dev)
+    final_metrics = _evaluate(final_pipe, X_test, y_test, resolved_task)
+    importance = _feature_importance(final_pipe, X_test, y_test, resolved_task, primary)
+
+    model_id = str(uuid.uuid4())
+    card = _model_card(
+        model_id=model_id, dataset_context=dataset_context, target=target, task=resolved_task, algorithm=best_algorithm,
+        features=list(X.columns), primary_metric=primary, metrics=final_metrics, validation_metrics=tuned_validation_metrics,
+        rows={"train": len(X_train), "validation": len(X_val), "test": len(X_test)},
+        cv={"folds": actual_folds, "scoring": scoring, "selection": "validation after CV on training only"},
+        guardrails=guardrails, importance=importance, best_params=best_params,
+    )
+    card["excluded_features"] = excluded_features
+    payload = {
+        "pipeline": final_pipe, "target": target, "features": list(X.columns), "task": resolved_task,
+        "algorithm": best_algorithm, "model_card": card,
+        "feature_baselines": _feature_baselines(X_dev), "evaluation_indices": X_test.index.tolist(),
+    }
+    _save_model(payload, card)
+
+    return {
+        "model_id": model_id,
+        "task": resolved_task,
+        "algorithm": best_algorithm,
+        "primary_metric": primary,
+        "metrics": final_metrics,
+        "validation_metrics": tuned_validation_metrics,
+        "rows_train": len(X_train),
+        "rows_validation": len(X_val),
+        "rows_test": len(X_test),
+        "benchmark": benchmark,
+        "best_params": best_params,
+        "guardrails": guardrails,
+        "excluded_features": excluded_features,
+        "feature_importance": importance,
+        "model_card": card,
+    }
+
+
+def predict(model_id: str, rows: list[dict]) -> dict:
+    path = get_settings().model_dir / f"{model_id}.joblib"
+    if not path.exists():
+        raise FileNotFoundError(model_id)
+    payload = joblib.load(path)
+    if not rows:
+        raise ValueError("Aucune observation fournie")
+    frame = pd.DataFrame(rows)
+    missing = [c for c in payload["features"] if c not in frame.columns]
+    if missing:
+        raise ValueError(f"Variables manquantes: {missing}")
+    frame = frame[payload["features"]]
+    pipe = payload["pipeline"]
+    preds = pipe.predict(frame)
+    result = {"model_id": model_id, "predictions": [x.item() if hasattr(x, "item") else x for x in preds]}
+    if payload["task"] == "classification" and hasattr(pipe, "predict_proba"):
+        result["probabilities"] = pipe.predict_proba(frame).tolist()
+        try:
+            result["classes"] = [x.item() if hasattr(x, "item") else x for x in pipe.classes_]
+        except Exception:
+            pass
+    return result
+
+
+def get_model_card(model_id: str) -> dict[str, Any]:
+    path = get_settings().model_dir / f"{model_id}.card.json"
+    if not path.exists():
+        raise FileNotFoundError(model_id)
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def list_model_cards(dataset_id: str | None = None) -> list[dict[str, Any]]:
+    root: Path = get_settings().model_dir
+    cards: list[dict[str, Any]] = []
+    for path in root.glob("*.card.json"):
+        try:
+            card = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if dataset_id and card.get("dataset", {}).get("id") != dataset_id:
+            continue
+        cards.append(card)
+    cards.sort(key=lambda c: c.get("created_at", ""), reverse=True)
+    return cards
