@@ -30,7 +30,7 @@ def queue_status() -> dict[str, Any]:
 
 
 def submit_job(*, user_id: str, organization_id: str | None, workspace_id: str | None, job_type: str, dataset_id: str | None, payload: dict[str, Any]) -> dict[str, Any]:
-    if job_type not in {"automl", "ai_analysis", "forecast", "report", "proactive_scan"}:
+    if job_type not in {"automl", "ai_analysis", "forecast", "report", "proactive_scan", "connector_refresh"}:
         raise ValueError("Type de job non supporté")
     job_id = str(uuid.uuid4()); now = utcnow()
     execute("""INSERT INTO jobs(id,organization_id,workspace_id,user_id,job_type,status,progress,dataset_id,payload_json,created_at,cancel_requested)
@@ -93,6 +93,8 @@ def run_job(job_id: str) -> dict[str, Any]:
     from app.services.forecasting import forecast_series
     from app.services.report_builder import build_report
     from app.services.proactive_intelligence import scan as proactive_scan
+    from app.services.connector_service import refresh_source as connector_refresh
+    from app.services.auth_service import has_permission
 
     job = get_job(job_id)
     if job["cancel_requested"] or job["status"] == "cancelled":
@@ -106,9 +108,15 @@ def run_job(job_id: str) -> dict[str, Any]:
         from app.services.tenant_access import context_for_job, set_access_context, reset_access_context, authorize_dataset
         access_ctx = context_for_job(job["user_id"], job.get("workspace_id"))
         access_token = set_access_context(access_ctx)
-        if access_ctx and dataset_id:
-            required = "model:run" if job["job_type"] == "automl" else "analysis:run"
-            authorize_dataset(dataset_id, required, access_ctx)
+        if access_ctx:
+            if job["job_type"] == "connector_refresh":
+                if not has_permission(access_ctx.user_id, access_ctx.workspace_id, "refresh:run"):
+                    raise PermissionError("Permission insuffisante: refresh:run")
+                if dataset_id:
+                    authorize_dataset(dataset_id, "dataset:write", access_ctx)
+            elif dataset_id:
+                required = "model:run" if job["job_type"] == "automl" else "analysis:run"
+                authorize_dataset(dataset_id, required, access_ctx)
         if job["job_type"] == "automl":
             if not dataset_id:
                 raise ValueError("dataset_id requis pour AutoML")
@@ -162,6 +170,14 @@ def run_job(job_id: str) -> dict[str, Any]:
             _update(job_id, progress=15)
             df = load_dataframe(dataset_id)
             result = proactive_scan(dataset_id, df, payload.get("watch_ids") or None, bool(payload.get("auto_configure", True)))
+        elif job["job_type"] == "connector_refresh":
+            if not job.get("workspace_id"):
+                raise ValueError("workspace_id requis pour le refresh connecteur")
+            source_id = str(payload.get("source_id") or "")
+            if not source_id:
+                raise ValueError("source_id requis pour le refresh connecteur")
+            _update(job_id, progress=15)
+            result = connector_refresh(job["workspace_id"], source_id, actor_id=job["user_id"], trigger=str(payload.get("trigger") or "manual"), job_id=job_id)
         else:
             raise ValueError("Type de job non supporté")
         current = get_job(job_id)

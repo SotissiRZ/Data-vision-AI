@@ -1,4 +1,32 @@
+# v2.7.0
+
+- PostgreSQL et MySQL comme sources SQL réelles ;
+- credentials chiffrés au repos via Fernet / AUTH_SECRET ;
+- test de connexion et découverte schémas/tables/colonnes ;
+- sources table ou requête read-only ;
+- full refresh et incremental refresh avec watermark ;
+- matérialisation en versions de dataset immuables ;
+- freshness SLA avec états fresh/warning/stale/error ;
+- schema drift avec politiques warn/fail ;
+- scheduler worker + claim atomique des échéances ;
+- job asynchrone `connector_refresh` tenant-aware ;
+- observabilité des refresh et historique détaillé ;
+- nouvel écran professionnel `Sources & Refresh` ;
+- 45 tests backend.
+
 # Changelog
+
+## v2.6.0 — Collaboration & Review
+
+- Review Center professionnel ;
+- workflow Draft → In review → Approved / Changes requested ;
+- ownership et reviewer assigné ;
+- commentaires persistants et résolus ;
+- mentions et notifications ;
+- historique append-only des décisions ;
+- certifications gouvernées avec expiration/révocation ;
+- RBAC collaboration ;
+- 41 tests backend.
 
 ## v2.5.0
 

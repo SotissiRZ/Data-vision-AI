@@ -205,3 +205,37 @@ La couche sémantique devient un service transversal utilisé par trois surfaces
 Le moteur calcule automatiquement les tables intermédiaires requises pour un chemin de relation multi-hop. Les relations N:N restent interdites dans l'exécution automatique.
 
 Le Dashboard Builder peut projeter après filtre les colonnes de la table de faits afin que les widgets physiques et les widgets sémantiques partagent le même contexte analytique.
+
+
+## Collaboration & Review v2.6
+
+Le Review Center s'appuie sur le metadata store Enterprise :
+
+```text
+Workspace
+  ├── review_items
+  │     ├── owner
+  │     ├── reviewer
+  │     ├── resource snapshot
+  │     └── workflow state
+  ├── review_comments
+  ├── review_events (append-only)
+  ├── collaboration_notifications
+  └── resource_certifications
+```
+
+Les transitions et certifications passent par RBAC et génèrent des événements d'audit.
+
+
+## v2.7 — Ingestion gouvernée et refresh
+
+La couche d'ingestion persistante s'ajoute au plan de contrôle Enterprise :
+
+```text
+External SQL → Data Connector → Connector Source → Refresh Run → Immutable Dataset Version
+                                      │                 │
+                                      │                 └→ observability / watermark / drift
+                                      └→ scheduler → Redis job → tenant-aware worker
+```
+
+Les credentials sont chiffrés dans le metadata store. Le refresh est un lifecycle système autorisé à charger la version brute précédente afin de ne pas matérialiser un sous-ensemble RLS ; les consumers analytiques utilisent toujours la boundary gouvernée.

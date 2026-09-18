@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Stop"
-Write-Host "DataVision AI v2.2 — installation locale" -ForegroundColor Cyan
+Write-Host "DataVision AI v2.7 — installation locale" -ForegroundColor Cyan
 
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
   throw "Docker n'est pas disponible. Installez Docker Desktop puis relancez ce script."
@@ -20,6 +20,13 @@ if ($envContent -match "AUTH_SECRET=change-") {
   Write-Host "Secret d'authentification local généré." -ForegroundColor Green
 }
 
+if ($envContent -match "CONNECTOR_SECRET_KEY=change-") {
+  $connectorSecret = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
+  $envContent = [regex]::Replace($envContent, "CONNECTOR_SECRET_KEY=.*", "CONNECTOR_SECRET_KEY=$connectorSecret")
+  Set-Content ".env" $envContent -Encoding UTF8
+  Write-Host "Clé de chiffrement des connecteurs générée." -ForegroundColor Green
+}
+
 Write-Host "Construction des images (cache BuildKit activé)..." -ForegroundColor Yellow
 docker compose build
 
@@ -31,5 +38,5 @@ Write-Host "DataVision: http://localhost:3005" -ForegroundColor Green
 Write-Host "API:       http://localhost:8005" -ForegroundColor Green
 Write-Host "OpenAPI:   http://localhost:8005/docs" -ForegroundColor Green
 Write-Host "" 
-Write-Host "Ouvrez Gouverner pour initialiser le premier compte Enterprise." -ForegroundColor Cyan
+Write-Host "Ouvrez Gouverner → Gouvernance pour initialiser le premier compte Enterprise." -ForegroundColor Cyan
 Start-Process "http://localhost:3005"

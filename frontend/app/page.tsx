@@ -13,11 +13,13 @@ import {
   getSemanticModel, saveSemanticModel, evaluateSemanticMetric, getMetricPulse, getSemanticTableCatalog, validateSemanticModel, querySemanticMetric, getTrustCenter, runModelWhatIf, runModelSensitivity,
   getProactiveSummary, getProactiveWatches, autoConfigureProactiveWatches, scanProactiveSignals, getProactiveInbox, updateProactiveAlertStatus,
   bootstrapEnterprise, loginEnterprise, getEnterpriseSession, getEnterpriseStatus, createEnterpriseWorkspace, getEnterpriseWorkspace, addWorkspaceMember, bindWorkspaceDataset, saveWorkspacePolicy, getAuditEvents, getEnterpriseJobs, submitEnterpriseJob, cancelEnterpriseJob, getGovernedPreview,
+  getReviewSummary, getReviews, getReviewDetail, createReview, assignReview, transitionReview, addReviewComment, resolveReviewComment, getCollaborationNotifications, markCollaborationNotificationRead, getCertifications, certifyReview, revokeCertification,
+  getConnectorOverview, getConnectorHealth, createDataConnector, testDataConnector, discoverDataConnector, createConnectorSource, deleteConnectorSource, previewConnectorSource, refreshConnectorSource, saveConnectorSchedule, getRefreshRuns,
 } from '../lib/api';
 
 type AnyObj = Record<string, any>;
-type View = 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'governance';
-type AreaKey = 'overview'|'data'|'analyze'|'model'|'decide'|'publish'|'governance';
+type View = 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance';
+type AreaKey = 'overview'|'data'|'analyze'|'model'|'decide'|'publish'|'collaborate'|'governance';
 
 const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; views:View[] }[] = [
   {key:'overview',label:'Vue d’ensemble',icon:'⌂',defaultView:'home',views:['home']},
@@ -26,14 +28,15 @@ const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; vi
   {key:'model',label:'Modéliser',icon:'◆',defaultView:'model',views:['model','forecast','anomaly','xai','predict']},
   {key:'decide',label:'Décider',icon:'✦',defaultView:'inbox',views:['inbox','ai','semantic','decision','trust']},
   {key:'publish',label:'Publier',icon:'▧',defaultView:'dashboard',views:['dashboard','report']},
-  {key:'governance',label:'Gouverner',icon:'⌾',defaultView:'governance',views:['governance']},
+  {key:'collaborate',label:'Collaborer',icon:'◎',defaultView:'review',views:['review']},
+  {key:'governance',label:'Gouverner',icon:'⌾',defaultView:'sources',views:['sources','governance']},
 ];
 const viewLabels: Record<View,string> = {
   home:'Vue d’ensemble',data:'Aperçu des données',quality:'Qualité',prepare:'Préparation',stats:'Statistiques descriptives',
   visual:'Visualisation',tests:'Tests & corrélations',sql:'SQL',regression:'Régression',anova:'ANOVA',pca:'ACP',cluster:'Clustering',
-  model:'AutoML',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',governance:'Gouvernance'
+  model:'AutoML',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',sources:'Sources & Refresh',governance:'Gouvernance'
 };
-const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',trust:'✓',dashboard:'▦',report:'▧',governance:'⌾'};
+const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',trust:'✓',dashboard:'▦',report:'▧',review:'◎',sources:'↻',governance:'⌾'};
 function areaForView(view:View){ return areaConfig.find(a=>a.views.includes(view)) ?? areaConfig[0]; }
 
 function formatNumber(value: unknown, digits = 3) {
@@ -184,7 +187,7 @@ export default function Home() {
     <div className="app-grid pro-grid">
       <aside className="sidebar pro-sidebar">
         <div className="workspace-label"><span>WORKSPACE</span><b>{enterpriseBadge?.workspace?.name??'Analyse locale'}</b><small>{enterpriseBadge?`${enterpriseBadge.workspace?.role??'member'} · ${enterpriseBadge.user?.display_name??'utilisateur'}`:'Workflow orienté objectifs'}</small></div>
-        <nav className="area-nav">{areaConfig.map(area=><button key={area.key} className={activeArea.key===area.key?'area-item active':'area-item'} onClick={()=>setView(area.defaultView)}><span>{area.icon}</span><div><b>{area.label}</b><small>{area.key==='overview'?'Synthèse & insights':area.key==='data'?'Préparer & comprendre':area.key==='analyze'?'Explorer & tester':area.key==='model'?'Prédire & expliquer':area.key==='decide'?'Sémantique & décisions':area.key==='publish'?'Dashboards & rapports':'Sécurité & audit'}</small></div></button>)}</nav>
+        <nav className="area-nav">{areaConfig.map(area=><button key={area.key} className={activeArea.key===area.key?'area-item active':'area-item'} onClick={()=>setView(area.defaultView)}><span>{area.icon}</span><div><b>{area.label}</b><small>{area.key==='overview'?'Synthèse & insights':area.key==='data'?'Préparer & comprendre':area.key==='analyze'?'Explorer & tester':area.key==='model'?'Prédire & expliquer':area.key==='decide'?'Sémantique & décisions':area.key==='publish'?'Dashboards & rapports':area.key==='collaborate'?'Revue & approbation':'Sources, sécurité & audit'}</small></div></button>)}</nav>
         <label className="upload-side pro-upload">{busy?'Analyse en cours…':'↥  Importer des données'}<input type="file" accept=".csv,.xlsx,.json,.parquet,.txt" onChange={e=>onFile(e.target.files?.[0])}/></label>
         {result&&<div className="dataset-mini"><span>CONTEXTE ACTIF</span><b title={result.dataset.name}>{result.dataset.name}</b><small>v{result.dataset.version??1} · {result.profile.rows} lignes · {result.profile.columns_count} variables</small>{result.access?.governed&&<small className="governed-mini">◈ {result.access.role} · {result.access.policy_count??0} politique(s) · tenant-aware</small>}<div className="dataset-mini-actions"><button onClick={()=>setView('semantic')}>Sémantique</button><button onClick={()=>setView('trust')}>Trust</button></div></div>}
       </aside>
@@ -215,6 +218,8 @@ export default function Home() {
         {view==='trust'&&<TrustCenterView result={result} setError={setError}/>} 
         {view==='dashboard'&&<DashboardBuilder result={result} setError={setError}/>} 
         {view==='report'&&<ReportView result={result} setError={setError}/>}
+        {view==='review'&&<CollaborationCenter result={result} setError={setError} setView={setView}/>}
+        {view==='sources'&&<SourcesRefreshCenter setError={setError} setView={setView} onActivate={id=>activateDataset(id,'data')}/>}
         {view==='governance'&&<GovernanceCenter result={result} setError={setError}/>}  
       </section>
     </div>
@@ -1028,6 +1033,262 @@ function ReportView({ result, setError }: { result:AnyObj|null; setError:(s:stri
       </aside>
     </div>
     <Panel title="Historique des rapports" action={<span className="quiet">{reports.length} rapport(s)</span>}>{reports.length?<div className="report-list enhanced">{reports.map((r:AnyObj)=><div key={r.id}><div className="report-history-icon">▧</div><div><b>{r.title}</b><small>{r.template??'analytical'} · v{r.dataset_version} · {r.created_at?new Date(r.created_at).toLocaleString('fr-FR'):''}</small></div><div className="button-row"><button onClick={()=>dl(r.id,'pdf')}>PDF</button><button onClick={()=>dl(r.id,'docx')}>DOCX</button><button onClick={()=>dl(r.id,'html')}>HTML</button><button onClick={()=>dl(r.id,'md')}>MD</button></div></div>)}</div>:<div className="quiet-empty">Aucun rapport généré pour cette version.</div>}</Panel>
+  </div>;
+}
+
+function CollaborationCenter({result,setError,setView}:{result:AnyObj|null;setError:(s:string)=>void;setView:(v:View)=>void}){
+  const [token,setToken]=useState('');
+  const [workspaceId,setWorkspaceId]=useState('');
+  const [session,setSession]=useState<AnyObj|null>(null);
+  const [workspace,setWorkspace]=useState<AnyObj|null>(null);
+  const [summary,setSummary]=useState<AnyObj|null>(null);
+  const [reviews,setReviews]=useState<AnyObj[]>([]);
+  const [selected,setSelected]=useState<AnyObj|null>(null);
+  const [notifications,setNotifications]=useState<AnyObj[]>([]);
+  const [busy,setBusy]=useState(false);
+  const [statusFilter,setStatusFilter]=useState('all');
+  const [scope,setScope]=useState('all');
+  const [composeOpen,setComposeOpen]=useState(false);
+  const [resourceType,setResourceType]=useState('dataset');
+  const [resourceId,setResourceId]=useState(result?.dataset?.id??'');
+  const [title,setTitle]=useState(result?`Revue · ${result.dataset.name}`:'');
+  const [description,setDescription]=useState('');
+  const [priority,setPriority]=useState('normal');
+  const [reviewerId,setReviewerId]=useState('');
+  const [ownerId,setOwnerId]=useState('');
+  const [dueAt,setDueAt]=useState('');
+  const [comment,setComment]=useState('');
+  const [decisionNote,setDecisionNote]=useState('');
+  const [resources,setResources]=useState<AnyObj>({metrics:[],dashboards:[],reports:[]});
+  const [assignOwner,setAssignOwner]=useState('');
+  const [assignReviewer,setAssignReviewer]=useState('');
+  const [certifications,setCertifications]=useState<AnyObj[]>([]);
+  const [certValidUntil,setCertValidUntil]=useState('');
+  const [certNotes,setCertNotes]=useState('');
+
+  async function refresh(nextToken=token,nextWs=workspaceId,keepSelection=true){
+    if(!nextToken||!nextWs)return;
+    setBusy(true);
+    try{
+      const [w,s,r,n,c]=await Promise.all([
+        getEnterpriseWorkspace(nextToken,nextWs),getReviewSummary(nextToken,nextWs),getReviews(nextToken,nextWs,statusFilter,scope),getCollaborationNotifications(nextToken,nextWs),getCertifications(nextToken,nextWs,'active')
+      ]);
+      setWorkspace(w);setSummary(s);setReviews(r.reviews??[]);setNotifications(n.notifications??[]);setCertifications(c.certifications??[]);
+      if(keepSelection&&selected?.id){
+        const d=await getReviewDetail(nextToken,nextWs,selected.id);setSelected(d.review);setAssignOwner(d.review.owner_user_id??'');setAssignReviewer(d.review.reviewer_user_id??'');
+      }
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false)}
+  }
+  useEffect(()=>{
+    if(typeof window==='undefined')return;
+    const t=localStorage.getItem('dv_enterprise_token')||'';const ws=localStorage.getItem('dv_enterprise_workspace')||'';
+    setToken(t);setWorkspaceId(ws);
+    if(t){getEnterpriseSession(t).then(s=>{setSession(s);const active=ws||s.workspaces?.[0]?.id||'';setWorkspaceId(active);if(active)refresh(t,active,false);}).catch(()=>setSession(null));}
+  },[]);
+  useEffect(()=>{if(token&&workspaceId)refresh(token,workspaceId,false);},[statusFilter,scope]);
+  useEffect(()=>{
+    if(!result){setResources({metrics:[],dashboards:[],reports:[]});return;}
+    Promise.all([getSemanticModel(result.dataset.id),getDashboards(result.dataset.id),getReports(result.dataset.id)]).then(([sem,dash,reps])=>setResources({metrics:sem.metrics??[],dashboards:dash.dashboards??[],reports:reps.reports??[]})).catch(()=>setResources({metrics:[],dashboards:[],reports:[]}));
+    if(resourceType==='dataset'){setResourceId(result.dataset.id);setTitle(`Revue · ${result.dataset.name}`)}
+  },[result?.dataset?.id]);
+
+  const members=workspace?.members??[];
+  const currentRole=(session?.workspaces??[]).find((w:AnyObj)=>w.id===workspaceId)?.role??workspace?.workspace?.role??'';
+  const canManage=['owner','admin'].includes(currentRole);
+  const unread=notifications.filter((n:AnyObj)=>!n.is_read).length;
+  const candidateOptions=resourceType==='semantic_metric'?(resources.metrics??[]).map((x:AnyObj)=>({id:x.id,label:x.label||x.name||x.id,version:`semantic-v${x.semantic_version??''}`})):
+    resourceType==='dashboard'?(resources.dashboards??[]).map((x:AnyObj)=>({id:x.id,label:x.name||x.title||x.id})):
+    resourceType==='report'?(resources.reports??[]).map((x:AnyObj)=>({id:x.id||x.report_id,label:x.title||x.name||x.id||x.report_id})):
+    resourceType==='dataset'&&result?[{id:result.dataset.id,label:`${result.dataset.name} · v${result.dataset.version??1}`}]:[];
+
+  function changeResourceType(next:string){
+    setResourceType(next);
+    if(next==='dataset'&&result){setResourceId(result.dataset.id);setTitle(`Revue · ${result.dataset.name}`)}
+    else{const opts=next==='semantic_metric'?resources.metrics:next==='dashboard'?resources.dashboards:next==='report'?resources.reports:[];const first=opts?.[0];setResourceId(first?.id||first?.report_id||'');setTitle(first?`Revue · ${first.label||first.name||first.title||first.id}`:'');}
+  }
+  async function create(){
+    if(!token||!workspaceId||!resourceId||!title.trim())return;
+    setBusy(true);setError('');
+    try{
+      const payload:AnyObj={resource_type:resourceType,resource_id:resourceId,title:title.trim(),description,priority,reviewer_user_id:reviewerId||null,owner_user_id:ownerId||session?.user?.id||null,due_at:dueAt||null,dataset_id:result?.dataset?.id||null,resource_version:result?`v${result.dataset.version??1}`:null,snapshot:{dataset_name:result?.dataset?.name??null,dataset_version:result?.dataset?.version??null}};
+      const r=await createReview(token,workspaceId,payload);setSelected(r.review);setComposeOpen(false);setDescription('');setDecisionNote('');await refresh(token,workspaceId,false);
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+  }
+  async function openReview(id:string){try{const r=await getReviewDetail(token,workspaceId,id);setSelected(r.review);setAssignOwner(r.review.owner_user_id??'');setAssignReviewer(r.review.reviewer_user_id??'');}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
+  async function transition(action:string){if(!selected)return;setBusy(true);try{const r=await transitionReview(token,workspaceId,selected.id,action,decisionNote);setSelected(r.review);setDecisionNote('');await refresh(token,workspaceId,false);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function postComment(){if(!selected||!comment.trim())return;setBusy(true);try{const r=await addReviewComment(token,workspaceId,selected.id,comment);setSelected(r.review);setComment('');await refresh(token,workspaceId,false);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function toggleComment(c:AnyObj){if(!selected)return;try{const r=await resolveReviewComment(token,workspaceId,selected.id,c.id,!c.resolved);setSelected(r.review);await refresh(token,workspaceId,false);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
+  async function reassign(){if(!selected)return;setBusy(true);try{const r=await assignReview(token,workspaceId,selected.id,{owner_user_id:assignOwner||null,reviewer_user_id:assignReviewer||null});setSelected(r.review);await refresh(token,workspaceId,false);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function certifySelected(){if(!selected)return;setBusy(true);try{await certifyReview(token,workspaceId,selected.id,{valid_until:certValidUntil||null,notes:certNotes});setCertNotes('');await refresh(token,workspaceId,true);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  async function revokeCert(id:string){try{await revokeCertification(token,workspaceId,id,'Révocation depuis Review Center');await refresh(token,workspaceId,true);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
+  async function readNotification(n:AnyObj){if(n.is_read)return;try{await markCollaborationNotificationRead(token,workspaceId,n.id);if(n.review_id)await openReview(n.review_id);await refresh(token,workspaceId,false);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
+
+  if(!session||!token||!workspaceId)return <div className="page review-center"><div className="page-title"><div><span className="eyebrow">COLLABORATION & REVIEW</span><h1>Review Center</h1><p>Transformez une analyse en décision gouvernée : propriétaire, reviewer, commentaires, demandes de changement, approbation et historique immuable.</p></div><span className="module-state implemented">v2.6</span></div><div className="collab-auth-empty"><span>◎</span><div><h3>Session Enterprise requise</h3><p>Les workflows de revue sont liés à un workspace et à une identité afin de conserver une piste d’audit fiable.</p></div><button className="primary-btn" onClick={()=>setView('governance')}>Ouvrir Gouvernance</button></div></div>;
+
+  const byStatus=summary?.by_status??{};
+  return <div className="page review-center">
+    <div className="page-title"><div><span className="eyebrow">COLLABORATION & REVIEW · V2.6</span><h1>Review Center</h1><p>Un workflow de validation professionnel pour les métriques, analyses, dashboards, modèles et rapports avant publication ou prise de décision.</p></div><div className="review-head-actions"><span className="review-workspace">{workspace?.workspace?.name??'Workspace'} · {currentRole}</span><button className="secondary-btn" onClick={()=>refresh()} disabled={busy}>↻ Actualiser</button><button className="primary-btn" onClick={()=>setComposeOpen(v=>!v)}>+ Nouvelle revue</button></div></div>
+    <div className="review-scorecards"><Stat label="À revoir" value={summary?.assigned_to_me??0} detail="Assignées à moi"/><Stat label="En revue" value={byStatus.in_review??0} detail="Workflow actif"/><Stat label="Corrections" value={byStatus.changes_requested??0} detail="Changes requested"/><Stat label="Approuvées" value={byStatus.approved??0} detail="Décisions validées"/><Stat label="En retard" value={summary?.overdue??0} detail="Échéance dépassée"/><Stat label="Notifications" value={unread} detail="Non lues"/></div>
+    {composeOpen&&<Panel title="Créer une demande de revue" action={<button className="ghost-btn" onClick={()=>setComposeOpen(false)}>Fermer</button>}><div className="review-compose-grid"><label>Ressource<select value={resourceType} onChange={e=>changeResourceType(e.target.value)}><option value="dataset">Dataset</option><option value="semantic_metric">Métrique sémantique</option><option value="dashboard">Dashboard</option><option value="report">Rapport</option><option value="analysis">Analyse / session</option><option value="model">Modèle</option><option value="visualization">Visualisation</option></select></label><label>Élément{candidateOptions.length?<select value={resourceId} onChange={e=>{setResourceId(e.target.value);const x=candidateOptions.find((o:AnyObj)=>o.id===e.target.value);if(x)setTitle(`Revue · ${x.label}`)}}>{candidateOptions.map((x:AnyObj)=><option key={x.id} value={x.id}>{x.label}</option>)}</select>:<input value={resourceId} onChange={e=>setResourceId(e.target.value)} placeholder="ID de la ressource"/>}</label><label className="span-2">Titre<input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Objet de la revue"/></label><label>Priorité<select value={priority} onChange={e=>setPriority(e.target.value)}><option value="low">Basse</option><option value="normal">Normale</option><option value="high">Haute</option><option value="critical">Critique</option></select></label><label>Reviewer<select value={reviewerId} onChange={e=>setReviewerId(e.target.value)}><option value="">À affecter plus tard</option>{members.map((m:AnyObj)=><option key={m.id} value={m.id}>{m.display_name} · {m.role}</option>)}</select></label><label>Propriétaire<select value={ownerId} onChange={e=>setOwnerId(e.target.value)}><option value="">Moi</option>{members.map((m:AnyObj)=><option key={m.id} value={m.id}>{m.display_name} · {m.role}</option>)}</select></label><label>Échéance<input type="date" value={dueAt} onChange={e=>setDueAt(e.target.value)}/></label><label className="span-2">Contexte<textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="Ce que le reviewer doit vérifier, hypothèses, risques, critères d’acceptation…"/></label><div className="span-2 review-compose-actions"><small>La revue conserve un snapshot de la version active afin de rendre la décision traçable.</small><RunButton busy={busy} label="Créer la revue" busyLabel="Création…" onClick={create}/></div></div></Panel>}
+    <div className="review-layout">
+      <section className="review-queue"><div className="review-toolbar"><div><select value={scope} onChange={e=>setScope(e.target.value)}><option value="all">Toutes les revues</option><option value="assigned">Assignées à moi</option><option value="owned">Mes ressources</option><option value="created">Créées par moi</option></select><select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}><option value="all">Tous statuts</option><option value="draft">Brouillon</option><option value="in_review">En revue</option><option value="changes_requested">Corrections</option><option value="approved">Approuvée</option><option value="archived">Archivée</option></select></div><small>{reviews.length} revue(s)</small></div><div className="review-list">{reviews.length?reviews.map((r:AnyObj)=><button key={r.id} className={`review-card ${selected?.id===r.id?'active':''}`} onClick={()=>openReview(r.id)}><div className="review-card-top"><span className={`review-status ${r.status}`}>{String(r.status).replaceAll('_',' ')}</span><span className={`review-priority ${r.priority}`}>{r.priority}</span></div><b>{r.title}</b><p>{r.resource_type} · {String(r.resource_id).slice(0,28)}</p><div className="review-meta"><span>{r.reviewer?.display_name?`Reviewer · ${r.reviewer.display_name}`:'Reviewer non affecté'}</span><span>{r.comment_count??0} commentaire(s)</span></div>{r.due_at&&<small>Échéance · {new Date(r.due_at).toLocaleDateString('fr-FR')}</small>}</button>):<div className="quiet-empty review-empty">Aucune revue dans ce filtre.</div>}</div></section>
+      <section className="review-detail">{selected?<><div className="review-detail-head"><div><div className="review-detail-tags"><span className={`review-status ${selected.status}`}>{String(selected.status).replaceAll('_',' ')}</span><span className={`review-priority ${selected.priority}`}>{selected.priority}</span><span>{selected.resource_type}</span></div><h2>{selected.title}</h2><p>{selected.description||'Aucune consigne particulière.'}</p></div><div className="review-ownership"><small>OWNER</small><b>{selected.owner?.display_name??'—'}</b><small>REVIEWER</small><b>{selected.reviewer?.display_name??'Non affecté'}</b></div></div>
+        <div className="review-proofbar"><div><span>Ressource</span><b>{selected.resource_id}</b></div><div><span>Version</span><b>{selected.resource_version??'—'}</b></div><div><span>Créée</span><b>{selected.created_at?new Date(selected.created_at).toLocaleDateString('fr-FR'):'—'}</b></div><div><span>Commentaires ouverts</span><b>{selected.unresolved_comment_count??0}</b></div></div>
+        {canManage&&<details className="review-assignment"><summary>Affectation & ownership</summary><div><label>Owner<select value={assignOwner} onChange={e=>setAssignOwner(e.target.value)}><option value="">—</option>{members.map((m:AnyObj)=><option key={m.id} value={m.id}>{m.display_name}</option>)}</select></label><label>Reviewer<select value={assignReviewer} onChange={e=>setAssignReviewer(e.target.value)}><option value="">—</option>{members.map((m:AnyObj)=><option key={m.id} value={m.id}>{m.display_name} · {m.role}</option>)}</select></label><button className="secondary-btn" onClick={reassign}>Mettre à jour</button></div></details>}
+        <div className="review-decision-zone"><textarea value={decisionNote} onChange={e=>setDecisionNote(e.target.value)} placeholder="Note de décision / critères vérifiés…"/><div className="review-actions">{['draft','changes_requested'].includes(selected.status)&&<button className="primary-btn" disabled={busy} onClick={()=>transition('submit')}>Soumettre à revue</button>}{selected.status==='in_review'&&<><button className="approve-btn" disabled={busy} onClick={()=>transition('approve')}>✓ Approuver</button><button className="changes-btn" disabled={busy} onClick={()=>transition('request_changes')}>↺ Demander des corrections</button></>}{['approved','changes_requested'].includes(selected.status)&&<button className="secondary-btn" disabled={busy} onClick={()=>transition('reopen')}>Rouvrir la revue</button>}{canManage&&selected.status!=='archived'&&<button className="ghost-btn" disabled={busy} onClick={()=>transition('archive')}>Archiver</button>}</div></div>
+        {selected.status==='approved'&&<div className="review-cert-zone"><div><b>Certification de confiance</b><small>Une certification active signale qu’une ressource approuvée reste la référence gouvernée jusqu’à expiration ou révocation.</small></div>{canManage?<><input type="date" value={certValidUntil} onChange={e=>setCertValidUntil(e.target.value)}/><input value={certNotes} onChange={e=>setCertNotes(e.target.value)} placeholder="Note de certification"/><button className="approve-btn" onClick={certifySelected} disabled={busy}>Certifier</button></>:<span className="quiet">Owner/Admin requis</span>}</div>}
+        <div className="review-detail-grid"><Panel title="Discussion" action={<span className="quiet">@mention supportée</span>}><div className="review-comments">{(selected.comments??[]).length?(selected.comments??[]).map((c:AnyObj)=><article key={c.id} className={c.resolved?'resolved':''}><div className="member-avatar">{String(c.display_name||c.email).slice(0,2).toUpperCase()}</div><div><header><b>{c.display_name||c.email}</b><small>{new Date(c.created_at).toLocaleString('fr-FR')}</small>{c.resolved&&<span>RÉSOLU</span>}</header><p>{c.body}</p><button className="link-btn" onClick={()=>toggleComment(c)}>{c.resolved?'Rouvrir':'Marquer résolu'}</button></div></article>):<div className="quiet-empty">Aucun commentaire. Utilisez la discussion pour documenter les points de contrôle.</div>}</div><div className="review-comment-box"><textarea value={comment} onChange={e=>setComment(e.target.value)} placeholder="Commenter… Utilisez @email ou @nom pour mentionner un membre."/><button className="primary-btn" onClick={postComment} disabled={!comment.trim()||busy}>Commenter</button></div></Panel><Panel title="Historique de décision"><div className="review-timeline">{(selected.events??[]).map((e:AnyObj)=><div key={e.id}><span/><div><b>{e.action.replaceAll('_',' ')}</b><small>{e.display_name||e.email} · {new Date(e.created_at).toLocaleString('fr-FR')}</small>{e.from_status!==e.to_status&&<em>{e.from_status||'—'} → {e.to_status||'—'}</em>}</div></div>)}</div></Panel></div>
+      </>:<div className="review-detail-empty"><span>◎</span><h3>Sélectionnez une revue</h3><p>La fiche regroupe contexte, ownership, discussion, décision et piste d’audit.</p></div>}</section>
+      <aside className="review-notifications"><div className="review-notif-head"><div><b>Notifications</b><small>{unread} non lue(s)</small></div></div><div className="review-notif-list">{notifications.slice(0,14).map((n:AnyObj)=><button key={n.id} className={!n.is_read?'unread':''} onClick={()=>readNotification(n)}><span>{n.notification_type==='mention'?'@':'◎'}</span><div><b>{n.message}</b><small>{new Date(n.created_at).toLocaleString('fr-FR')}</small></div></button>)}{!notifications.length&&<div className="quiet-empty">Aucune notification.</div>}</div><div className="review-cert-list"><div className="review-notif-head"><div><b>Certifications actives</b><small>{certifications.length}</small></div></div>{certifications.slice(0,8).map((c:AnyObj)=><div className="review-cert-card" key={c.id}><div><b>{c.resource_id}</b><small>{c.resource_type}{c.valid_until?` · expire ${new Date(c.valid_until).toLocaleDateString('fr-FR')}`:''}</small></div>{canManage&&<button className="ghost-btn" onClick={()=>revokeCert(c.id)}>Révoquer</button>}</div>)}</div><div className="review-governance-note"><b>Approval gate</b><p>Une approbation appartient à un reviewer identifié. Toutes les transitions sont auditées et conservées séparément du contenu analytique.</p></div></aside>
+    </div>
+  </div>;
+}
+
+function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)=>void;setView:(v:View)=>void;onActivate:(id:string)=>void}){
+  const [token,setToken]=useState('');
+  const [session,setSession]=useState<AnyObj|null>(null);
+  const [workspaceId,setWorkspaceId]=useState('');
+  const [overview,setOverview]=useState<AnyObj>({connectors:[],sources:[],schedules:[]});
+  const [health,setHealth]=useState<AnyObj|null>(null);
+  const [runs,setRuns]=useState<AnyObj[]>([]);
+  const [busy,setBusy]=useState(false);
+  const [notice,setNotice]=useState('');
+  const [showConnectorForm,setShowConnectorForm]=useState(false);
+  const [showSourceForm,setShowSourceForm]=useState(false);
+  const [connectorName,setConnectorName]=useState('Warehouse principal');
+  const [connectorType,setConnectorType]=useState('postgresql');
+  const [connectorHost,setConnectorHost]=useState('');
+  const [connectorPort,setConnectorPort]=useState('5432');
+  const [connectorDb,setConnectorDb]=useState('');
+  const [connectorUser,setConnectorUser]=useState('');
+  const [connectorPassword,setConnectorPassword]=useState('');
+  const [connectorSsl,setConnectorSsl]=useState('require');
+  const [selectedConnector,setSelectedConnector]=useState('');
+  const [discovery,setDiscovery]=useState<AnyObj|null>(null);
+  const [sourceName,setSourceName]=useState('');
+  const [sourceKind,setSourceKind]=useState('table');
+  const [tableName,setTableName]=useState('');
+  const [sourceQuery,setSourceQuery]=useState('');
+  const [refreshMode,setRefreshMode]=useState('full');
+  const [incrementalColumn,setIncrementalColumn]=useState('');
+  const [slaMinutes,setSlaMinutes]=useState('1440');
+  const [driftPolicy,setDriftPolicy]=useState('warn');
+  const [preview,setPreview]=useState<AnyObj|null>(null);
+  const [previewTitle,setPreviewTitle]=useState('');
+  const [runFilter,setRunFilter]=useState('');
+
+  const activeWorkspace=(session?.workspaces??[]).find((w:AnyObj)=>w.id===workspaceId);
+  const role=activeWorkspace?.role??'';
+  const canManage=['owner','admin'].includes(role);
+  const canRefresh=['owner','admin','data_scientist'].includes(role);
+
+  async function load(t=token,ws=workspaceId){
+    if(!t||!ws)return;
+    setBusy(true);
+    try{
+      const [o,h,r]=await Promise.all([getConnectorOverview(t,ws),getConnectorHealth(t,ws),getRefreshRuns(t,ws,runFilter||undefined)]);
+      setOverview(o);setHealth(h);setRuns(r.runs??[]);
+      if(!selectedConnector&&o.connectors?.[0]?.id)setSelectedConnector(o.connectors[0].id);
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false)}
+  }
+  useEffect(()=>{
+    if(typeof window==='undefined')return;
+    const t=localStorage.getItem('dv_enterprise_token')||'';
+    const stored=localStorage.getItem('dv_enterprise_workspace')||'';
+    setToken(t);
+    if(!t)return;
+    getEnterpriseSession(t).then(s=>{setSession(s);const ws=stored||s.workspaces?.[0]?.id||'';setWorkspaceId(ws);}).catch(()=>{setToken('');setSession(null);});
+  },[]);
+  useEffect(()=>{if(token&&workspaceId)load(token,workspaceId);},[token,workspaceId,runFilter]);
+
+  function changeWorkspace(id:string){
+    setWorkspaceId(id);setDiscovery(null);setPreview(null);setRunFilter('');
+    if(typeof window!=='undefined'){localStorage.setItem('dv_enterprise_workspace',id);window.dispatchEvent(new Event('datavision-enterprise-session'));}
+  }
+  async function createConnector(){
+    if(!token||!workspaceId||!connectorHost||!connectorDb||!connectorUser)return;
+    setBusy(true);setNotice('');
+    try{
+      const r=await createDataConnector(token,workspaceId,{name:connectorName,connector_type:connectorType,host:connectorHost,port:Number(connectorPort)||(connectorType==='postgresql'?5432:3306),database:connectorDb,username:connectorUser,password:connectorPassword,ssl_mode:connectorSsl});
+      setConnectorPassword('');setSelectedConnector(r.connector.id);setShowConnectorForm(false);setNotice('Connecteur enregistré. Testez la connexion avant de créer une source.');await load();
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+  }
+  async function testConnector(id:string){
+    setBusy(true);setNotice('');
+    try{const r=await testDataConnector(token,workspaceId,id);setNotice(r.ok?'Connexion validée.':`Échec de connexion : ${r.error??'erreur inconnue'}`);await load();}
+    catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+  }
+  async function discoverConnector(id:string){
+    setBusy(true);setNotice('');
+    try{const r=await discoverDataConnector(token,workspaceId,id);setSelectedConnector(id);setDiscovery(r);setNotice(`${r.tables?.length??0} table(s) découverte(s).`);}
+    catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+  }
+  function useTable(table:AnyObj){
+    setSelectedConnector(discovery?.connector?.id??selectedConnector);setSourceKind('table');setTableName(table.qualified_name);setSourceName(table.name);setShowSourceForm(true);
+    const candidate=(table.columns??[]).find((c:AnyObj)=>/(updated|created|date|time|timestamp|id)$/i.test(String(c.name)))?.name??'';
+    setIncrementalColumn(candidate);
+  }
+  async function createSource(){
+    if(!token||!workspaceId||!selectedConnector||!sourceName)return;
+    setBusy(true);setNotice('');
+    try{
+      await createConnectorSource(token,workspaceId,{connector_id:selectedConnector,name:sourceName,source_kind:sourceKind,table_name:sourceKind==='table'?tableName:null,query:sourceKind==='query'?sourceQuery:null,refresh_mode:refreshMode,incremental_column:refreshMode==='incremental'?incrementalColumn:null,freshness_sla_minutes:Number(slaMinutes)||1440,schema_drift_policy:driftPolicy});
+      setShowSourceForm(false);setSourceName('');setTableName('');setSourceQuery('');setNotice('Source créée. Lancez le premier refresh pour matérialiser le dataset.');await load();
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+  }
+  async function refreshSource(source:AnyObj){
+    if(!canRefresh)return;
+    setBusy(true);setNotice('');
+    try{const r=await refreshConnectorSource(token,workspaceId,source.id,true);setNotice(`Refresh placé en file${r.job?.id?` · job ${String(r.job.id).slice(0,8)}`:''}. Le worker créera une nouvelle version immuable.`);await load();}
+    catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+  }
+  async function previewSource(source:AnyObj){
+    setBusy(true);
+    try{setPreview(await previewConnectorSource(token,workspaceId,source.id,25));setPreviewTitle(source.name);}
+    catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+  }
+  async function setSchedule(source:AnyObj,minutes:number){
+    if(!canManage)return;
+    setBusy(true);
+    try{await saveConnectorSchedule(token,workspaceId,source.id,minutes>0,minutes>0?minutes:1440);setNotice(minutes>0?`Refresh planifié toutes les ${minutes} minutes.`:'Planification désactivée.');await load();}
+    catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+  }
+  async function removeSource(source:AnyObj){
+    if(!canManage||!confirm(`Supprimer la source « ${source.name} » ? Les datasets déjà matérialisés restent immuables.`))return;
+    setBusy(true);try{await deleteConnectorSource(token,workspaceId,source.id);setNotice('Source supprimée.');await load();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+  }
+
+  if(!token||!session)return <div className="page sources-page"><div className="page-title"><div><span className="eyebrow">DATA SOURCES · REFRESH · OBSERVABILITY</span><h1>Sources & Refresh</h1><p>Connecteurs gouvernés, credentials chiffrés, refresh incrémental et surveillance de fraîcheur.</p></div><span className="module-state implemented">v2.7</span></div><div className="collab-auth-empty"><span>↻</span><div><h3>Session Enterprise requise</h3><p>Les credentials et les planifications sont isolés par workspace et nécessitent une identité auditée.</p></div><button className="primary-btn" onClick={()=>setView('governance')}>Ouvrir Gouvernance</button></div></div>;
+
+  const sources=overview.sources??[],connectors=overview.connectors??[];
+  const fresh=health?.freshness?.fresh??0,stale=(health?.freshness?.stale??0)+(health?.freshness?.error??0);
+  return <div className="page sources-page">
+    <div className="page-title"><div><span className="eyebrow">DATA SOURCES & REFRESH · V2.7</span><h1>Sources & Refresh</h1><p>Centralisez les connexions, matérialisez des versions immuables, contrôlez le schema drift et surveillez la fraîcheur des données.</p></div><div className="sources-head-actions"><label>Workspace<select value={workspaceId} onChange={e=>changeWorkspace(e.target.value)}>{(session.workspaces??[]).map((w:AnyObj)=><option key={w.id} value={w.id}>{w.name} · {w.role}</option>)}</select></label><button className="secondary-btn" onClick={()=>load()} disabled={busy}>↻ Actualiser</button>{canManage&&<button className="primary-btn" onClick={()=>setShowConnectorForm(v=>!v)}>+ Connecteur</button>}</div></div>
+    {notice&&<div className="source-notice"><span>◎</span><p>{notice}</p><button onClick={()=>setNotice('')}>×</button></div>}
+    <div className="sources-scorecards"><Stat label="Connecteurs" value={health?.connectors??0} detail={`${health?.connector_errors??0} en erreur`}/><Stat label="Sources" value={health?.sources??0} detail={`${health?.scheduled??0} planifiée(s)`}/><Stat label="Fraîches" value={fresh} detail={`${stale} stale / erreur`}/><Stat label="Succès refresh" value={health?.success_rate==null?'—':`${health.success_rate}%`} detail={`${health?.runs_considered??0} exécution(s)`}/><Stat label="Lignes ingérées" value={formatNumber(health?.rows_fetched??0,0)} detail={health?.avg_duration_seconds==null?'Durée n/a':`Ø ${formatNumber(health.avg_duration_seconds,1)} s`}/></div>
+
+    {showConnectorForm&&<Panel title="Nouveau connecteur sécurisé" action={<span className="quiet">Le mot de passe est chiffré avant stockage.</span>}><div className="connector-form-grid"><label>Nom<input value={connectorName} onChange={e=>setConnectorName(e.target.value)}/></label><label>Moteur<select value={connectorType} onChange={e=>{setConnectorType(e.target.value);setConnectorPort(e.target.value==='postgresql'?'5432':'3306')}}><option value="postgresql">PostgreSQL</option><option value="mysql">MySQL</option></select></label><label>Hôte<input value={connectorHost} onChange={e=>setConnectorHost(e.target.value)} placeholder="db.company.internal"/></label><label>Port<input value={connectorPort} onChange={e=>setConnectorPort(e.target.value)}/></label><label>Base<input value={connectorDb} onChange={e=>setConnectorDb(e.target.value)}/></label><label>Utilisateur<input value={connectorUser} onChange={e=>setConnectorUser(e.target.value)}/></label><label>Mot de passe<input type="password" value={connectorPassword} onChange={e=>setConnectorPassword(e.target.value)}/></label><label>TLS<select value={connectorSsl} onChange={e=>setConnectorSsl(e.target.value)}><option value="require">Require</option><option value="prefer">Prefer</option><option value="disable">Disable</option></select></label><div className="connector-form-actions"><button className="secondary-btn" onClick={()=>setShowConnectorForm(false)}>Annuler</button><button className="primary-btn" onClick={createConnector} disabled={busy}>Enregistrer</button></div></div></Panel>}
+
+    <div className="sources-main-grid">
+      <section className="source-column">
+        <div className="source-section-head"><div><span>CONNEXIONS</span><h3>Connecteurs</h3></div><small>{connectors.length} configuré(s)</small></div>
+        <div className="connector-list">{connectors.map((c:AnyObj)=><article key={c.id} className={`connector-card ${selectedConnector===c.id?'selected':''}`} onClick={()=>setSelectedConnector(c.id)}><div className="connector-logo">{c.connector_type==='postgresql'?'PG':'MY'}</div><div className="connector-copy"><div><b>{c.name}</b><span className={`connector-status ${c.status}`}>{c.status}</span></div><p>{c.host?`${c.host}:${c.port} · ${c.database_name}`:'Connexion gouvernée'}</p><small>{c.username} · TLS {c.ssl_mode}{c.last_tested_at?` · testé ${new Date(c.last_tested_at).toLocaleString('fr-FR')}`:''}</small>{c.last_error&&<em>{c.last_error}</em>}</div><div className="connector-actions">{canManage&&<button onClick={e=>{e.stopPropagation();testConnector(c.id)}} disabled={busy}>Tester</button>}<button onClick={e=>{e.stopPropagation();discoverConnector(c.id)}} disabled={busy}>Explorer</button></div></article>)}{!connectors.length&&<div className="quiet-empty">Aucun connecteur. Créez une connexion PostgreSQL ou MySQL.</div>}</div>
+
+        {discovery&&<div className="discovery-panel"><div className="source-section-head"><div><span>CATALOGUE SOURCE</span><h3>{discovery.connector?.name}</h3></div><button className="ghost-btn" onClick={()=>setDiscovery(null)}>Fermer</button></div><div className="discovered-tables">{(discovery.tables??[]).map((t:AnyObj)=><button key={t.qualified_name} onClick={()=>useTable(t)}><span>▦</span><div><b>{t.qualified_name}</b><small>{t.columns?.length??0} colonne(s) · {(t.columns??[]).slice(0,4).map((c:AnyObj)=>c.name).join(', ')}</small></div><i>+ Source</i></button>)}</div></div>}
+      </section>
+
+      <section className="source-column source-wide">
+        <div className="source-section-head"><div><span>DATA PRODUCTS</span><h3>Sources matérialisées</h3></div>{canManage&&<button className="secondary-btn" onClick={()=>setShowSourceForm(v=>!v)} disabled={!connectors.length}>+ Nouvelle source</button>}</div>
+        {showSourceForm&&<div className="source-compose"><div className="source-compose-grid"><label>Connecteur<select value={selectedConnector} onChange={e=>setSelectedConnector(e.target.value)}>{connectors.map((c:AnyObj)=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>Nom logique<input value={sourceName} onChange={e=>setSourceName(e.target.value)} placeholder="Ventes quotidiennes"/></label><label>Source<select value={sourceKind} onChange={e=>setSourceKind(e.target.value)}><option value="table">Table</option><option value="query">Requête SQL read-only</option></select></label>{sourceKind==='table'?<label>Table qualifiée<input value={tableName} onChange={e=>setTableName(e.target.value)} placeholder="public.sales"/></label>:<label className="span-2">Requête<textarea value={sourceQuery} onChange={e=>setSourceQuery(e.target.value)} placeholder="SELECT ..."/></label>}<label>Refresh<select value={refreshMode} onChange={e=>setRefreshMode(e.target.value)}><option value="full">Full refresh</option><option value="incremental">Incremental</option></select></label>{refreshMode==='incremental'&&<label>Colonne watermark<input value={incrementalColumn} onChange={e=>setIncrementalColumn(e.target.value)} placeholder="updated_at ou id"/></label>}<label>SLA fraîcheur<select value={slaMinutes} onChange={e=>setSlaMinutes(e.target.value)}><option value="60">1 heure</option><option value="360">6 heures</option><option value="720">12 heures</option><option value="1440">24 heures</option><option value="10080">7 jours</option></select></label><label>Schema drift<select value={driftPolicy} onChange={e=>setDriftPolicy(e.target.value)}><option value="warn">Avertir</option><option value="fail">Bloquer changements destructifs</option></select></label></div><div className="source-compose-actions"><small>Chaque refresh crée une nouvelle version immuable du dataset. L’incrémental n’importe que les valeurs supérieures au watermark.</small><button className="primary-btn" onClick={createSource} disabled={busy||!selectedConnector}>Créer la source</button></div></div>}
+        <div className="source-list">{sources.map((src:AnyObj)=>{const f=src.freshness??{};const sch=src.schedule;return <article key={src.id} className="source-card"><div className="source-card-head"><div><span className={`freshness-dot ${f.status}`}/><div><b>{src.name}</b><small>{src.refresh_mode==='incremental'?`Incremental · ${src.incremental_column}`:'Full refresh'} · SLA {f.sla_minutes} min</small></div></div><span className={`freshness-pill ${f.status}`}>{f.status}</span></div><div className="source-card-metrics"><div><span>Dataset actif</span><b>{src.dataset_id?String(src.dataset_id).slice(0,8):'Non matérialisé'}</b></div><div><span>Dernier succès</span><b>{src.last_success_at?new Date(src.last_success_at).toLocaleString('fr-FR'):'Jamais'}</b></div><div><span>Âge</span><b>{f.age_minutes==null?'—':`${f.age_minutes} min`}</b></div><div><span>Lignes dernier run</span><b>{formatNumber(src.last_rows_fetched??0,0)}</b></div></div>{src.schema_drift?.detected&&<div className="schema-drift-note">Schema drift détecté lors du dernier refresh.</div>}{src.last_error&&<div className="source-error">{src.last_error}</div>}<div className="source-card-actions">{canManage&&<button onClick={()=>previewSource(src)} disabled={busy}>Aperçu source</button>}{src.dataset_id&&<button onClick={()=>onActivate(src.dataset_id)}>Ouvrir dataset</button>}{canRefresh&&<button className="accent-action" onClick={()=>refreshSource(src)} disabled={busy}>↻ Refresh</button>}{canManage&&<label>Planification<select value={sch?.enabled?String(sch.interval_minutes):'0'} onChange={e=>setSchedule(src,Number(e.target.value))}><option value="0">Désactivée</option><option value="60">Toutes les heures</option><option value="360">Toutes les 6 h</option><option value="720">Toutes les 12 h</option><option value="1440">Quotidienne</option><option value="10080">Hebdomadaire</option></select></label>}{canManage&&<button className="danger-link" onClick={()=>removeSource(src)}>Supprimer</button>}</div></article>})}{!sources.length&&<div className="quiet-empty source-empty">Aucune source matérialisée. Explorez un connecteur, choisissez une table puis créez une source.</div>}</div>
+      </section>
+    </div>
+
+    <div className="source-observability-grid"><Panel title="Observabilité des refresh" action={<select value={runFilter} onChange={e=>setRunFilter(e.target.value)}><option value="">Toutes les sources</option>{sources.map((s:AnyObj)=><option key={s.id} value={s.id}>{s.name}</option>)}</select>}><div className="refresh-run-table"><div className="refresh-run-row header"><span>Statut</span><span>Source</span><span>Mode</span><span>Lignes</span><span>Déclencheur</span><span>Début</span><span>Durée</span></div>{runs.slice(0,30).map((r:AnyObj)=>{const a=r.started_at?new Date(r.started_at).getTime():0,b=r.finished_at?new Date(r.finished_at).getTime():0;const source=sources.find((x:AnyObj)=>x.id===r.source_id);return <div className="refresh-run-row" key={r.id}><span><i className={`run-status ${r.status}`}/>{r.status}</span><span>{source?.name??String(r.source_id).slice(0,8)}</span><span>{r.mode}</span><span>{formatNumber(r.rows_fetched??0,0)}</span><span>{r.trigger_type}</span><span>{r.started_at?new Date(r.started_at).toLocaleString('fr-FR'):'—'}</span><span>{a&&b?`${Math.max(0,(b-a)/1000).toFixed(1)} s`:'—'}</span>{r.error&&<em>{r.error}</em>}</div>})}{!runs.length&&<div className="quiet-empty">Aucun refresh exécuté.</div>}</div></Panel><Panel title="Contrats de fraîcheur"><div className="freshness-contracts"><div><b>Fresh</b><p>Dernier succès dans le SLA déclaré.</p></div><div><b>Warning</b><p>Plus de 80 % du SLA consommé.</p></div><div><b>Stale</b><p>Le SLA est dépassé : le dataset peut être obsolète.</p></div><div><b>Error</b><p>Le dernier refresh a échoué. La dernière version valide reste disponible.</p></div><small>Le scheduler du worker revendique atomiquement les échéances avant de soumettre un job Redis afin d’éviter les doubles déclenchements entre workers.</small></div></Panel></div>
+
+    {preview&&<div className="source-preview-overlay" onMouseDown={e=>{if(e.target===e.currentTarget)setPreview(null)}}><div className="source-preview-modal"><div className="source-section-head"><div><span>APERÇU READ-ONLY</span><h3>{previewTitle}</h3></div><button className="ghost-btn" onClick={()=>setPreview(null)}>Fermer</button></div><div className="table-wrap"><table><thead><tr>{(preview.columns??[]).map((c:string)=><th key={c}>{c}</th>)}</tr></thead><tbody>{(preview.rows??[]).map((row:AnyObj,i:number)=><tr key={i}>{(preview.columns??[]).map((c:string)=><td key={c}>{row[c]==null?'—':String(row[c])}</td>)}</tr>)}</tbody></table></div></div></div>}
   </div>;
 }
 

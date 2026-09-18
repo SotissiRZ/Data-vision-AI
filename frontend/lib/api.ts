@@ -476,3 +476,110 @@ export async function getGovernedPreview(token:string, workspace_id:string, data
   const params=new URLSearchParams({limit:String(limit)}); if(simulate_role)params.set('simulate_role',simulate_role);
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/datasets/${dataset_id}/governed-preview?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Aperçu gouverné indisponible');
 }
+
+export async function getReviewSummary(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reviews/summary`, { headers:enterpriseHeaders(token) }), 'Synthèse des revues indisponible');
+}
+
+export async function getReviews(token:string, workspace_id:string, status='all', scope='all') {
+  const params=new URLSearchParams({status,scope});
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reviews?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Revues indisponibles');
+}
+
+export async function getReviewDetail(token:string, workspace_id:string, review_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reviews/${review_id}`, { headers:enterpriseHeaders(token) }), 'Détail de la revue indisponible');
+}
+
+export async function createReview(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reviews`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Création de la revue impossible');
+}
+
+export async function assignReview(token:string, workspace_id:string, review_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reviews/${review_id}/assign`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Affectation de la revue impossible');
+}
+
+export async function transitionReview(token:string, workspace_id:string, review_id:string, action:string, note='') {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reviews/${review_id}/transition`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({action,note}) }), 'Transition de revue impossible');
+}
+
+export async function addReviewComment(token:string, workspace_id:string, review_id:string, body:string, mention_user_ids:string[] = []) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reviews/${review_id}/comments`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({body,mention_user_ids}) }), 'Commentaire impossible');
+}
+
+export async function resolveReviewComment(token:string, workspace_id:string, review_id:string, comment_id:string, resolved=true) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reviews/${review_id}/comments/${comment_id}/resolve`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({resolved}) }), 'Mise à jour du commentaire impossible');
+}
+
+export async function getCollaborationNotifications(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/collaboration/notifications`, { headers:enterpriseHeaders(token) }), 'Notifications de collaboration indisponibles');
+}
+
+export async function markCollaborationNotificationRead(token:string, workspace_id:string, notification_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/collaboration/notifications/${notification_id}/read`, { method:'POST', headers:enterpriseHeaders(token) }), 'Lecture de la notification impossible');
+}
+
+export async function getCertifications(token:string, workspace_id:string, status='active') {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/certifications?status=${encodeURIComponent(status)}`, { headers:enterpriseHeaders(token) }), 'Certifications indisponibles');
+}
+
+export async function certifyReview(token:string, workspace_id:string, review_id:string, payload:{valid_until?:string|null;notes?:string}) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reviews/${review_id}/certify`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Certification impossible');
+}
+
+export async function revokeCertification(token:string, workspace_id:string, certification_id:string, note='') {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/certifications/${certification_id}/revoke`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({note}) }), 'Révocation impossible');
+}
+
+// ---------------------------- Data connectors & refresh v2.7 ----------------------------
+export async function getConnectorOverview(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/connectors`, { headers:enterpriseHeaders(token) }), 'Connecteurs indisponibles');
+}
+
+export async function getConnectorHealth(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/connectors/health`, { headers:enterpriseHeaders(token) }), 'Santé des connecteurs indisponible');
+}
+
+export async function createDataConnector(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/connectors`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Création du connecteur impossible');
+}
+
+export async function updateDataConnector(token:string, workspace_id:string, connector_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/connectors/${connector_id}`, { method:'PATCH', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Mise à jour du connecteur impossible');
+}
+
+export async function deleteDataConnector(token:string, workspace_id:string, connector_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/connectors/${connector_id}`, { method:'DELETE', headers:enterpriseHeaders(token) }), 'Suppression du connecteur impossible');
+}
+
+export async function testDataConnector(token:string, workspace_id:string, connector_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/connectors/${connector_id}/test`, { method:'POST', headers:enterpriseHeaders(token) }), 'Test du connecteur impossible');
+}
+
+export async function discoverDataConnector(token:string, workspace_id:string, connector_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/connectors/${connector_id}/discover`, { headers:enterpriseHeaders(token) }), 'Découverte des tables impossible');
+}
+
+export async function createConnectorSource(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/sources`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Création de la source impossible');
+}
+
+export async function deleteConnectorSource(token:string, workspace_id:string, source_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/sources/${source_id}`, { method:'DELETE', headers:enterpriseHeaders(token) }), 'Suppression de la source impossible');
+}
+
+export async function previewConnectorSource(token:string, workspace_id:string, source_id:string, limit=25) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/sources/${source_id}/preview?limit=${limit}`, { headers:enterpriseHeaders(token) }), 'Aperçu de la source impossible');
+}
+
+export async function refreshConnectorSource(token:string, workspace_id:string, source_id:string, background=true) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/sources/${source_id}/refresh`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({background}) }), 'Refresh impossible');
+}
+
+export async function saveConnectorSchedule(token:string, workspace_id:string, source_id:string, enabled:boolean, interval_minutes:number) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/sources/${source_id}/schedule`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({enabled,interval_minutes}) }), 'Planification du refresh impossible');
+}
+
+export async function getRefreshRuns(token:string, workspace_id:string, source_id?:string) {
+  const params=new URLSearchParams(); if(source_id)params.set('source_id',source_id); params.set('limit','100');
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/refresh-runs?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Historique des refresh indisponible');
+}

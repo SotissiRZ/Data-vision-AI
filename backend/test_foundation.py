@@ -1529,3 +1529,266 @@ def test_v250_proactive_alert_dedup_and_status(tmp_path, monkeypatch):
     assert changed.json()["status"] == "acknowledged"
     assert client.get(f"/api/v1/datasets/{dataset_id}/proactive/inbox?status=open").json()["count"] == 0
     assert client.get(f"/api/v1/datasets/{dataset_id}/proactive/inbox?status=acknowledged").json()["count"] == 1
+
+
+def test_v260_review_workflow_comments_and_approval(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+    settings=get_settings(); monkeypatch.setattr(settings,"data_root",tmp_path); monkeypatch.setattr(settings,"database_url",f"sqlite:///{tmp_path/'reviews.db'}")
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+    boot=client.post('/api/v1/auth/bootstrap',json={"email":"owner260@datavision.local","password":"EnterprisePass123!","display_name":"Owner 260","organization_name":"Review Org"})
+    assert boot.status_code==200,boot.text
+    token=boot.json()['access_token']; ws=boot.json()['workspace_id']; owner=boot.json()['user']['id']; h={"Authorization":f"Bearer {token}"}
+    ds=client.post(f'/api/v1/workspaces/{ws}/members',headers=h,json={"email":"reviewer260@datavision.local","role":"data_scientist","display_name":"Reviewer 260","password":"ReviewerPass123!"})
+    assert ds.status_code==200,ds.text
+    reviewer_id=ds.json()['member']['id']
+    r=client.post(f'/api/v1/workspaces/{ws}/reviews',headers=h,json={
+        "resource_type":"semantic_metric","resource_id":"revenue","title":"Certifier Revenue","description":"Vérifier définition et agrégation.",
+        "dataset_id":"dataset-x","resource_version":"semantic-v3","priority":"high","owner_user_id":owner,"reviewer_user_id":reviewer_id,
+        "snapshot":{"metric_id":"revenue","aggregation":"sum"}
+    })
+    assert r.status_code==200,r.text
+    review_id=r.json()['review']['id']; assert r.json()['review']['status']=='draft'
+    submitted=client.post(f'/api/v1/workspaces/{ws}/reviews/{review_id}/transition',headers=h,json={"action":"submit","note":"Prête pour revue"})
+    assert submitted.status_code==200,submitted.text
+    assert submitted.json()['review']['status']=='in_review'
+    login=client.post('/api/v1/auth/login',json={"email":"reviewer260@datavision.local","password":"ReviewerPass123!"})
+    rh={"Authorization":f"Bearer {login.json()['access_token']}"}
+    commented=client.post(f'/api/v1/workspaces/{ws}/reviews/{review_id}/comments',headers=rh,json={"body":"Définition vérifiée. @owner260 merci de confirmer la source."})
+    assert commented.status_code==200,commented.text
+    assert commented.json()['review']['comment_count']==1
+    approved=client.post(f'/api/v1/workspaces/{ws}/reviews/{review_id}/transition',headers=rh,json={"action":"approve","note":"Définition et agrégation validées."})
+    assert approved.status_code==200,approved.text
+    body=approved.json()['review']; assert body['status']=='approved'; assert body['decided_at']
+    assert any(e['action']=='approve' for e in body['events'])
+    summary=client.get(f'/api/v1/workspaces/{ws}/reviews/summary',headers=h)
+    assert summary.status_code==200; assert summary.json()['by_status']['approved']==1
+    notifications=client.get(f'/api/v1/workspaces/{ws}/collaboration/notifications',headers=h)
+    assert notifications.status_code==200
+    assert any(n['notification_type'] in {'mention','review_approve'} for n in notifications.json()['notifications'])
+
+
+def test_v260_review_changes_requested_and_resolution(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+    settings=get_settings(); monkeypatch.setattr(settings,"data_root",tmp_path); monkeypatch.setattr(settings,"database_url",f"sqlite:///{tmp_path/'review-changes.db'}")
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+    boot=client.post('/api/v1/auth/bootstrap',json={"email":"ownerchanges@datavision.local","password":"EnterprisePass123!","display_name":"Owner","organization_name":"Changes Org"})
+    h={"Authorization":f"Bearer {boot.json()['access_token']}"}; ws=boot.json()['workspace_id']
+    review=client.post(f'/api/v1/workspaces/{ws}/reviews',headers=h,json={"resource_type":"report","resource_id":"report-42","title":"Rapport Q3","priority":"normal"}).json()['review']
+    rid=review['id']
+    assert client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/transition',headers=h,json={"action":"submit"}).status_code==200
+    comment=client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/comments',headers=h,json={"body":"Ajouter la méthodologie et la provenance."})
+    cid=comment.json()['review']['comments'][0]['id']
+    changed=client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/transition',headers=h,json={"action":"request_changes","note":"Méthodologie incomplète"})
+    assert changed.status_code==200; assert changed.json()['review']['status']=='changes_requested'
+    resolved=client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/comments/{cid}/resolve',headers=h,json={"resolved":True})
+    assert resolved.status_code==200; assert resolved.json()['review']['comments'][0]['resolved'] is True
+    reopened=client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/transition',headers=h,json={"action":"reopen","note":"Corrections intégrées"})
+    assert reopened.status_code==200; assert reopened.json()['review']['status']=='in_review'
+
+
+def test_v260_viewer_cannot_create_review_but_can_comment(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+    settings=get_settings(); monkeypatch.setattr(settings,"data_root",tmp_path); monkeypatch.setattr(settings,"database_url",f"sqlite:///{tmp_path/'review-viewer.db'}")
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+    boot=client.post('/api/v1/auth/bootstrap',json={"email":"owner-view@datavision.local","password":"EnterprisePass123!","display_name":"Owner","organization_name":"Viewer Org"})
+    oh={"Authorization":f"Bearer {boot.json()['access_token']}"}; ws=boot.json()['workspace_id']
+    client.post(f'/api/v1/workspaces/{ws}/members',headers=oh,json={"email":"viewer260@datavision.local","role":"viewer","display_name":"Viewer","password":"ViewerPass123!"})
+    review=client.post(f'/api/v1/workspaces/{ws}/reviews',headers=oh,json={"resource_type":"dashboard","resource_id":"dash-1","title":"Dashboard exécutif"}).json()['review']
+    rid=review['id']; client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/transition',headers=oh,json={"action":"submit"})
+    login=client.post('/api/v1/auth/login',json={"email":"viewer260@datavision.local","password":"ViewerPass123!"})
+    vh={"Authorization":f"Bearer {login.json()['access_token']}"}
+    denied=client.post(f'/api/v1/workspaces/{ws}/reviews',headers=vh,json={"resource_type":"report","resource_id":"r","title":"Interdit"})
+    assert denied.status_code==403
+    comment=client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/comments',headers=vh,json={"body":"La lecture est claire pour moi."})
+    assert comment.status_code==200,comment.text
+
+
+def test_v260_approved_review_can_be_certified_with_expiry(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+    settings=get_settings(); monkeypatch.setattr(settings,"data_root",tmp_path); monkeypatch.setattr(settings,"database_url",f"sqlite:///{tmp_path/'review-cert.db'}")
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+    boot=client.post('/api/v1/auth/bootstrap',json={"email":"ownercert@datavision.local","password":"EnterprisePass123!","display_name":"Owner","organization_name":"Cert Org"})
+    h={"Authorization":f"Bearer {boot.json()['access_token']}"}; ws=boot.json()['workspace_id']
+    r=client.post(f'/api/v1/workspaces/{ws}/reviews',headers=h,json={"resource_type":"semantic_metric","resource_id":"revenue","title":"Revenue officiel"})
+    rid=r.json()['review']['id']
+    assert client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/transition',headers=h,json={"action":"submit"}).status_code==200
+    assert client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/transition',headers=h,json={"action":"approve","note":"validé"}).status_code==200
+    cert=client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/certify',headers=h,json={"valid_until":"2027-12-31","notes":"Certification annuelle"})
+    assert cert.status_code==200,cert.text
+    body=cert.json()['certification']; assert body['status']=='active'; assert body['valid_until']=='2027-12-31'; assert body['resource_id']=='revenue'
+    listed=client.get(f'/api/v1/workspaces/{ws}/certifications',headers=h)
+    assert listed.status_code==200; assert len(listed.json()['certifications'])==1
+    summary=client.get(f'/api/v1/workspaces/{ws}/reviews/summary',headers=h).json()
+    assert summary['active_certifications']==1
+    revoked=client.post(f'/api/v1/workspaces/{ws}/certifications/{body["id"]}/revoke',headers=h,json={"note":"Remplacée"})
+    assert revoked.status_code==200; assert revoked.json()['certification']['status']=='revoked'
+
+
+def test_v270_connector_refresh_incremental_freshness_and_schedule(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store, connector_service
+    from app.services.storage import load_dataframe_raw
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{tmp_path/'connectors.db'}")
+    monkeypatch.setattr(settings, "auth_secret", "test-v270-secret-with-enough-entropy-123456")
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+
+    boot = client.post('/api/v1/auth/bootstrap', json={
+        "email":"connector-owner@datavision.local","password":"EnterprisePass123!",
+        "display_name":"Connector Owner","organization_name":"Connector Org",
+    })
+    assert boot.status_code == 200, boot.text
+    token = boot.json()['access_token']; ws = boot.json()['workspace_id']
+    h = {"Authorization": f"Bearer {token}"}
+
+    created = client.post(f'/api/v1/workspaces/{ws}/connectors', headers=h, json={
+        "name":"Warehouse","connector_type":"postgresql","host":"db.internal","port":5432,
+        "database":"analytics","username":"reader","password":"UltraSecretPassword!","ssl_mode":"require"
+    })
+    assert created.status_code == 200, created.text
+    connector = created.json()['connector']; connector_id = connector['id']
+    assert connector['has_credentials'] is True
+    assert 'password_ciphertext' not in connector
+    stored = metadata_store.fetch_one('SELECT password_ciphertext FROM data_connectors WHERE id=:id', {'id':connector_id})
+    assert stored and 'UltraSecretPassword!' not in stored['password_ciphertext']
+
+    source_resp = client.post(f'/api/v1/workspaces/{ws}/sources', headers=h, json={
+        "connector_id":connector_id,"name":"Orders","source_kind":"table","table_name":"public.orders",
+        "refresh_mode":"incremental","incremental_column":"id","freshness_sla_minutes":60,"schema_drift_policy":"warn"
+    })
+    assert source_resp.status_code == 200, source_resp.text
+    source_id = source_resp.json()['source']['id']
+
+    def fake_fetch(workspace_id, sid, *, watermark=None, limit=None):
+        assert workspace_id == ws and sid == source_id
+        if limit is not None:
+            return pd.DataFrame({"id":[1,2],"amount":[10.0,20.0]})
+        if watermark is None:
+            return pd.DataFrame({"id":[1,2],"amount":[10.0,20.0]})
+        assert int(watermark) == 2
+        return pd.DataFrame({"id":[3],"amount":[30.0]})
+    monkeypatch.setattr(connector_service, 'fetch_source_frame', fake_fetch)
+
+    preview = client.get(f'/api/v1/workspaces/{ws}/sources/{source_id}/preview?limit=2', headers=h)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()['returned_rows'] == 2
+
+    first = client.post(f'/api/v1/workspaces/{ws}/sources/{source_id}/refresh', headers=h, json={"background":False})
+    assert first.status_code == 200, first.text
+    r1 = first.json()['refresh']; assert r1['rows_fetched'] == 2 and r1['watermark_after'] == 2
+    first_dataset = r1['dataset_id']; assert len(load_dataframe_raw(first_dataset)) == 2
+
+    second = client.post(f'/api/v1/workspaces/{ws}/sources/{source_id}/refresh', headers=h, json={"background":False})
+    assert second.status_code == 200, second.text
+    r2 = second.json()['refresh']; assert r2['rows_fetched'] == 1 and r2['watermark_after'] == 3
+    second_dataset = r2['dataset_id']; frame = load_dataframe_raw(second_dataset)
+    assert len(frame) == 3 and frame['amount'].sum() == 60.0
+
+    schedule = client.post(f'/api/v1/workspaces/{ws}/sources/{source_id}/schedule', headers=h, json={"enabled":True,"interval_minutes":60})
+    assert schedule.status_code == 200, schedule.text
+    assert schedule.json()['schedule']['enabled'] is True
+
+    # Force the schedule due and verify atomic claiming: first worker claims, second sees nothing due.
+    metadata_store.execute("UPDATE refresh_schedules SET next_run_at='2020-01-01T00:00:00+00:00' WHERE source_id=:id", {'id':source_id})
+    claimed = connector_service.claim_due_schedules()
+    assert len(claimed) == 1 and claimed[0]['source_id'] == source_id
+    assert connector_service.claim_due_schedules() == []
+
+    health = client.get(f'/api/v1/workspaces/{ws}/connectors/health', headers=h)
+    assert health.status_code == 200, health.text
+    assert health.json()['connectors'] == 1 and health.json()['sources'] == 1
+    assert health.json()['freshness']['fresh'] == 1
+    runs = client.get(f'/api/v1/workspaces/{ws}/refresh-runs?source_id={source_id}', headers=h)
+    assert runs.status_code == 200 and len(runs.json()['runs']) == 2
+    assert all(x['status'] == 'completed' for x in runs.json()['runs'])
+
+
+def test_v270_schema_drift_fail_policy_blocks_destructive_refresh(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store, connector_service
+
+    settings = get_settings()
+    monkeypatch.setattr(settings, "data_root", tmp_path)
+    monkeypatch.setattr(settings, "database_url", f"sqlite:///{tmp_path/'connector-drift.db'}")
+    monkeypatch.setattr(settings, "auth_secret", "test-v270-drift-secret-with-enough-entropy")
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+    boot = client.post('/api/v1/auth/bootstrap', json={
+        "email":"drift-owner@datavision.local","password":"EnterprisePass123!","display_name":"Drift Owner","organization_name":"Drift Org"
+    })
+    token=boot.json()['access_token']; ws=boot.json()['workspace_id']; h={"Authorization":f"Bearer {token}"}
+    c=client.post(f'/api/v1/workspaces/{ws}/connectors',headers=h,json={"name":"DB","connector_type":"mysql","host":"mysql.internal","database":"prod","username":"reader","password":"secret","ssl_mode":"prefer"})
+    assert c.status_code==200,c.text
+    sid=client.post(f'/api/v1/workspaces/{ws}/sources',headers=h,json={
+        "connector_id":c.json()['connector']['id'],"name":"Customers","source_kind":"table","table_name":"customers",
+        "refresh_mode":"full","schema_drift_policy":"fail"
+    }).json()['source']['id']
+    calls={'n':0}
+    def fake_fetch(*args, **kwargs):
+        calls['n']+=1
+        if calls['n']==1: return pd.DataFrame({"id":[1,2],"name":["A","B"]})
+        return pd.DataFrame({"id":[1,2],"renamed":["A","B"]})
+    monkeypatch.setattr(connector_service,'fetch_source_frame',fake_fetch)
+    first=client.post(f'/api/v1/workspaces/{ws}/sources/{sid}/refresh',headers=h,json={"background":False})
+    assert first.status_code==200,first.text
+    second=client.post(f'/api/v1/workspaces/{ws}/sources/{sid}/refresh',headers=h,json={"background":False})
+    assert second.status_code==400,second.text
+    source=connector_service.get_source(ws,sid)
+    assert source['status']=='error'
+    runs=connector_service.get_refresh_runs(ws,sid)
+    assert runs[0]['status']=='failed'
+    assert 'Schema drift' in (runs[0]['error'] or '')
+
+
+def test_v270_connector_refresh_background_job_is_tenant_aware(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store, connector_service, job_service
+    settings=get_settings(); monkeypatch.setattr(settings,'data_root',tmp_path); monkeypatch.setattr(settings,'database_url',f"sqlite:///{tmp_path/'connector-job.db'}"); monkeypatch.setattr(settings,'auth_secret','test-v270-job-secret-with-enough-entropy')
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+    class FakeRedis:
+        def __init__(self): self.items=[]
+        def rpush(self,key,value): self.items.append((key,value)); return len(self.items)
+    fake=FakeRedis(); monkeypatch.setattr(job_service,'_redis',lambda:fake)
+    boot=client.post('/api/v1/auth/bootstrap',json={'email':'job-connector@datavision.local','password':'EnterprisePass123!','display_name':'Owner','organization_name':'Job Connector Org'})
+    token=boot.json()['access_token']; ws=boot.json()['workspace_id']; h={'Authorization':f'Bearer {token}'}
+    conn=client.post(f'/api/v1/workspaces/{ws}/connectors',headers=h,json={'name':'PG','connector_type':'postgresql','host':'pg.internal','database':'dw','username':'reader','password':'secret','ssl_mode':'require'}).json()['connector']
+    source=client.post(f'/api/v1/workspaces/{ws}/sources',headers=h,json={'connector_id':conn['id'],'name':'Facts','source_kind':'table','table_name':'public.facts','refresh_mode':'full'}).json()['source']
+    monkeypatch.setattr(connector_service,'fetch_source_frame',lambda *a,**k: pd.DataFrame({'id':[1,2,3],'value':[10,20,30]}))
+    queued=client.post(f'/api/v1/workspaces/{ws}/sources/{source["id"]}/refresh',headers=h,json={'background':True})
+    assert queued.status_code==200,queued.text
+    job_id=queued.json()['job']['id']; assert fake.items and fake.items[-1][1]==job_id
+    completed=job_service.run_job(job_id)
+    assert completed['status']=='completed',completed
+    assert completed['result']['rows_fetched']==3
+    current=connector_service.get_source(ws,source['id'])
+    assert current['dataset_id']==completed['result']['dataset_id']
+    bound=metadata_store.fetch_one('SELECT dataset_id FROM workspace_datasets WHERE workspace_id=:ws AND dataset_id=:ds',{'ws':ws,'ds':current['dataset_id']})
+    assert bound is not None
+
+
+def test_v270_connector_catalog_hides_infrastructure_from_analyst(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+    settings=get_settings(); monkeypatch.setattr(settings,'data_root',tmp_path); monkeypatch.setattr(settings,'database_url',f"sqlite:///{tmp_path/'connector-sanitize.db'}"); monkeypatch.setattr(settings,'auth_secret','test-v270-sanitize-secret-with-enough-entropy')
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+    boot=client.post('/api/v1/auth/bootstrap',json={'email':'owner-sanitize@datavision.local','password':'EnterprisePass123!','display_name':'Owner','organization_name':'Sanitize Org'})
+    owner_token=boot.json()['access_token']; ws=boot.json()['workspace_id']; oh={'Authorization':f'Bearer {owner_token}'}
+    conn=client.post(f'/api/v1/workspaces/{ws}/connectors',headers=oh,json={'name':'Sensitive Warehouse','connector_type':'postgresql','host':'secret.internal','database':'finance','username':'private_reader','password':'verysecret','ssl_mode':'require'}).json()['connector']
+    source=client.post(f'/api/v1/workspaces/{ws}/sources',headers=oh,json={'connector_id':conn['id'],'name':'Finance source','source_kind':'query','query':'SELECT id, amount FROM finance_ledger','refresh_mode':'full'}).json()['source']
+    member=client.post(f'/api/v1/workspaces/{ws}/members',headers=oh,json={'email':'analyst-sanitize@datavision.local','role':'analyst','display_name':'Analyst','password':'AnalystPass123!'})
+    assert member.status_code==200
+    login=client.post('/api/v1/auth/login',json={'email':'analyst-sanitize@datavision.local','password':'AnalystPass123!'})
+    ah={'Authorization':f"Bearer {login.json()['access_token']}"}
+    catalog=client.get(f'/api/v1/workspaces/{ws}/connectors',headers=ah)
+    assert catalog.status_code==200,catalog.text
+    safe=catalog.json()['connectors'][0]
+    assert 'host' not in safe and 'username' not in safe and 'database_name' not in safe
+    safe_source=catalog.json()['sources'][0]
+    assert 'source_query' not in safe_source
+    denied=client.get(f'/api/v1/workspaces/{ws}/sources/{source["id"]}/preview',headers=ah)
+    assert denied.status_code==403

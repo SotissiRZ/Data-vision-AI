@@ -103,6 +103,177 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS review_items (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        organization_id TEXT,
+        dataset_id TEXT,
+        resource_type TEXT NOT NULL,
+        resource_id TEXT NOT NULL,
+        resource_version TEXT,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        priority TEXT NOT NULL DEFAULT 'normal',
+        status TEXT NOT NULL DEFAULT 'draft',
+        owner_user_id TEXT,
+        reviewer_user_id TEXT,
+        created_by TEXT NOT NULL,
+        due_at TEXT,
+        snapshot_json TEXT NOT NULL,
+        decision_note TEXT,
+        submitted_at TEXT,
+        decided_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS review_comments (
+        id TEXT PRIMARY KEY,
+        review_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        body TEXT NOT NULL,
+        mentions_json TEXT NOT NULL,
+        resolved INTEGER NOT NULL DEFAULT 0,
+        resolved_by TEXT,
+        resolved_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS review_events (
+        id TEXT PRIMARY KEY,
+        review_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        actor_user_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        from_status TEXT,
+        to_status TEXT,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS resource_certifications (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        dataset_id TEXT,
+        resource_type TEXT NOT NULL,
+        resource_id TEXT NOT NULL,
+        review_id TEXT NOT NULL,
+        owner_user_id TEXT,
+        certified_by TEXT NOT NULL,
+        certified_at TEXT NOT NULL,
+        valid_until TEXT,
+        status TEXT NOT NULL DEFAULT 'active',
+        notes TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS collaboration_notifications (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        review_id TEXT,
+        notification_type TEXT NOT NULL,
+        message TEXT NOT NULL,
+        is_read INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        read_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS data_connectors (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        connector_type TEXT NOT NULL,
+        host TEXT NOT NULL,
+        port INTEGER NOT NULL,
+        database_name TEXT NOT NULL,
+        username TEXT NOT NULL,
+        password_ciphertext TEXT NOT NULL,
+        ssl_mode TEXT NOT NULL DEFAULT 'prefer',
+        options_json TEXT NOT NULL,
+        status TEXT NOT NULL DEFAULT 'untested',
+        last_tested_at TEXT,
+        last_error TEXT,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS connector_sources (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        connector_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        source_kind TEXT NOT NULL,
+        table_name TEXT,
+        source_query TEXT,
+        refresh_mode TEXT NOT NULL DEFAULT 'full',
+        incremental_column TEXT,
+        watermark_json TEXT,
+        freshness_sla_minutes INTEGER NOT NULL DEFAULT 1440,
+        schema_drift_policy TEXT NOT NULL DEFAULT 'warn',
+        source_options_json TEXT NOT NULL,
+        dataset_id TEXT,
+        schema_json TEXT,
+        schema_drift_json TEXT,
+        status TEXT NOT NULL DEFAULT 'never_refreshed',
+        last_refresh_started_at TEXT,
+        last_refresh_finished_at TEXT,
+        last_success_at TEXT,
+        last_rows_fetched INTEGER,
+        last_error TEXT,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS refresh_schedules (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        interval_minutes INTEGER NOT NULL,
+        next_run_at TEXT,
+        last_enqueued_at TEXT,
+        created_by TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (workspace_id, source_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS refresh_runs (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        connector_id TEXT NOT NULL,
+        dataset_id_before TEXT,
+        dataset_id_after TEXT,
+        mode TEXT NOT NULL,
+        status TEXT NOT NULL,
+        trigger_type TEXT NOT NULL,
+        triggered_by TEXT,
+        job_id TEXT,
+        rows_fetched INTEGER,
+        rows_written INTEGER,
+        watermark_before_json TEXT,
+        watermark_after_json TEXT,
+        schema_drift_json TEXT,
+        error TEXT,
+        started_at TEXT NOT NULL,
+        finished_at TEXT
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY,
         organization_id TEXT,

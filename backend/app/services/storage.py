@@ -50,7 +50,7 @@ def save_upload(filename: str, content: bytes) -> dict:
     return meta
 
 
-def save_dataframe_version(parent_id: str, df: pd.DataFrame, operation: dict) -> dict:
+def save_dataframe_version(parent_id: str, df: pd.DataFrame, operation: dict, *, governance_materialized: bool = True) -> dict:
     """Persist a transformed dataframe as an immutable CSV version with schema metadata."""
     parent = get_meta(parent_id)
     settings = get_settings()
@@ -86,7 +86,7 @@ def save_dataframe_version(parent_id: str, df: pd.DataFrame, operation: dict) ->
     try:
         from app.services.tenant_access import current_access_context, inherited_policies
         ctx = current_access_context()
-        if ctx is not None:
+        if ctx is not None and governance_materialized:
             policies = inherited_policies(parent_id, ctx)
             meta["governance_materialization"] = {
                 "workspace_id": ctx.workspace_id,
@@ -110,6 +110,25 @@ def save_dataframe_version(parent_id: str, df: pd.DataFrame, operation: dict) ->
     except Exception:
         # Metadata persistence is authoritative; local mode and migrations must remain usable.
         pass
+    return meta
+
+
+
+def save_dataframe_source(df: pd.DataFrame, source_name: str, source_metadata: dict | None = None) -> dict:
+    """Persist a dataframe obtained from an external connector as a new immutable root dataset."""
+    settings = get_settings()
+    dataset_id = str(uuid.uuid4())
+    target = settings.upload_dir / f"{dataset_id}.csv"
+    df.to_csv(target, index=False)
+    schema = {str(col): str(dtype) for col, dtype in df.dtypes.items()}
+    meta = {
+        "id": dataset_id, "root_id": dataset_id, "parent_id": None, "version": 1,
+        "original_name": f"{Path(source_name).stem or 'source'}.csv", "source_name": source_name,
+        "extension": ".csv", "path": str(target), "created_at": _now(),
+        "operation": {"type": "connector_import", "label": "Import depuis une source externe"},
+        "schema": schema, "external_source": source_metadata or {},
+    }
+    _write_meta(meta)
     return meta
 
 
@@ -210,7 +229,12 @@ def _restore_schema(df: pd.DataFrame, schema: dict | None) -> pd.DataFrame:
     return out
 
 
-def load_dataframe(dataset_id: str) -> pd.DataFrame:
+def load_dataframe_raw(dataset_id: str) -> pd.DataFrame:
+    """Load the immutable persisted dataset without applying tenant policies.
+
+    This function is reserved for trusted internal lifecycle operations such as connector
+    refresh. User-facing analytics must call load_dataframe().
+    """
     meta = get_meta(dataset_id)
     path = Path(meta["path"])
     ext = meta["extension"]
@@ -229,7 +253,11 @@ def load_dataframe(dataset_id: str) -> pd.DataFrame:
         df = pd.read_parquet(path)
     else:
         raise ValueError(f"Format non supporté: {ext}")
-    df = _restore_schema(df, meta.get("schema"))
+    return _restore_schema(df, meta.get("schema"))
+
+
+def load_dataframe(dataset_id: str) -> pd.DataFrame:
+    df = load_dataframe_raw(dataset_id)
     try:
         from app.services.tenant_access import current_access_context, govern_dataframe
         if current_access_context() is not None:
