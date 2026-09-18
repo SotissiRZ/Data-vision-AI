@@ -1,3 +1,32 @@
+# Changelog
+
+## 2.10.0 — Governed Actions & Automation
+- Actions Center professionnel dans l'espace Décider.
+- Destinations webhook HTTPS avec secrets chiffrés et signatures HMAC-SHA256.
+- Règles événementielles, conditions déterministes et templates de payload.
+- Human approval (`always`, `critical_only`, `none`) avec RBAC.
+- Dedupe, throttling, quiet hours timezone-aware et idempotency keys.
+- Delivery attempts persistantes, retry/backoff via les jobs Redis et replay gouverné.
+- Garde SSRF pour les destinations privées/réservées.
+- Triggers natifs depuis Proactive Intelligence, Data Reliability, Review Center et Certification.
+- 55 tests backend validés.
+
+## v2.9.0
+
+- Operational Intelligence Center ;
+- télémétrie HTTP best-effort par workspace ;
+- disponibilité API et latences p50/p95/p99 ;
+- job/refresh success rates et SLO internes ;
+- classement des fonctionnalités réellement utilisées ;
+- stockage tokens/coûts provider-aware sans estimation fictive ;
+- AI Analyst Evaluation Lab ;
+- suites, cas, runs et résultats d’évaluation persistés ;
+- checks intent / Critic / tools / contenu / findings / durée / valeur tolérée ;
+- retry/backoff exponentiel via Redis sorted set ;
+- historique séparé des tentatives de jobs ;
+- nouvelle vue Gouverner → Observabilité & Eval ;
+- 52 tests backend passent.
+
 # v2.8.0 — Data Reliability & Lineage
 
 - Data Contracts persistants par lignée de dataset ;

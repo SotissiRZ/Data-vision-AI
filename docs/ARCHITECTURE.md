@@ -262,3 +262,61 @@ Statistics / ML / AI / Dashboards / Reports / Review
 ```
 
 Le gate est fail-closed pour les contrats `block` : une nouvelle version doit être contrôlée explicitement avant certification ou export Enterprise. Les refresh et transformations gouvernées déclenchent automatiquement les contrats actifs de leur lignée.
+
+## v2.9 — Operational Intelligence
+
+La couche d'exploitation s'appuie sur quatre registres du metadata store :
+
+```text
+HTTP / AI / Jobs
+      ↓
+telemetry_events
+      ↓
+Operational overview + SLO + usage analytics
+
+Redis jobs
+      ↓
+job_attempts
+      ↓
+retry_wait → sorted set → queue principale
+
+Evaluation suites
+      ↓
+evaluation_cases
+      ↓
+AI Analyst gouverné
+      ↓
+evaluation_runs + evaluation_results
+```
+
+La télémétrie HTTP est volontairement best-effort : elle ne peut pas faire échouer une analyse utilisateur. Les runs d'évaluation, eux, sont des ressources gouvernées et persistées.
+
+## v2.10 — Governed Actions & Automation
+
+La couche d'action est volontairement séparée des moteurs analytiques : un insight ne produit jamais directement un effet externe. Il devient d'abord un événement gouverné, évalué par une règle et soumis aux contrôles opérationnels du workspace.
+
+```text
+Proactive / Reliability / Review / Certification / Manual event
+                         ↓
+                    Action Rule
+                         ↓
+        Conditions + dataset binding + RBAC
+                         ↓
+       Dedupe → throttle → quiet hours
+                         ↓
+              Approval policy
+             ↙               ↘
+      pending_approval      eligible
+             ↓               ↓
+            approve      Redis action_delivery
+                    ↘       ↓
+                    Signed HTTPS Webhook
+                           ↓
+                Attempt audit + retry/backoff
+                           ↓
+                     completed / failed
+                           ↓
+                         replay
+```
+
+Les destinations webhook sont protégées par chiffrement du secret, HTTPS hors localhost, résolution DNS et garde SSRF. Chaque livraison utilise HMAC-SHA256, timestamp et clé d'idempotence. Les retries utilisent la mécanique asynchrone v2.9 et chaque tentative est persistée. Les connecteurs OAuth natifs Slack/Teams/Jira restent une extension prévue, et non simulée par cette version.

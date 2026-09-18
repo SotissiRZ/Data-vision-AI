@@ -1,8 +1,12 @@
-# Roadmap d'exécution — après v2.8.0
+# Roadmap d'exécution
+
+## Livré — v2.10 Governed Actions & Automation
+Actions gouvernées, human approval, webhooks signés, déduplication, throttling, quiet hours, replay et audit de livraison sont implémentés. La prochaine priorité est v2.11 : **Action Connectors & Enterprise Integrations** (Slack/Teams/Jira/Email avec OAuth/secret vault externe, politiques d'action par connecteur et modèles d'approbation multi-étapes).
+
 
 ## État actuel
 
-DataVision dispose maintenant d'un runtime sémantique multi-tables, d'une Inbox proactive, d'une gouvernance Enterprise, de connecteurs SQL versionnés et d'une couche Data Reliability capable de bloquer la publication d'une version non conforme.
+DataVision dispose maintenant d'un runtime sémantique multi-tables, d'une Inbox proactive, d'une gouvernance Enterprise, de connecteurs SQL versionnés, d'une couche Data Reliability capable de bloquer la publication d'une version non conforme et d'un cockpit d'observabilité/évaluation pour mesurer SLO, usage réel et non-régression de l'AI Analyst.
 
 ## v2.5 — Proactive Intelligence — livré
 
@@ -52,16 +56,30 @@ Reste à compléter : secret manager externe, CDC log-based, retry/backoff et co
 
 Reste à compléter : lineage cross-system, contrats SQL personnalisés, drift multivarié, notifications externes et SLO historiques agrégés.
 
-## v2.9 — Observability, Evaluation & Operational Intelligence
+## v2.9 — Observability, Evaluation & Operational Intelligence — livré
 
-- observabilité structurée des requêtes, jobs, agents et modèles ;
-- latence / coût / tokens / tool failures pour les appels IA ;
-- dataset d’évaluation des agents avec expected SQL/result/chart ;
-- scoring exactitude / sécurité / reproductibilité ;
-- data-product SLO et historique de fiabilité ;
-- alertes et notifications sortantes gouvernées ;
-- retry/backoff des jobs et connecteurs ;
-- usage analytics pour identifier les fonctionnalités réellement utilisées.
+- télémétrie HTTP/jobs/evaluations par workspace ;
+- p50/p95/p99, disponibilité API, job success et refresh success ;
+- usage analytics par feature ;
+- schéma tokens/coûts provider-aware sans estimation fictive ;
+- suites de non-régression AI Analyst ;
+- attentes déterministes : intent, Critic, tools, texte, findings, durée et valeur/tolérance ;
+- scoring et historique des evaluation runs ;
+- retry/backoff exponentiel Redis sans blocage du worker ;
+- historique des tentatives de jobs ;
+- cockpit Observabilité & Eval.
+
+Reste à compléter : OpenTelemetry/Prometheus externe, coût provider-native complet, alertes sortantes gouvernées et tests expected SQL/chart dédiés.
+
+## v2.10 — Governed Actions & Automation
+
+- règles événementielles à partir de Reliability, Proactive Inbox et SLO ;
+- actions sortantes gouvernées avec approbation ;
+- webhooks signés et destinations configurables ;
+- Slack/Teams/email via connecteurs optionnels ;
+- calendrier de scans proactifs ;
+- déduplication, throttling et quiet hours ;
+- journal complet des actions et replay contrôlé.
 
 
 ## v3 — Enterprise Analytics Platform

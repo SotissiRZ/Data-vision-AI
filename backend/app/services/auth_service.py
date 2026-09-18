@@ -15,11 +15,11 @@ from app.services.metadata_store import execute, fetch_all, fetch_one, slugify, 
 
 ROLES = ["owner", "admin", "data_scientist", "analyst", "viewer"]
 ROLE_PERMISSIONS = {
-    "owner": {"workspace:manage", "members:manage", "dataset:read", "dataset:write", "analysis:run", "model:run", "publish:write", "audit:read", "jobs:manage", "policies:manage", "review:read", "review:comment", "review:submit", "review:approve", "review:manage", "certify:manage", "connectors:read", "connectors:manage", "refresh:run", "reliability:read", "reliability:manage", "reliability:run"},
-    "admin": {"workspace:manage", "members:manage", "dataset:read", "dataset:write", "analysis:run", "model:run", "publish:write", "audit:read", "jobs:manage", "policies:manage", "review:read", "review:comment", "review:submit", "review:approve", "review:manage", "certify:manage", "connectors:read", "connectors:manage", "refresh:run", "reliability:read", "reliability:manage", "reliability:run"},
-    "data_scientist": {"dataset:read", "dataset:write", "analysis:run", "model:run", "publish:write", "jobs:manage", "review:read", "review:comment", "review:submit", "review:approve", "connectors:read", "refresh:run", "reliability:read", "reliability:manage", "reliability:run"},
-    "analyst": {"dataset:read", "analysis:run", "publish:write", "review:read", "review:comment", "review:submit", "connectors:read", "reliability:read"},
-    "viewer": {"dataset:read", "review:read", "review:comment", "connectors:read", "reliability:read"},
+    "owner": {"workspace:manage", "members:manage", "dataset:read", "dataset:write", "analysis:run", "model:run", "publish:write", "audit:read", "jobs:manage", "policies:manage", "review:read", "review:comment", "review:submit", "review:approve", "review:manage", "certify:manage", "connectors:read", "connectors:manage", "refresh:run", "reliability:read", "reliability:manage", "reliability:run", "observability:read", "evaluation:manage", "actions:read", "actions:manage", "actions:trigger", "actions:approve"},
+    "admin": {"workspace:manage", "members:manage", "dataset:read", "dataset:write", "analysis:run", "model:run", "publish:write", "audit:read", "jobs:manage", "policies:manage", "review:read", "review:comment", "review:submit", "review:approve", "review:manage", "certify:manage", "connectors:read", "connectors:manage", "refresh:run", "reliability:read", "reliability:manage", "reliability:run", "observability:read", "evaluation:manage", "actions:read", "actions:manage", "actions:trigger", "actions:approve"},
+    "data_scientist": {"dataset:read", "dataset:write", "analysis:run", "model:run", "publish:write", "jobs:manage", "review:read", "review:comment", "review:submit", "review:approve", "connectors:read", "refresh:run", "reliability:read", "reliability:manage", "reliability:run", "observability:read", "evaluation:manage", "actions:read", "actions:trigger", "actions:approve"},
+    "analyst": {"dataset:read", "analysis:run", "publish:write", "review:read", "review:comment", "review:submit", "connectors:read", "reliability:read", "observability:read", "actions:read", "actions:trigger"},
+    "viewer": {"dataset:read", "review:read", "review:comment", "connectors:read", "reliability:read", "observability:read", "actions:read"},
 }
 
 

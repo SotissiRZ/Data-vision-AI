@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import json
+import time
 import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 
@@ -9,6 +11,7 @@ from app.core.config import get_settings
 from app.services.metadata_store import execute, fetch_all, fetch_one, json_dumps, json_loads, utcnow
 
 QUEUE_KEY = "datavision:jobs"
+RETRY_QUEUE_KEY = "datavision:jobs:retry"
 
 
 def _redis():
@@ -29,13 +32,17 @@ def queue_status() -> dict[str, Any]:
         return {"available": False, "queue_depth": None, "backend": "redis", "error": str(exc)}
 
 
-def submit_job(*, user_id: str, organization_id: str | None, workspace_id: str | None, job_type: str, dataset_id: str | None, payload: dict[str, Any]) -> dict[str, Any]:
-    if job_type not in {"automl", "ai_analysis", "forecast", "report", "proactive_scan", "connector_refresh"}:
+def submit_job(*, user_id: str, organization_id: str | None, workspace_id: str | None, job_type: str, dataset_id: str | None, payload: dict[str, Any], max_retries: int = 2, retry_backoff_seconds: int = 15) -> dict[str, Any]:
+    if job_type not in {"automl", "ai_analysis", "forecast", "report", "proactive_scan", "connector_refresh", "action_delivery"}:
         raise ValueError("Type de job non supporté")
+    max_retries = max(0, min(int(max_retries), 5))
+    retry_backoff_seconds = max(1, min(int(retry_backoff_seconds), 3600))
+    job_payload = dict(payload or {})
+    job_payload["_job_options"] = {"max_retries": max_retries, "retry_backoff_seconds": retry_backoff_seconds}
     job_id = str(uuid.uuid4()); now = utcnow()
     execute("""INSERT INTO jobs(id,organization_id,workspace_id,user_id,job_type,status,progress,dataset_id,payload_json,created_at,cancel_requested)
              VALUES(:id,:org,:ws,:user,:type,'queued',0,:ds,:payload,:created,0)""",
-            {"id": job_id, "org": organization_id, "ws": workspace_id, "user": user_id, "type": job_type, "ds": dataset_id, "payload": json_dumps(payload), "created": now})
+            {"id": job_id, "org": organization_id, "ws": workspace_id, "user": user_id, "type": job_type, "ds": dataset_id, "payload": json_dumps(job_payload), "created": now})
     try:
         _redis().rpush(QUEUE_KEY, job_id)
     except Exception as exc:
@@ -72,7 +79,11 @@ def request_cancel(job_id: str, user_id: str) -> dict[str, Any]:
     if not row: raise KeyError("Job introuvable")
     if row["user_id"] != user_id: raise PermissionError("Vous ne pouvez pas annuler ce job.")
     if row["status"] in {"completed", "failed", "cancelled"}: return get_job(job_id)
-    execute("UPDATE jobs SET cancel_requested=1,status=CASE WHEN status='queued' THEN 'cancelled' ELSE 'cancel_requested' END,finished_at=CASE WHEN status='queued' THEN :finished ELSE finished_at END WHERE id=:id", {"finished": utcnow(), "id": job_id})
+    immediate = row["status"] in {"queued", "retry_wait"}
+    execute("UPDATE jobs SET cancel_requested=1,status=:status,finished_at=CASE WHEN :immediate=1 THEN :finished ELSE finished_at END WHERE id=:id", {"status": "cancelled" if immediate else "cancel_requested", "immediate": 1 if immediate else 0, "finished": utcnow(), "id": job_id})
+    if immediate:
+        try: _redis().zrem(RETRY_QUEUE_KEY, job_id)
+        except Exception: pass
     return get_job(job_id)
 
 
@@ -82,6 +93,68 @@ def _update(job_id: str, **fields: Any) -> None:
     for key,value in fields.items():
         parts.append(f"{key}=:{key}"); params[key]=value
     execute(f"UPDATE jobs SET {', '.join(parts)} WHERE id=:id", params)
+
+
+def _attempt_number(job_id: str) -> int:
+    row = fetch_one("SELECT COUNT(*) AS n FROM job_attempts WHERE job_id=:job", {"job": job_id})
+    return int(row.get("n") or 0) + 1 if row else 1
+
+
+def _start_attempt(job_id: str) -> tuple[str, int, float]:
+    attempt_id = str(uuid.uuid4())
+    number = _attempt_number(job_id)
+    execute("INSERT INTO job_attempts(id,job_id,attempt_number,status,started_at) VALUES(:id,:job,:n,'running',:started)", {"id": attempt_id, "job": job_id, "n": number, "started": utcnow()})
+    return attempt_id, number, time.perf_counter()
+
+
+def _finish_attempt(attempt_id: str, status: str, started_perf: float, *, error: str | None = None, scheduled_retry_at: str | None = None) -> float:
+    latency = (time.perf_counter() - started_perf) * 1000.0
+    execute("UPDATE job_attempts SET status=:status,error=:error,latency_ms=:latency,scheduled_retry_at=:retry,finished_at=:finished WHERE id=:id", {"status": status, "error": error, "latency": latency, "retry": scheduled_retry_at, "finished": utcnow(), "id": attempt_id})
+    return latency
+
+
+def enqueue_due_retries(now_ts: float | None = None, limit: int = 100) -> int:
+    """Move retry-wait jobs whose backoff expired back to the main Redis queue.
+
+    Uses a sorted set so retries do not block a worker thread while waiting.
+    """
+    now_ts = float(now_ts if now_ts is not None else time.time())
+    try:
+        r = _redis()
+        ids = r.zrangebyscore(RETRY_QUEUE_KEY, 0, now_ts, start=0, num=max(1, min(limit, 1000)))
+        moved = 0
+        for job_id in ids:
+            if r.zrem(RETRY_QUEUE_KEY, job_id):
+                current = get_job(job_id)
+                if current.get("cancel_requested") or current.get("status") == "cancelled":
+                    continue
+                _update(job_id, status="queued", progress=0)
+                r.rpush(QUEUE_KEY, job_id)
+                moved += 1
+        return moved
+    except Exception:
+        return 0
+
+
+def _retry_policy(job: dict[str, Any]) -> tuple[int, int]:
+    opts = (job.get("payload") or {}).get("_job_options") or {}
+    return max(0, min(int(opts.get("max_retries", 2)), 5)), max(1, min(int(opts.get("retry_backoff_seconds", 15)), 3600))
+
+
+def _schedule_retry(job: dict[str, Any], attempt_number: int, exc: Exception) -> tuple[bool, str | None]:
+    max_retries, base = _retry_policy(job)
+    # attempt 1 + max_retries additional attempts
+    if attempt_number > max_retries:
+        return False, None
+    delay = min(3600, base * (2 ** max(0, attempt_number - 1)))
+    due_ts = time.time() + delay
+    due_iso = datetime.fromtimestamp(due_ts, timezone.utc).isoformat()
+    try:
+        _redis().zadd(RETRY_QUEUE_KEY, {job["id"]: due_ts})
+        _update(job["id"], status="retry_wait", progress=0, error=f"{exc} | retry {attempt_number}/{max_retries} planifié dans {delay}s")
+        return True, due_iso
+    except Exception:
+        return False, None
 
 
 def run_job(job_id: str) -> dict[str, Any]:
@@ -95,13 +168,16 @@ def run_job(job_id: str) -> dict[str, Any]:
     from app.services.proactive_intelligence import scan as proactive_scan
     from app.services.connector_service import refresh_source as connector_refresh
     from app.services.auth_service import has_permission
+    from app.services.governed_actions import execute_action_run
 
     job = get_job(job_id)
     if job["cancel_requested"] or job["status"] == "cancelled":
         _update(job_id, status="cancelled", finished_at=utcnow())
         return get_job(job_id)
-    _update(job_id, status="running", progress=5, started_at=utcnow())
-    payload = job["payload"]
+    _update(job_id, status="running", progress=5, started_at=utcnow(), error=None)
+    attempt_id, attempt_number, attempt_started = _start_attempt(job_id)
+    payload = dict(job["payload"] or {})
+    payload.pop("_job_options", None)
     dataset_id = job.get("dataset_id")
     access_token = None
     try:
@@ -178,15 +254,48 @@ def run_job(job_id: str) -> dict[str, Any]:
                 raise ValueError("source_id requis pour le refresh connecteur")
             _update(job_id, progress=15)
             result = connector_refresh(job["workspace_id"], source_id, actor_id=job["user_id"], trigger=str(payload.get("trigger") or "manual"), job_id=job_id)
+        elif job["job_type"] == "action_delivery":
+            if not job.get("workspace_id"):
+                raise ValueError("workspace_id requis pour une action gouvernée")
+            if not has_permission(access_ctx.user_id, access_ctx.workspace_id, "actions:trigger") if access_ctx else False:
+                raise PermissionError("Permission insuffisante: actions:trigger")
+            action_run_id = str(payload.get("action_run_id") or "")
+            if not action_run_id:
+                raise ValueError("action_run_id requis")
+            action_row = fetch_one("SELECT workspace_id FROM action_runs WHERE id=:id", {"id": action_run_id})
+            if not action_row or str(action_row.get("workspace_id")) != str(job.get("workspace_id")):
+                raise PermissionError("Action hors du workspace du job")
+            _update(job_id, progress=20)
+            result = execute_action_run(action_run_id)
         else:
             raise ValueError("Type de job non supporté")
         current = get_job(job_id)
         if current["cancel_requested"]:
             _update(job_id, status="cancelled", progress=100, finished_at=utcnow())
+            latency = _finish_attempt(attempt_id, "cancelled", attempt_started)
+            telemetry_status = "cancelled"
         else:
             _update(job_id, status="completed", progress=100, result_json=json_dumps(result), finished_at=utcnow())
+            latency = _finish_attempt(attempt_id, "completed", attempt_started)
+            telemetry_status = "completed"
+        try:
+            from app.services.operational_intelligence import record_telemetry
+            record_telemetry(event_kind="job", name=job["job_type"], status=telemetry_status, workspace_id=job.get("workspace_id"), organization_id=job.get("organization_id"), user_id=job.get("user_id"), feature="Background Jobs", latency_ms=latency, resource_type="job", resource_id=job_id, metadata={"attempt": attempt_number, "dataset_id": dataset_id})
+        except Exception:
+            pass
     except Exception as exc:
-        _update(job_id, status="failed", error=str(exc), finished_at=utcnow())
+        latest = get_job(job_id)
+        scheduled, retry_at = _schedule_retry(latest, attempt_number, exc) if not latest.get("cancel_requested") else (False, None)
+        if scheduled:
+            latency = _finish_attempt(attempt_id, "retry_wait", attempt_started, error=str(exc), scheduled_retry_at=retry_at)
+        else:
+            _update(job_id, status="failed", error=str(exc), finished_at=utcnow())
+            latency = _finish_attempt(attempt_id, "failed", attempt_started, error=str(exc))
+        try:
+            from app.services.operational_intelligence import record_telemetry
+            record_telemetry(event_kind="job", name=job["job_type"], status="retry_wait" if scheduled else "failed", workspace_id=job.get("workspace_id"), organization_id=job.get("organization_id"), user_id=job.get("user_id"), feature="Background Jobs", latency_ms=latency, resource_type="job", resource_id=job_id, metadata={"attempt": attempt_number, "dataset_id": dataset_id, "error": str(exc), "scheduled_retry_at": retry_at})
+        except Exception:
+            pass
     finally:
         if access_token is not None:
             try:

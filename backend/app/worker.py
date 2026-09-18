@@ -3,9 +3,10 @@ from __future__ import annotations
 import time
 
 from app.core.config import get_settings
-from app.services.job_service import QUEUE_KEY, run_job, submit_job
+from app.services.job_service import QUEUE_KEY, run_job, submit_job, enqueue_due_retries
 from app.services.metadata_store import init_metadata_store, fetch_one
 from app.services.connector_service import claim_due_schedules, get_source
+from app.services.governed_actions import process_due_runs
 
 
 def _enqueue_due_refreshes() -> None:
@@ -40,6 +41,8 @@ def main():
             now = time.monotonic()
             if now >= next_scheduler_check:
                 _enqueue_due_refreshes()
+                enqueue_due_retries()
+                process_due_runs()
                 next_scheduler_check = now + 30.0
             item = r.blpop(QUEUE_KEY, timeout=5)
             if not item:

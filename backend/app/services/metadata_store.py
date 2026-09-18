@@ -359,6 +359,181 @@ SCHEMA_SQL = [
         resolved_at TEXT
     )
     """,
+    """
+    CREATE TABLE IF NOT EXISTS telemetry_events (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT,
+        workspace_id TEXT,
+        user_id TEXT,
+        event_kind TEXT NOT NULL,
+        feature TEXT,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        latency_ms REAL,
+        input_tokens INTEGER,
+        output_tokens INTEGER,
+        estimated_cost_usd REAL,
+        resource_type TEXT,
+        resource_id TEXT,
+        metadata_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS job_attempts (
+        id TEXT PRIMARY KEY,
+        job_id TEXT NOT NULL,
+        attempt_number INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        error TEXT,
+        latency_ms REAL,
+        scheduled_retry_at TEXT,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        UNIQUE(job_id, attempt_number)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS evaluation_suites (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        dataset_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS evaluation_cases (
+        id TEXT PRIMARY KEY,
+        suite_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        question TEXT NOT NULL,
+        expectations_json TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS evaluation_runs (
+        id TEXT PRIMARY KEY,
+        suite_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        dataset_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        score REAL NOT NULL,
+        cases_total INTEGER NOT NULL,
+        cases_passed INTEGER NOT NULL,
+        cases_failed INTEGER NOT NULL,
+        duration_ms REAL NOT NULL,
+        triggered_by TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS evaluation_results (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        case_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        score REAL NOT NULL,
+        duration_ms REAL NOT NULL,
+        checks_json TEXT NOT NULL,
+        result_snapshot_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS action_destinations (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL DEFAULT 'webhook',
+        webhook_url TEXT NOT NULL,
+        secret_ciphertext TEXT NOT NULL,
+        headers_json TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS action_rules (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        dataset_id TEXT,
+        destination_id TEXT NOT NULL,
+        conditions_json TEXT NOT NULL,
+        approval_mode TEXT NOT NULL DEFAULT 'always',
+        throttle_minutes INTEGER NOT NULL DEFAULT 15,
+        dedupe_minutes INTEGER NOT NULL DEFAULT 1440,
+        quiet_hours_json TEXT,
+        payload_template_json TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        max_retries INTEGER NOT NULL DEFAULT 2,
+        retry_backoff_seconds INTEGER NOT NULL DEFAULT 15,
+        last_triggered_at TEXT,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS action_runs (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        rule_id TEXT NOT NULL,
+        destination_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        dataset_id TEXT,
+        status TEXT NOT NULL,
+        fingerprint TEXT NOT NULL,
+        trigger_payload_json TEXT NOT NULL,
+        rendered_payload_json TEXT NOT NULL,
+        approval_required INTEGER NOT NULL DEFAULT 0,
+        requested_by TEXT,
+        approved_by TEXT,
+        approval_note TEXT,
+        approved_at TEXT,
+        scheduled_for TEXT,
+        job_id TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        last_response_code INTEGER,
+        last_response_body TEXT,
+        error TEXT,
+        replay_of TEXT,
+        created_at TEXT NOT NULL,
+        started_at TEXT,
+        finished_at TEXT,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS action_delivery_attempts (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        attempt_number INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        response_code INTEGER,
+        response_body TEXT,
+        latency_ms REAL,
+        error TEXT,
+        created_at TEXT NOT NULL,
+        finished_at TEXT,
+        UNIQUE(run_id, attempt_number)
+    )
+    """,
 ]
 
 

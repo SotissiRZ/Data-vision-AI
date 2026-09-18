@@ -1,3 +1,4 @@
+import json
 import io
 import pandas as pd
 from fastapi.testclient import TestClient
@@ -1932,3 +1933,162 @@ def test_v280_derived_version_runs_contract_automatically(tmp_path, monkeypatch)
     assert latest['dataset_id']==v2 and latest['status']=='critical'
     gate=client.post(f'/api/v1/workspaces/{ws}/publication-gate',headers=h,json={'dataset_id':v2})
     assert gate.status_code==200 and gate.json()['allowed'] is False
+
+
+def test_v290_operational_observability_and_ai_evaluation(tmp_path, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+    from app.services.storage import save_upload
+    from app.services.workspace_service import bind_dataset
+
+    settings=get_settings(); monkeypatch.setattr(settings,'data_root',tmp_path); monkeypatch.setattr(settings,'database_url',f"sqlite:///{tmp_path/'ops-v290.db'}"); monkeypatch.setattr(settings,'auth_secret','test-v290-operational-secret-with-enough-entropy')
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+    boot=client.post('/api/v1/auth/bootstrap',json={'email':'ops-owner@datavision.local','password':'EnterprisePass123!','display_name':'Ops Owner','organization_name':'Ops Org'})
+    assert boot.status_code==200,boot.text
+    token=boot.json()['access_token']; ws=boot.json()['workspace_id']; h={'Authorization':f'Bearer {token}'}
+    me=client.get('/api/v1/auth/me',headers=h).json(); uid=me['user']['id']
+    meta=save_upload('ops.csv',b'a,b,group\n1,2,A\n2,4,A\n3,6,B\n4,8,B\n5,10,B\n')
+    bind_dataset(uid,ws,meta['id'])
+    gh={**h,'X-Workspace-ID':ws}
+    assert client.get(f'/api/v1/datasets/{meta["id"]}/profile',headers=gh).status_code==200
+    ai=client.post(f'/api/v1/datasets/{meta["id"]}/ai/analyze',headers=gh,json={'question':'Analyse ce dataset','mode':'auto'})
+    assert ai.status_code==200,ai.text
+    ai_events=client.get(f'/api/v1/workspaces/{ws}/operational/telemetry?hours=24&event_kind=ai',headers=h)
+    assert ai_events.status_code==200 and len(ai_events.json()['events'])>=1
+    overview=client.get(f'/api/v1/workspaces/{ws}/operational/overview?hours=24',headers=h)
+    assert overview.status_code==200,overview.text
+    ob=overview.json(); assert ob['api']['requests']>=1 and 'slo' in ob
+    usage=client.get(f'/api/v1/workspaces/{ws}/operational/usage?hours=24',headers=h)
+    assert usage.status_code==200,usage.text
+    assert any(x['feature']=='Data Workspace' for x in usage.json()['features'])
+
+    suite=client.post(f'/api/v1/workspaces/{ws}/evaluations/suites',headers=h,json={'dataset_id':meta['id'],'name':'AI smoke suite','description':'Regression tests'})
+    assert suite.status_code==200,suite.text
+    sid=suite.json()['suite']['id']
+    case=client.post(f'/api/v1/workspaces/{ws}/evaluations/suites/{sid}/cases',headers=h,json={'question':'Analyse ce dataset','expectations':{'expected_intent':'overview','required_tools':['profile','quality'],'min_findings':1,'critic_status':'passed'}})
+    assert case.status_code==200,case.text
+    run=client.post(f'/api/v1/workspaces/{ws}/evaluations/suites/{sid}/run',headers=h)
+    assert run.status_code==200,run.text
+    payload=run.json()['run']
+    assert payload['status']=='passed' and payload['score']==100.0 and payload['cases_passed']==1
+    detail=client.get(f'/api/v1/workspaces/{ws}/evaluations/runs/{payload["id"]}',headers=h)
+    assert detail.status_code==200,detail.text
+    assert detail.json()['run']['results'][0]['status']=='passed'
+
+
+def test_v290_job_retry_backoff_and_attempt_tracking(tmp_path, monkeypatch):
+    import time as _time
+    from app.core.config import get_settings
+    from app.services import metadata_store, job_service
+
+    settings=get_settings(); monkeypatch.setattr(settings,'data_root',tmp_path); monkeypatch.setattr(settings,'database_url',f"sqlite:///{tmp_path/'retry-v290.db'}")
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+
+    class FakeRedis:
+        def __init__(self): self.queue=[]; self.retry={}
+        def rpush(self,key,value): self.queue.append((key,value)); return len(self.queue)
+        def zadd(self,key,mapping): self.retry.update(mapping); return len(mapping)
+        def zrangebyscore(self,key,lo,hi,start=0,num=100):
+            vals=[k for k,v in self.retry.items() if float(lo)<=float(v)<=float(hi)]
+            return vals[start:start+num]
+        def zrem(self,key,value):
+            if value in self.retry: del self.retry[value]; return 1
+            return 0
+        def ping(self): return True
+        def llen(self,key): return len([x for x in self.queue if x[0]==key])
+    fake=FakeRedis(); monkeypatch.setattr(job_service,'_redis',lambda:fake)
+    job=job_service.submit_job(user_id='u1',organization_id=None,workspace_id=None,job_type='forecast',dataset_id='missing-dataset',payload={'date_column':'date','target':'value','horizon':3},max_retries=1,retry_backoff_seconds=1)
+    first=job_service.run_job(job['id'])
+    assert first['status']=='retry_wait',first
+    attempts=job_service.job_attempts(job['id']) if hasattr(job_service,'job_attempts') else metadata_store.fetch_all('SELECT * FROM job_attempts WHERE job_id=:job',{'job':job['id']})
+    assert len(attempts)==1 and attempts[0]['status']=='retry_wait'
+    moved=job_service.enqueue_due_retries(now_ts=_time.time()+5)
+    assert moved==1 and job_service.get_job(job['id'])['status']=='queued'
+    second=job_service.run_job(job['id'])
+    assert second['status']=='failed',second
+    rows=metadata_store.fetch_all('SELECT * FROM job_attempts WHERE job_id=:job ORDER BY attempt_number',{'job':job['id']})
+    assert len(rows)==2 and rows[1]['status']=='failed'
+
+
+def _bootstrap_v2100(tmp_path, monkeypatch, suffix="actions"):
+    from app.core.config import get_settings
+    from app.services import metadata_store
+    settings=get_settings(); monkeypatch.setattr(settings,'data_root',tmp_path); monkeypatch.setattr(settings,'database_url',f"sqlite:///{tmp_path/f'actions-{suffix}.db'}"); monkeypatch.setattr(settings,'auth_secret','test-v2100-actions-secret-with-enough-entropy'); monkeypatch.setattr(settings,'app_env','development')
+    metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
+    boot=client.post('/api/v1/auth/bootstrap',json={'email':f'owner-{suffix}@datavision.local','password':'EnterprisePass123!','display_name':'Owner','organization_name':f'Actions {suffix}'})
+    assert boot.status_code==200,boot.text
+    token=boot.json()['access_token']; ws=boot.json()['workspace_id']; return token,ws,{'Authorization':f'Bearer {token}'}
+
+
+def test_v2100_governed_action_approval_signed_delivery_and_attempt_audit(tmp_path, monkeypatch):
+    from app.services import job_service, governed_actions
+    token,ws,h=_bootstrap_v2100(tmp_path,monkeypatch,'approval')
+    class FakeRedis:
+        def __init__(self): self.items=[]; self.z=[]
+        def rpush(self,key,value): self.items.append((key,value)); return len(self.items)
+        def zadd(self,key,mapping): self.z.append((key,mapping)); return 1
+        def zrem(self,*args): return 1
+    fake=FakeRedis(); monkeypatch.setattr(job_service,'_redis',lambda:fake)
+    dest=client.post(f'/api/v1/workspaces/{ws}/actions/destinations',headers=h,json={'name':'Decision Webhook','webhook_url':'https://example.com/hook','secret':'super-secret','headers':{'X-App':'finance'}})
+    assert dest.status_code==200,dest.text
+    did=dest.json()['destination']['id']
+    rule=client.post(f'/api/v1/workspaces/{ws}/actions/rules',headers=h,json={'name':'Critical approval','event_type':'manual','destination_id':did,'conditions':[{'field':'severity','operator':'eq','value':'critical'}],'approval_mode':'always','throttle_minutes':0,'dedupe_minutes':1440,'payload_template':{'message':'{{event.message}}','severity':'${event.severity}'}})
+    assert rule.status_code==200,rule.text
+    fired=client.post(f'/api/v1/workspaces/{ws}/actions/events',headers=h,json={'event_type':'manual','event_id':'evt-approval-1','payload':{'severity':'critical','message':'Protect margin'}})
+    assert fired.status_code==200,fired.text
+    run=fired.json()['runs'][0]; assert run['status']=='pending_approval' and run['approval_required'] is True
+    approved=client.post(f'/api/v1/workspaces/{ws}/actions/runs/{run["id"]}/approve',headers=h,json={'note':'Reviewed by owner'})
+    assert approved.status_code==200,approved.text
+    queued=approved.json()['run']; assert queued['status']=='queued' and queued['job_id']
+    assert fake.items and fake.items[-1][1]==queued['job_id']
+    captured={}
+    def fake_post(destination,body,headers,timeout=10.0):
+        captured['headers']=headers; captured['body']=body; return 202,'accepted'
+    monkeypatch.setattr(governed_actions,'_post_webhook',fake_post)
+    completed=job_service.run_job(queued['job_id'])
+    assert completed['status']=='completed',completed
+    detail=client.get(f'/api/v1/workspaces/{ws}/actions/runs/{run["id"]}',headers=h)
+    assert detail.status_code==200,detail.text
+    action=detail.json()['run']; assert action['status']=='completed' and action['last_response_code']==202
+    assert len(action['attempts'])==1 and action['attempts'][0]['status']=='completed'
+    assert captured['headers']['X-DataVision-Signature'].startswith('v1=') and captured['headers']['Idempotency-Key']==action['fingerprint']
+    assert json.loads(captured['body'])['message']=='Protect margin'
+
+
+def test_v2100_action_dedup_throttle_quiet_hours_and_replay(tmp_path, monkeypatch):
+    from app.services import governed_actions, job_service
+    token,ws,h=_bootstrap_v2100(tmp_path,monkeypatch,'controls')
+    class FakeRedis:
+        def __init__(self): self.items=[]
+        def rpush(self,key,value): self.items.append((key,value)); return len(self.items)
+        def zadd(self,*args,**kwargs): return 1
+        def zrem(self,*args,**kwargs): return 1
+    monkeypatch.setattr(job_service,'_redis',lambda:FakeRedis())
+    d=client.post(f'/api/v1/workspaces/{ws}/actions/destinations',headers=h,json={'name':'Hook','webhook_url':'https://example.com/hook','secret':'s'}).json()['destination']
+    r=client.post(f'/api/v1/workspaces/{ws}/actions/rules',headers=h,json={'name':'Auto event','event_type':'manual','destination_id':d['id'],'approval_mode':'none','throttle_minutes':0,'dedupe_minutes':1440,'quiet_hours':None}).json()['rule']
+    first=governed_actions.dispatch_event(client.get('/api/v1/auth/me',headers=h).json()['user']['id'],ws,event_type='manual',event_id='same-event',payload={'severity':'low'},enqueue=False)
+    second=governed_actions.dispatch_event(client.get('/api/v1/auth/me',headers=h).json()['user']['id'],ws,event_type='manual',event_id='same-event',payload={'severity':'low'},enqueue=False)
+    assert len(first['runs'])==1 and second['runs']==[] and second['skipped'][0]['reason']=='dedupe'
+    # Update rule to force quiet-hours scheduling deterministically.
+    monkeypatch.setattr(governed_actions,'_quiet_until',lambda q:'2099-01-01T07:00:00+00:00')
+    governed_actions.save_rule(client.get('/api/v1/auth/me',headers=h).json()['user']['id'],ws,rule_id=r['id'],name='Auto event',event_type='manual',destination_id=d['id'],approval_mode='none',conditions=[],throttle_minutes=0,dedupe_minutes=0,quiet_hours={'enabled':True,'start':'22:00','end':'07:00','timezone':'UTC'},payload_template={})
+    scheduled=governed_actions.dispatch_event(client.get('/api/v1/auth/me',headers=h).json()['user']['id'],ws,event_type='manual',event_id='quiet-event',payload={'severity':'low'},enqueue=False)['runs'][0]
+    assert scheduled['status']=='scheduled' and scheduled['scheduled_for'].startswith('2099-01-01')
+    # A replay is a new audited run with a unique fingerprint and backlink.
+    monkeypatch.setattr(governed_actions,'_quiet_until',lambda q:None)
+    replay=governed_actions.replay_run(client.get('/api/v1/auth/me',headers=h).json()['user']['id'],ws,first['runs'][0]['id'])
+    assert replay['replay_of']==first['runs'][0]['id'] and replay['fingerprint']!=first['runs'][0]['fingerprint']
+
+
+def test_v2100_action_rbac_and_internal_job_submission_guard(tmp_path, monkeypatch):
+    token,ws,h=_bootstrap_v2100(tmp_path,monkeypatch,'rbac')
+    add=client.post(f'/api/v1/workspaces/{ws}/members',headers=h,json={'email':'analyst-actions@datavision.local','role':'analyst','display_name':'Analyst','password':'AnalystPass123!'})
+    assert add.status_code==200,add.text
+    login=client.post('/api/v1/auth/login',json={'email':'analyst-actions@datavision.local','password':'AnalystPass123!'})
+    ah={'Authorization':f"Bearer {login.json()['access_token']}"}
+    denied=client.post(f'/api/v1/workspaces/{ws}/actions/destinations',headers=ah,json={'name':'Nope','webhook_url':'https://example.com/hook','secret':'x'})
+    assert denied.status_code==403
+    internal=client.post('/api/v1/jobs',headers=h,json={'workspace_id':ws,'job_type':'action_delivery','payload':{'action_run_id':'fake'}})
+    assert internal.status_code==422
+    summary=client.get(f'/api/v1/workspaces/{ws}/actions/summary',headers=ah)
+    assert summary.status_code==200 and summary.json()['security']['human_approval'] is True

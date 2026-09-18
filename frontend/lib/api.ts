@@ -616,3 +616,78 @@ export async function getImpactAnalysis(token:string, workspace_id:string, resou
 export async function getPublicationGate(token:string, workspace_id:string, dataset_id:string) {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/publication-gate`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({dataset_id}) }), 'Publication gate indisponible');
 }
+
+// ---------------------------- Operational Intelligence & AI Evaluation v2.9 ----------------------------
+export async function getOperationalOverview(token:string, workspace_id:string, hours=24) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/overview?hours=${hours}`, { headers:enterpriseHeaders(token) }), 'Observabilité opérationnelle indisponible');
+}
+export async function getOperationalUsage(token:string, workspace_id:string, hours=720) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/usage?hours=${hours}`, { headers:enterpriseHeaders(token) }), 'Télémétrie d’usage indisponible');
+}
+export async function getOperationalTelemetry(token:string, workspace_id:string, hours=24, limit=100, event_kind?:string) {
+  const p=new URLSearchParams({hours:String(hours),limit:String(limit)}); if(event_kind)p.set('event_kind',event_kind);
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/telemetry?${p.toString()}`, { headers:enterpriseHeaders(token) }), 'Événements de télémétrie indisponibles');
+}
+export async function getJobAttempts(token:string, job_id:string) {
+  return parse<any>(await apiFetch(`${API}/jobs/${job_id}/attempts`, { headers:enterpriseHeaders(token) }), 'Tentatives du job indisponibles');
+}
+export async function getEvaluationSuites(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/evaluations/suites`, { headers:enterpriseHeaders(token) }), "Suites d'évaluation indisponibles");
+}
+export async function createEvaluationSuite(token:string, workspace_id:string, payload:{dataset_id:string;name:string;description?:string}) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/evaluations/suites`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), "Création de la suite d'évaluation impossible");
+}
+export async function getEvaluationSuite(token:string, workspace_id:string, suite_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/evaluations/suites/${suite_id}`, { headers:enterpriseHeaders(token) }), "Suite d'évaluation indisponible");
+}
+export async function addEvaluationCase(token:string, workspace_id:string, suite_id:string, payload:{question:string;expectations:Record<string,unknown>}) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/evaluations/suites/${suite_id}/cases`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), "Ajout du cas d'évaluation impossible");
+}
+export async function runEvaluationSuite(token:string, workspace_id:string, suite_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/evaluations/suites/${suite_id}/run`, { method:'POST', headers:enterpriseHeaders(token) }), "Exécution de l'évaluation impossible");
+}
+export async function getEvaluationRun(token:string, workspace_id:string, run_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/evaluations/runs/${run_id}`, { headers:enterpriseHeaders(token) }), "Run d'évaluation indisponible");
+}
+
+// ---------------------------- Governed Actions & Automation v2.10 ----------------------------
+export async function getActionSummary(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/summary`, { headers:enterpriseHeaders(token) }), 'Synthèse des actions indisponible');
+}
+export async function getActionDestinations(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/destinations`, { headers:enterpriseHeaders(token) }), 'Destinations indisponibles');
+}
+export async function createActionDestination(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/destinations`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Création de la destination impossible');
+}
+export async function deleteActionDestination(token:string, workspace_id:string, destination_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/destinations/${destination_id}`, { method:'DELETE', headers:enterpriseHeaders(token) }), 'Suppression de la destination impossible');
+}
+export async function getActionRules(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/rules`, { headers:enterpriseHeaders(token) }), 'Règles d’automatisation indisponibles');
+}
+export async function saveActionRule(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/rules`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Enregistrement de la règle impossible');
+}
+export async function deleteActionRule(token:string, workspace_id:string, rule_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/rules/${rule_id}`, { method:'DELETE', headers:enterpriseHeaders(token) }), 'Suppression de la règle impossible');
+}
+export async function dispatchActionEvent(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/events`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Déclenchement de l’action impossible');
+}
+export async function getActionRuns(token:string, workspace_id:string, status?:string, limit=200) {
+  const p=new URLSearchParams({limit:String(limit)}); if(status&&status!=='all')p.set('status',status);
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/runs?${p.toString()}`, { headers:enterpriseHeaders(token) }), 'Historique des actions indisponible');
+}
+export async function getActionRun(token:string, workspace_id:string, run_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/runs/${run_id}`, { headers:enterpriseHeaders(token) }), 'Détail de l’action indisponible');
+}
+export async function approveActionRun(token:string, workspace_id:string, run_id:string, note='') {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/runs/${run_id}/approve`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({note}) }), 'Approbation impossible');
+}
+export async function rejectActionRun(token:string, workspace_id:string, run_id:string, note='') {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/runs/${run_id}/reject`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({note}) }), 'Rejet impossible');
+}
+export async function replayActionRun(token:string, workspace_id:string, run_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/runs/${run_id}/replay`, { method:'POST', headers:enterpriseHeaders(token) }), 'Replay impossible');
+}

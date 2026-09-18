@@ -1,3 +1,4 @@
+import time
 from fastapi import APIRouter, File, HTTPException, UploadFile, Request
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
@@ -35,6 +36,7 @@ from app.services.trust_center import trust_center
 from app.services.decision_lab import model_what_if, sensitivity_curve
 from app.services.tenant_access import access_summary, current_access_context
 from app.services.data_reliability import publication_gate
+from app.services.operational_intelligence import record_telemetry
 from app.services.proactive_intelligence import (
     list_watches as proactive_list_watches, save_watch as proactive_save_watch, delete_watch as proactive_delete_watch,
     auto_configure_watches as proactive_auto_configure, scan as proactive_scan, list_alerts as proactive_list_alerts,
@@ -518,6 +520,7 @@ def dataset_ai_capabilities(dataset_id: str):
 
 @router.post("/{dataset_id}/ai/analyze")
 def dataset_ai_analyze(dataset_id: str, request: AIAnalysisRequest):
+    started = time.perf_counter()
     try:
         meta = get_meta(dataset_id)
         context = AnalystContext(
@@ -533,6 +536,18 @@ def dataset_ai_analyze(dataset_id: str, request: AIAnalysisRequest):
         )
         result = analyze_dataset(load_dataframe(dataset_id), context)
         save_analysis(result)
+        try:
+            access = current_access_context()
+            failed_tools = [x.get("tool") for x in result.get("executions", []) if x.get("status") != "ok"]
+            record_telemetry(
+                event_kind="ai", name="ai_analyst", status="completed", feature="AI Analyst",
+                workspace_id=access.workspace_id if access else None, organization_id=access.organization_id if access else None,
+                user_id=access.user_id if access else None, latency_ms=(time.perf_counter()-started)*1000.0,
+                resource_type="analysis", resource_id=result.get("session_id"),
+                metadata={"dataset_id":dataset_id,"intent":result.get("intent"),"critic_status":(result.get("critic") or {}).get("status"),"failed_tools":failed_tools,"tools_executed":(result.get("provenance") or {}).get("tools_executed",[]),"llm_used_for_numeric_calculation":False},
+            )
+        except Exception:
+            pass
         return result
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
@@ -774,7 +789,18 @@ def dataset_proactive_watch_delete(dataset_id: str, watch_id: str):
 @router.post("/{dataset_id}/proactive/scan")
 def dataset_proactive_scan(dataset_id: str, body: ProactiveScanRequest):
     try:
-        return proactive_scan(dataset_id, load_dataframe(dataset_id), body.watch_ids or None, body.auto_configure)
+        result = proactive_scan(dataset_id, load_dataframe(dataset_id), body.watch_ids or None, body.auto_configure)
+        try:
+            from app.services.tenant_access import current_access_context
+            from app.services.governed_actions import dispatch_event
+            ctx = current_access_context()
+            if ctx:
+                for alert in result.get("alerts", []):
+                    dispatch_event(ctx.user_id, ctx.workspace_id, event_type="proactive_alert", event_id=str(alert.get("id")), dataset_id=dataset_id,
+                                   payload={"alert_id":alert.get("id"),"metric_id":alert.get("metric_id"),"metric_label":alert.get("metric_label"),"severity":alert.get("severity"),"period":alert.get("period"),"value":alert.get("value"),"previous_value":alert.get("previous_value"),"delta_pct":alert.get("delta_pct"),"evidence":alert.get("evidence")})
+        except Exception:
+            pass
+        return result
     except (FileNotFoundError, ValueError, PermissionError) as exc:
         code = 403 if isinstance(exc, PermissionError) else 404 if isinstance(exc, FileNotFoundError) else 400
         raise HTTPException(status_code=code, detail=str(exc)) from exc

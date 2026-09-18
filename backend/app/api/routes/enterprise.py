@@ -21,9 +21,19 @@ from app.services.connector_service import (
     create_source, get_source, list_sources, delete_source, preview_source, refresh_source,
     save_schedule, list_schedules, get_refresh_runs, workspace_refresh_health,
 )
+from app.services.operational_intelligence import (
+    operational_overview, feature_usage, list_telemetry, job_attempts,
+    create_evaluation_suite, list_evaluation_suites, get_evaluation_suite, add_evaluation_case,
+    run_evaluation_suite, list_evaluation_runs, get_evaluation_run,
+)
 from app.services.data_reliability import (
     save_contract, get_contract, list_contracts, delete_contract, run_contract, list_contract_runs,
     build_lineage_graph, impact_analysis, publication_gate, reliability_summary,
+)
+from app.services.governed_actions import (
+    action_summary, approve_run, create_destination, delete_destination, delete_rule, dispatch_event,
+    get_run as get_action_run, list_destinations, list_rules as list_action_rules, list_runs as list_action_runs,
+    reject_run, replay_run, save_rule as save_action_rule,
 )
 from app.services.workspace_service import (
     bind_dataset,
@@ -102,6 +112,19 @@ class JobSubmitRequest(BaseModel):
     job_type: str = Field(pattern="^(automl|ai_analysis|forecast|report|proactive_scan|connector_refresh)$")
     dataset_id: str | None = None
     payload: dict[str, Any] = {}
+    max_retries: int = Field(default=2, ge=0, le=5)
+    retry_backoff_seconds: int = Field(default=15, ge=1, le=3600)
+
+
+class EvaluationSuiteRequest(BaseModel):
+    dataset_id: str
+    name: str = Field(min_length=1, max_length=180)
+    description: str = Field(default="", max_length=3000)
+
+
+class EvaluationCaseRequest(BaseModel):
+    question: str = Field(min_length=1, max_length=6000)
+    expectations: dict[str, Any] = {}
 
 
 class ReviewCreateRequest(BaseModel):
@@ -146,6 +169,43 @@ class CertificationRequest(BaseModel):
 
 class CertificationRevokeRequest(BaseModel):
     note: str = Field(default="", max_length=2000)
+
+
+class ActionDestinationRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=180)
+    webhook_url: str = Field(min_length=8, max_length=2000)
+    secret: str = Field(default="", max_length=2000)
+    headers: dict[str, str] = {}
+    enabled: bool = True
+
+
+class ActionRuleRequest(BaseModel):
+    rule_id: str | None = None
+    name: str = Field(min_length=1, max_length=180)
+    description: str = Field(default="", max_length=3000)
+    event_type: str = Field(pattern="^(manual|proactive_alert|reliability_failure|review_approved|certification_created)$")
+    dataset_id: str | None = None
+    destination_id: str
+    conditions: list[dict[str, Any]] = []
+    approval_mode: str = Field(default="always", pattern="^(always|critical_only|none)$")
+    throttle_minutes: int = Field(default=15, ge=0, le=10080)
+    dedupe_minutes: int = Field(default=1440, ge=0, le=43200)
+    quiet_hours: dict[str, Any] | None = None
+    payload_template: dict[str, Any] = {}
+    enabled: bool = True
+    max_retries: int = Field(default=2, ge=0, le=5)
+    retry_backoff_seconds: int = Field(default=15, ge=1, le=3600)
+
+
+class ActionEventRequest(BaseModel):
+    event_type: str = Field(default="manual", pattern="^(manual|proactive_alert|reliability_failure|review_approved|certification_created)$")
+    event_id: str | None = Field(default=None, max_length=300)
+    dataset_id: str | None = None
+    payload: dict[str, Any] = {}
+
+
+class ActionDecisionRequest(BaseModel):
+    note: str = Field(default="", max_length=3000)
 
 
 class ConnectorCreateRequest(BaseModel):
@@ -266,6 +326,8 @@ def enterprise_status():
             "data_contracts": "implemented_v2.8",
             "lineage_impact": "implemented_v2.8",
             "publication_gate": "contract_aware_v2.8",
+            "governed_actions": "signed_webhooks_with_human_approval_v2.10",
+            "action_safety": "dedupe_throttle_quiet_hours_ssrf_guard",
             "connector_secret_key": "dedicated" if bool(get_settings().connector_secret_key) else "auth_secret_fallback",
             "refresh_scheduler": "worker_polling_with_atomic_schedule_claim",
             "queue": queue_status(),
@@ -374,10 +436,12 @@ def audit_list(workspace_id: str | None = Query(default=None), organization_id: 
 @router.post("/jobs")
 def jobs_submit(req: JobSubmitRequest, user=Depends(current_user)):
     try:
+        if req.job_type == "action_delivery":
+            raise PermissionError("action_delivery est un job interne et ne peut pas être soumis directement.")
         if req.workspace_id:
             perm = "model:run" if req.job_type == "automl" else "analysis:run"
             _workspace_permission(user["id"], req.workspace_id, perm)
-        job = submit_job(user_id=user["id"], organization_id=req.organization_id, workspace_id=req.workspace_id, job_type=req.job_type, dataset_id=req.dataset_id, payload=req.payload)
+        job = submit_job(user_id=user["id"], organization_id=req.organization_id, workspace_id=req.workspace_id, job_type=req.job_type, dataset_id=req.dataset_id, payload=req.payload, max_retries=req.max_retries, retry_backoff_seconds=req.retry_backoff_seconds)
         record_event("job.submit", user_id=user["id"], organization_id=req.organization_id, workspace_id=req.workspace_id, resource_type="job", resource_id=job["id"], payload={"job_type": req.job_type, "dataset_id": req.dataset_id})
         return {"job": job}
     except Exception as exc:
@@ -408,6 +472,107 @@ def jobs_cancel(job_id: str, user=Depends(current_user)):
         job = request_cancel(job_id, user["id"])
         record_event("job.cancel", user_id=user["id"], organization_id=job.get("organization_id"), workspace_id=job.get("workspace_id"), resource_type="job", resource_id=job_id)
         return {"job": job}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/jobs/{job_id}/attempts")
+def jobs_attempts(job_id: str, user=Depends(current_user)):
+    try:
+        job = get_job(job_id)
+        if job["user_id"] != user["id"] and (not job.get("workspace_id") or not has_permission(user["id"], job["workspace_id"], "jobs:manage")):
+            raise PermissionError("Accès au job refusé")
+        return {"attempts": job_attempts(job_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/overview")
+def operational_workspace_overview(workspace_id: str, hours: int = Query(default=24, ge=1, le=2160), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return operational_overview(workspace_id, hours=hours)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/usage")
+def operational_usage(workspace_id: str, hours: int = Query(default=720, ge=1, le=2160), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return feature_usage(workspace_id, hours=hours)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/telemetry")
+def operational_telemetry(workspace_id: str, hours: int = Query(default=24, ge=1, le=2160), event_kind: str | None = Query(default=None), limit: int = Query(default=200, ge=1, le=1000), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"events": list_telemetry(workspace_id, hours=hours, limit=limit, event_kind=event_kind)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/evaluations/suites")
+def evaluations_list(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"suites": list_evaluation_suites(workspace_id), "runs": list_evaluation_runs(workspace_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/evaluations/suites")
+def evaluations_create(workspace_id: str, req: EvaluationSuiteRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "evaluation:manage")
+        from app.services.tenant_access import context_for_job, authorize_dataset
+        ctx = context_for_job(user["id"], workspace_id)
+        if ctx: authorize_dataset(req.dataset_id, "analysis:run", ctx)
+        suite = create_evaluation_suite(user["id"], workspace_id, req.dataset_id, req.name, req.description)
+        record_event("evaluation.suite.create", user_id=user["id"], workspace_id=workspace_id, resource_type="evaluation_suite", resource_id=suite["id"], payload={"dataset_id":req.dataset_id})
+        return {"suite": suite}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/evaluations/suites/{suite_id}")
+def evaluations_detail(workspace_id: str, suite_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"suite": get_evaluation_suite(workspace_id, suite_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/evaluations/suites/{suite_id}/cases")
+def evaluations_add_case(workspace_id: str, suite_id: str, req: EvaluationCaseRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "evaluation:manage")
+        case = add_evaluation_case(user["id"], workspace_id, suite_id, req.question, req.expectations)
+        record_event("evaluation.case.create", user_id=user["id"], workspace_id=workspace_id, resource_type="evaluation_case", resource_id=case["id"], payload={"suite_id":suite_id})
+        return {"case": case}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/evaluations/suites/{suite_id}/run")
+def evaluations_run(workspace_id: str, suite_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "evaluation:manage")
+        result = run_evaluation_suite(user["id"], workspace_id, suite_id)
+        record_event("evaluation.run", user_id=user["id"], workspace_id=workspace_id, resource_type="evaluation_run", resource_id=result["id"], outcome=result["status"], payload={"suite_id":suite_id,"score":result["score"]})
+        return {"run": result}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/evaluations/runs/{run_id}")
+def evaluations_run_detail(workspace_id: str, run_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"run": get_evaluation_run(workspace_id, run_id)}
     except Exception as exc:
         _handle(exc)
 
@@ -466,6 +631,11 @@ def reviews_transition(workspace_id: str, review_id: str, req: ReviewTransitionR
     try:
         review = transition_review(user["id"], workspace_id, review_id, req.action, req.note)
         record_event(f"review.{req.action}", user_id=user["id"], workspace_id=workspace_id, resource_type="review", resource_id=review_id, payload={"status":review["status"]})
+        if req.action == "approve":
+            try:
+                dispatch_event(user["id"], workspace_id, event_type="review_approved", event_id=review_id, dataset_id=review.get("dataset_id"), payload={"review_id":review_id,"title":review.get("title"),"resource_type":review.get("resource_type"),"resource_id":review.get("resource_id"),"priority":review.get("priority"),"status":review.get("status")})
+            except Exception:
+                pass
         return {"review": review}
     except Exception as exc:
         _handle(exc)
@@ -518,6 +688,10 @@ def reviews_certify(workspace_id: str, review_id: str, req: CertificationRequest
     try:
         cert = certify_review(user["id"], workspace_id, review_id, valid_until=req.valid_until, notes=req.notes)
         record_event("review.certify", user_id=user["id"], workspace_id=workspace_id, resource_type="certification", resource_id=cert["id"], payload={"review_id":review_id,"valid_until":req.valid_until})
+        try:
+            dispatch_event(user["id"], workspace_id, event_type="certification_created", event_id=cert["id"], dataset_id=cert.get("dataset_id"), payload={"certification_id":cert["id"],"review_id":review_id,"resource_type":cert.get("resource_type"),"resource_id":cert.get("resource_id"),"valid_until":cert.get("valid_until"),"status":cert.get("status")})
+        except Exception:
+            pass
         return {"certification": cert}
     except Exception as exc:
         _handle(exc)
@@ -546,6 +720,141 @@ def _connector_catalog_for_user(user_id: str, workspace_id: str) -> tuple[list[d
         safe.pop("schema", None)
         safe_sources.append(safe)
     return safe_connectors, safe_sources
+
+
+# ---------------------------- Governed actions & automation v2.10 ----------------------------
+
+@router.get("/workspaces/{workspace_id}/actions/summary")
+def actions_summary(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:read")
+        return action_summary(workspace_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/actions/destinations")
+def actions_destinations_list(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:read")
+        return {"destinations": list_destinations(workspace_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/actions/destinations")
+def actions_destinations_create(workspace_id: str, req: ActionDestinationRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:manage")
+        dest = create_destination(user["id"], workspace_id, name=req.name, webhook_url=req.webhook_url, secret=req.secret, headers=req.headers, enabled=req.enabled)
+        record_event("action.destination.create", user_id=user["id"], workspace_id=workspace_id, resource_type="action_destination", resource_id=dest["id"], payload={"name":req.name})
+        return {"destination": dest}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/workspaces/{workspace_id}/actions/destinations/{destination_id}")
+def actions_destinations_delete(workspace_id: str, destination_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:manage")
+        delete_destination(workspace_id, destination_id)
+        record_event("action.destination.delete", user_id=user["id"], workspace_id=workspace_id, resource_type="action_destination", resource_id=destination_id)
+        return {"deleted": True, "destination_id": destination_id}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/actions/rules")
+def actions_rules_list(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:read")
+        return {"rules": list_action_rules(workspace_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/actions/rules")
+def actions_rules_save(workspace_id: str, req: ActionRuleRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:manage")
+        rule = save_action_rule(user["id"], workspace_id, **req.model_dump())
+        record_event("action.rule.save", user_id=user["id"], workspace_id=workspace_id, resource_type="action_rule", resource_id=rule["id"], payload={"event_type":rule["event_type"],"approval_mode":rule["approval_mode"]})
+        return {"rule": rule}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/workspaces/{workspace_id}/actions/rules/{rule_id}")
+def actions_rules_delete(workspace_id: str, rule_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:manage")
+        delete_rule(workspace_id, rule_id)
+        record_event("action.rule.delete", user_id=user["id"], workspace_id=workspace_id, resource_type="action_rule", resource_id=rule_id)
+        return {"deleted": True, "rule_id": rule_id}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/actions/events")
+def actions_events_dispatch(workspace_id: str, req: ActionEventRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:trigger")
+        out = dispatch_event(user["id"], workspace_id, event_type=req.event_type, event_id=req.event_id, payload=req.payload, dataset_id=req.dataset_id, enqueue=True)
+        record_event("action.event.dispatch", user_id=user["id"], workspace_id=workspace_id, resource_type="action_event", resource_id=out["event_id"], payload={"event_type":req.event_type,"matched_rules":out["matched_rules"]})
+        return out
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/actions/runs")
+def actions_runs_list(workspace_id: str, status: str | None = Query(default=None), limit: int = Query(default=200, ge=1, le=500), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:read")
+        return {"runs": list_action_runs(workspace_id, status=status, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/actions/runs/{run_id}")
+def actions_run_detail(workspace_id: str, run_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:read")
+        return {"run": get_action_run(workspace_id, run_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/actions/runs/{run_id}/approve")
+def actions_run_approve(workspace_id: str, run_id: str, req: ActionDecisionRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:approve")
+        run = approve_run(user["id"], workspace_id, run_id, req.note)
+        record_event("action.run.approve", user_id=user["id"], workspace_id=workspace_id, resource_type="action_run", resource_id=run_id, payload={"status":run["status"]})
+        return {"run": run}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/actions/runs/{run_id}/reject")
+def actions_run_reject(workspace_id: str, run_id: str, req: ActionDecisionRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:approve")
+        run = reject_run(user["id"], workspace_id, run_id, req.note)
+        record_event("action.run.reject", user_id=user["id"], workspace_id=workspace_id, resource_type="action_run", resource_id=run_id)
+        return {"run": run}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/actions/runs/{run_id}/replay")
+def actions_run_replay(workspace_id: str, run_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "actions:approve")
+        run = replay_run(user["id"], workspace_id, run_id)
+        record_event("action.run.replay", user_id=user["id"], workspace_id=workspace_id, resource_type="action_run", resource_id=run["id"], payload={"replay_of":run_id})
+        return {"run": run}
+    except Exception as exc:
+        _handle(exc)
 
 
 # ---------------------------- Data connectors & refresh v2.7 ----------------------------
@@ -756,6 +1065,12 @@ def contracts_run(workspace_id: str, contract_id: str, req: ContractRunRequest, 
         _workspace_permission(user["id"], workspace_id, "reliability:run")
         result = run_contract(user["id"], workspace_id, contract_id, req.dataset_id)
         record_event("reliability.contract.run", user_id=user["id"], workspace_id=workspace_id, resource_type="data_contract", resource_id=contract_id, outcome="success" if result.get("status") == "healthy" else "failed", payload={"run_id":result.get("id"),"score":result.get("score"),"status":result.get("status")})
+        if result.get("status") != "healthy":
+            try:
+                severity = "critical" if int(result.get("blocking_failures") or 0) > 0 else "high"
+                dispatch_event(user["id"], workspace_id, event_type="reliability_failure", event_id=str(result.get("id")), dataset_id=result.get("dataset_id"), payload={"contract_id":contract_id,"run_id":result.get("id"),"status":result.get("status"),"score":result.get("score"),"blocking_failures":result.get("blocking_failures"),"severity":severity})
+            except Exception:
+                pass
         return {"run": result}
     except Exception as exc:
         _handle(exc)

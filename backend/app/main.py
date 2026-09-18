@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -16,7 +18,7 @@ from app.services.tenant_access import (
 )
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="2.8.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.10.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -77,6 +79,51 @@ def _dataset_id_from_path(path: str) -> str | None:
 
 
 @app.middleware("http")
+async def operational_telemetry(request: Request, call_next):
+    """Best-effort platform telemetry. Never blocks a user request if observability storage fails."""
+    started = time.perf_counter()
+    response = None
+    error_name = None
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as exc:
+        error_name = type(exc).__name__
+        raise
+    finally:
+        path = request.url.path
+        if path.startswith("/api/v1"):
+            try:
+                from app.services.auth_service import decode_token
+                from app.services.metadata_store import fetch_one
+                from app.services.operational_intelligence import feature_for_path, record_telemetry
+                workspace_id = request.headers.get("x-workspace-id")
+                if not workspace_id and path.startswith("/api/v1/workspaces/"):
+                    parts = [p for p in path.split("/") if p]
+                    if len(parts) >= 4:
+                        workspace_id = parts[3]
+                user_id = None
+                auth = request.headers.get("authorization") or ""
+                if auth.lower().startswith("bearer "):
+                    try: user_id = decode_token(auth.split(" ", 1)[1].strip()).get("sub")
+                    except Exception: user_id = None
+                organization_id = None
+                if workspace_id:
+                    row = fetch_one("SELECT organization_id FROM workspaces WHERE id=:id", {"id": workspace_id})
+                    organization_id = row.get("organization_id") if row else None
+                status_code = response.status_code if response is not None else 500
+                record_telemetry(
+                    event_kind="http", name=f"{request.method.upper()} {path}", status=str(status_code),
+                    workspace_id=workspace_id, organization_id=organization_id, user_id=user_id,
+                    feature=feature_for_path(path), latency_ms=(time.perf_counter()-started)*1000.0,
+                    resource_type="http", resource_id=path,
+                    metadata={"method":request.method.upper(),"query":str(request.url.query or ""),"error":error_name},
+                )
+            except Exception:
+                pass
+
+
+@app.middleware("http")
 async def tenant_aware_data_access(request: Request, call_next):
     """Apply RBAC/RLS/column security to every /datasets route when Enterprise headers exist.
 
@@ -128,7 +175,7 @@ async def tenant_aware_data_access(request: Request, call_next):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": settings.app_name, "version": "2.8.0"}
+    return {"status": "ok", "product": settings.app_name, "version": "2.10.0"}
 
 
 @app.get("/api/v1/capabilities")
@@ -163,12 +210,15 @@ def capabilities():
             "scheduled_refresh", "incremental_refresh", "refresh_watermarks", "freshness_sla", "schema_drift_detection", "connector_observability",
             "data_contracts", "contract_rule_engine", "distribution_drift_detection", "reliability_events", "end_to_end_lineage",
             "impact_analysis", "publication_reliability_gate", "contract_aware_report_export", "contract_aware_certification", "automatic_contract_checks_on_derived_versions",
+            "platform_telemetry", "feature_usage_analytics", "operational_slo_dashboard", "job_attempt_tracking", "job_retry_backoff", "ai_evaluation_suites", "ai_regression_benchmarks",
             "semantic_layer", "semantic_multitable", "semantic_calculated_metrics", "semantic_time_intelligence",
             "semantic_nlq_multitable", "semantic_dashboard_widgets", "semantic_drilldown",
+            "governed_actions", "human_approval_actions", "signed_webhooks", "action_idempotency", "action_deduplication",
+            "action_throttling", "action_quiet_hours", "action_replay", "webhook_ssrf_guard", "action_delivery_audit",
         ],
         "partial": [
             "scheduled_proactive_scans", "shap", "fairness", "nlq", "running_job_preemptive_cancellation", "refresh_tokens", "external_secret_vault",
-            "model_artifact_policy_snapshot", "database_native_rls",
+            "model_artifact_policy_snapshot", "database_native_rls", "provider_token_cost_instrumentation", "oauth_action_connectors", "native_slack_teams_actions",
         ],
         "planned": [
             "multi_agent", "r_workspace", "oidc_sso", "kubernetes_enterprise",

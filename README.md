@@ -1,4 +1,4 @@
-# DataVision AI — v2.8.0
+# DataVision AI — v2.10.0
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
 
@@ -12,7 +12,104 @@ OpenAPI   : http://localhost:8005/docs
 
 Les ports 3000 et 8000 ne sont pas utilisés.
 
-## Nouveau dans v2.8.0 — Data Reliability & Lineage
+## Nouveau dans v2.10.0 — Governed Actions & Automation
+
+La zone **Décider → Actions & Automation** transforme les insights en actions externes contrôlées. DataVision ne passe jamais directement d'une détection à un effet externe sans appliquer les règles du workspace.
+
+### Pipeline d'action gouverné
+
+```text
+Signal / événement
+      ↓
+Règle + conditions
+      ↓
+Dedupe / throttling / quiet hours
+      ↓
+Approbation humaine si requise
+      ↓
+Webhook HTTPS signé HMAC
+      ↓
+Delivery audit + retry/backoff + replay
+```
+
+Les événements natifs supportés sont `proactive_alert`, `reliability_failure`, `review_approved`, `certification_created` et `manual`. Les règles peuvent être liées à un dataset précis et filtrer les événements par conditions déterministes (`eq`, `neq`, `contains`, `in`, comparaisons numériques, `exists`).
+
+### Human-in-the-loop
+
+Trois politiques sont disponibles : `always`, `critical_only` et `none`. Une action en `pending_approval` ne peut pas être exécutée par le worker. Owner/Admin/Data Scientist peuvent approuver ou rejeter selon RBAC ; les Analysts peuvent déclencher les événements autorisés mais pas approuver.
+
+### Sécurité de livraison
+
+- HTTPS obligatoire hors localhost en développement ;
+- blocage DNS/IP des destinations privées, loopback, link-local, réservées ou multicast ;
+- secret webhook chiffré au repos avec la même enveloppe que les credentials connecteurs ;
+- signature `X-DataVision-Signature: v1=<HMAC-SHA256>` ;
+- timestamp signé et `Idempotency-Key` stable ;
+- headers sensibles protégés contre l'écrasement ;
+- payload métier templatable sans exposer automatiquement les données brutes.
+
+### Contrôle du bruit et des effets
+
+Chaque règle peut définir une fenêtre de déduplication, un throttling, des quiet hours avec timezone IANA, ainsi qu'une politique de retry/backoff. Les quiet hours créent une action `scheduled`; le worker la remet en file lorsqu'elle devient exécutable. Un replay manuel crée une nouvelle exécution liée à l'originale, avec un fingerprint distinct et un audit explicite.
+
+### Déclenchements natifs
+
+- une alerte de l'Inbox proactive peut déclencher une règle `proactive_alert` en mode Enterprise ;
+- un Data Contract en échec émet `reliability_failure` ;
+- une revue approuvée émet `review_approved` ;
+- une certification émet `certification_created`.
+
+La règle essentielle reste : **DataVision peut recommander et préparer une action, mais les politiques d'approbation du workspace gardent le contrôle de l'effet externe.**
+
+## Nouveau dans v2.9.0 — Observability, Evaluation & Operational Intelligence
+
+La zone **Gouverner → Observabilité & Eval** ajoute un cockpit opérationnel pour mesurer ce qui fonctionne réellement, ce qui est utilisé, et si l’AI Analyst reste stable dans le temps.
+
+### Observabilité structurée
+
+DataVision enregistre désormais, en best-effort et sans bloquer les requêtes :
+
+- latence des appels HTTP ;
+- statut HTTP ;
+- feature concernée ;
+- utilisateur/workspace lorsque le contexte Enterprise existe ;
+- exécutions de jobs et tentatives ;
+- runs d’évaluation AI Analyst ;
+- tokens/coûts lorsqu’un fournisseur LLM instrumenté les rapporte.
+
+Le dashboard opérationnel calcule p50/p95/p99, disponibilité API, taux de succès des jobs, taux de succès des refresh et principaux modules utilisés.
+
+### SLO explicites
+
+Le cockpit expose actuellement quatre SLO opérationnels par fenêtre temporelle : disponibilité API, p95 de latence API, succès des jobs et succès des refresh. Les seuils sont affichés avec leur état `met/not met` ; ils ne sont pas présentés comme une certification externe.
+
+### Usage Analytics
+
+Les requêtes sont classées par domaine fonctionnel afin de distinguer les modules réellement utilisés : Data Workspace, SQL, AutoML, AI Analyst, Semantic Layer, Dashboards, Reports, Reliability, Connectors, Review Center, etc. Cela permet de piloter la roadmap à partir de l’usage réel plutôt que d’hypothèses.
+
+### AI Analyst Evaluation Lab
+
+Une suite d’évaluation peut être liée à un dataset gouverné et contenir des cas avec attentes vérifiables :
+
+- intent attendu ;
+- outils obligatoires ;
+- statut Critic ;
+- termes devant apparaître dans la réponse ;
+- nombre minimal de findings ;
+- durée maximale ;
+- valeur attendue sur un chemin de résultat avec tolérance.
+
+Chaque run conserve score, checks, durée et snapshot compact. Le moteur d’évaluation réutilise le même contexte RBAC/RLS/Column Security que les analyses normales.
+
+### Retry / backoff des jobs
+
+Les jobs Redis possèdent maintenant une politique de retry configurable (`0..5`) et un backoff exponentiel. Les retries attendent dans un sorted set Redis et ne bloquent pas le worker. Chaque tentative est enregistrée séparément avec son statut, sa latence et l’erreur éventuelle. L’écran Gouvernance expose aussi les deux réglages lors de la mise en file d’un job : nombre maximal de retries et backoff initial en secondes.
+
+### Limite volontaire
+
+Les colonnes `input_tokens`, `output_tokens` et `estimated_cost_usd` sont prêtes et le cockpit les affiche, mais DataVision **n’invente jamais** de coût lorsqu’aucun fournisseur LLM instrumenté ne le remonte. L’instrumentation provider-native reste donc partielle tant qu’un provider externe n’est pas branché.
+
+## Héritage v2.8.0 — Data Reliability & Lineage
 
 La zone **Gouverner → Fiabilité & Lineage** transforme la qualité des données en une couche exécutable et gouvernée. Une donnée n'est plus seulement « profilée » : DataVision peut définir un contrat, le tester à chaque nouvelle version, tracer ses dépendances et empêcher la certification ou l'export d'un rapport si un contrat critique en mode `block` est rompu.
 
@@ -135,13 +232,40 @@ Les Data Contracts sont évalués sur le data product du workspace, pas sur une 
 | Analyst | ✓ | — | — |
 | Viewer | ✓ | — | — |
 
-## Validation v2.8.0
+## Validation v2.10.0
 
 ```text
-Backend pytest                       : 50 passed
+Backend pytest                       : 55 passed
 Python compileall                    : OK
 TS/TSX syntax                        : OK
 strictNullChecks ciblé               : OK
+Governed action lifecycle            : testé
+Human approval / rejection           : testé
+Signed HMAC webhook                  : testé
+Delivery attempt audit               : testé
+Deduplication                        : testé
+Throttling / quiet hours             : testé
+Replay                               : testé
+RBAC Actions                         : testé
+Internal action job guard            : testé
+Native event dispatch                : intégré
+Ports                                : 3005 / 8005
+```
+
+Le build Docker/Next complet reste à confirmer sur la machine cible avant validation frontend de production. Les livraisons vers de vrais endpoints Internet ne sont pas revendiquées comme validées dans l'environnement de génération.
+
+## Validation v2.9.0
+
+```text
+Backend pytest                       : 52 passed
+Python compileall                    : OK
+TS/TSX syntax                        : OK
+strictNullChecks ciblé               : OK
+Operational telemetry                : testé
+Feature usage analytics              : testé
+AI evaluation suites                 : testé
+Job retry/backoff                    : testé
+Job attempt tracking                 : testé
 Data contracts                       : testé
 Missing / uniqueness / range rules   : testé
 Distribution drift KS + TVD          : testé
@@ -184,6 +308,8 @@ http://localhost:3005
 
 Les documents principaux sont dans `docs/` :
 
+- `OPERATIONAL_INTELLIGENCE_V290.md`
+- `VALIDATION_V290.md`
 - `DATA_RELIABILITY_LINEAGE_V280.md`
 - `VALIDATION_V280.md`
 - `CONNECTORS_REFRESH_V270.md`

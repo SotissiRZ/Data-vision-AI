@@ -1,31 +1,10 @@
-# Validation v2.1.0
+# Validation v2.10.0
 
-## Backend
+- `pytest -q` : **55 passed**.
+- `python -m compileall app` : OK.
+- TypeScript/TSX syntax (`tsc --noEmit --noCheck`) : OK.
+- `strictNullChecks=true`, `noImplicitAny=false` avec stubs React ciblés : OK.
 
-Suite de tests : **25 tests passants**.
+Scénarios v2.10 couverts : création destination/règle, approval human-in-the-loop, signature HMAC, idempotency key, delivery audit, déduplication, quiet-hours scheduling, replay, RBAC et blocage de soumission directe d'un job `action_delivery`.
 
-Les nouveaux scénarios v2.1 couvrent :
-
-- bootstrap du premier propriétaire ;
-- bearer token et `/auth/me` ;
-- création de workspace ;
-- liaison d'un dataset ;
-- création de politique colonnes/lignes ;
-- provisionnement d'un analyste ;
-- application réelle de la politique dans `governed-preview` ;
-- refus RBAC d'une action de gouvernance par un analyste ;
-- journal d'audit ;
-- reconnexion ;
-- soumission d'un job ;
-- mise en file Redis simulée ;
-- listing des jobs ;
-- annulation d'un job en file.
-
-## Frontend
-
-- transpilation syntaxique TypeScript/TSX : OK ;
-- nouvelle zone `Gouverner` : ajoutée ;
-- API Enterprise : ajoutée ;
-- responsive CSS Governance Center : ajouté.
-
-Le build Docker/Next.js complet doit être confirmé dans l'environnement utilisateur, comme pour les versions précédentes.
+Le `next build` Docker complet n'est pas déclaré validé dans cet environnement. La validation finale doit être effectuée sur la machine Docker cible.
