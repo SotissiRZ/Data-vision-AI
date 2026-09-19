@@ -364,10 +364,22 @@
   font-size: 9px;
 }
 
+.voiceToggles {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
 .checkboxLabel {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  cursor: pointer;
+}
+
+.checkboxLabel input {
+  accent-color: #18bfa9;
 }
 
 .textButton {

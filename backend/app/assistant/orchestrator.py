@@ -22,6 +22,7 @@ from .models import (
 from .plan import validate_agent_plan
 from .planner_runtime import PlannerProvider
 from .recovery import RecoveryPolicy
+from .reference_resolver import resolve_references
 from .tools import AssistantToolRegistry
 from .executor import HostAuthorization
 from .turn_runs import AgentTurnRunStore
@@ -39,25 +40,79 @@ class AgentOrchestrator:
     turn_store: AgentTurnRunStore
 
     def run_turn(self, request: AgentTurnRequest) -> AgentTurnResponse:
-        intent = resolve_intent(request.message, request.context)
-        self.memory.get_or_create(request.session_id, request.context.workspaceId)
+        context = request.context.model_copy(deep=True)
+        memory_item = self.memory.get_or_create(
+            request.session_id,
+            context.workspaceId,
+        )
+
+        # The selected object is always the strongest grounding signal.
+        if (
+            context.selectedEntity
+            and context.selectedEntity.type in {"column", "variable"}
+            and context.selectedEntity.id
+        ):
+            self.memory.remember_focus_column(
+                request.session_id,
+                context.selectedEntity.id,
+            )
+            memory_item = self.memory.get_or_create(request.session_id)
+
+        intent = resolve_intent(request.message, context)
+
+        reference = resolve_references(
+            message=request.message,
+            intent=intent,
+            context=context,
+            memory=memory_item,
+        )
+        intent = reference.intent
+        context = reference.context
+
+        if reference.clarification:
+            response = AgentTurnResponse(
+                session_id=request.session_id,
+                intent=intent,
+                message=reference.clarification,
+                speak=True,
+                status="needs_clarification",
+                steps=[],
+                metadata={
+                    "reference_resolution": "ambiguous",
+                    "safe_fallback": True,
+                },
+            )
+            self.memory.remember_turn(
+                request.session_id,
+                intent=intent.name,
+                entities=intent.entities,
+                result_summary=response.message,
+            )
+            return response
+
+        for column in reference.resolved_columns:
+            self.memory.remember_focus_column(request.session_id, column)
+
         self.memory.set_objective(request.session_id, request.message)
 
         original_intent = intent
         if intent.name == "unknown":
             intent = SettingsAwareIntentResolver().resolve(
                 message=request.message,
-                context=request.context,
+                context=context,
                 current=intent,
             )
 
         # Deterministic conversational answers remain first choice for results,
-        # capabilities and simple greetings.
-        conversational = ConversationalResponder(self.turn_store).respond(
+        # capabilities, dataset assessment and short follow-ups.
+        conversational = ConversationalResponder(
+            self.turn_store,
+            self.memory,
+        ).respond(
             session_id=request.session_id,
             message=request.message,
             intent=intent,
-            context=request.context,
+            context=context,
         )
 
         # If hybrid NLU reclassified an otherwise unknown request as a
@@ -72,10 +127,10 @@ class AgentOrchestrator:
             ).answer(
                 session_id=request.session_id,
                 message=request.message,
-                context=request.context,
+                context=context,
             )
             if grounded:
-                return AgentTurnResponse(
+                response = AgentTurnResponse(
                     session_id=request.session_id,
                     intent=intent,
                     message=grounded,
@@ -87,29 +142,49 @@ class AgentOrchestrator:
                         "grounded_model_answer": True,
                     },
                 )
+                self.memory.remember_turn(
+                    request.session_id,
+                    intent=intent.name,
+                    entities=intent.entities,
+                    result_summary=grounded,
+                )
+                return response
 
         if conversational is not None:
+            self.memory.remember_turn(
+                request.session_id,
+                intent=intent.name,
+                entities=intent.entities,
+                result_summary=conversational.message,
+            )
             return conversational
 
         if intent.name == "unknown":
-            return AgentTurnResponse(
+            response = AgentTurnResponse(
                 session_id=request.session_id,
                 intent=intent,
                 message=(
-                    "Je ne veux pas interpréter votre question comme une analyse par défaut. "
+                    "Je ne veux pas transformer votre question en analyse par défaut ni deviner votre intention. "
                     "Précisez ce que vous voulez savoir ou faire. "
-                    "Par exemple : « analyse ce dataset », « montre les résultats », "
-                    "« compare ces deux groupes » ou « crée un graphique de cette variable »."
+                    "Vous pouvez aussi utiliser une relance comme « et pourquoi ? », "
+                    "« montre-moi ça en graphique » ou « fais pareil avec Profit »."
                 ),
                 speak=True,
                 status="needs_clarification",
                 metadata={"safe_fallback": True},
             )
+            self.memory.remember_turn(
+                request.session_id,
+                intent=intent.name,
+                entities=intent.entities,
+                result_summary=response.message,
+            )
+            return response
 
         plan = self.planner.plan(
             message=request.message,
             intent=intent,
-            context=request.context,
+            context=context,
             attachment_ids=request.attachment_ids,
         )
 
@@ -125,7 +200,7 @@ class AgentOrchestrator:
 
         validated = validate_agent_plan(
             steps=plan,
-            context=request.context,
+            context=context,
             registry=self.registry,
             authorization=self.authorization,
         )
@@ -167,7 +242,7 @@ class AgentOrchestrator:
             AgentTurnRun(
                 session_id=request.session_id,
                 request_message=request.message,
-                context=request.context,
+                context=context,
                 attachment_ids=request.attachment_ids,
                 intent=intent,
                 steps=turn_steps,
@@ -382,6 +457,27 @@ class AgentOrchestrator:
                 "last_results",
                 compact_results(run),
             )
+            self.memory.remember_turn(
+                run.session_id,
+                intent=run.intent.name,
+                entities=run.intent.entities,
+                result_summary=run.final_message,
+            )
+            for key in ("column", "x", "y", "target"):
+                value = run.intent.entities.get(key)
+                if isinstance(value, str) and value:
+                    self.memory.remember_focus_column(
+                        run.session_id,
+                        value,
+                    )
+            for step in run.steps:
+                for key in ("x", "y", "target"):
+                    value = step.args.get(key)
+                    if isinstance(value, str) and value:
+                        self.memory.remember_focus_column(
+                            run.session_id,
+                            value,
+                        )
         elif run.status == "failed":
             run.final_message = self._failure_message(run.steps)
 

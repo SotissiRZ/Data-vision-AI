@@ -125,3 +125,56 @@ def test_internet_question_answers_capabilities_without_tools():
     assert response.status == "completed"
     assert response.steps == []
     assert "navigation Internet générale" in response.message
+
+
+def test_dataset_assessment_question_is_detected():
+    intent = resolve_intent(
+        "comment tu trouves le dataset ?",
+        AssistantContext(
+            activeDatasetId="ds1",
+            uiState={
+                "datasetName": "Financial Sample.xlsx",
+                "rowCount": 700,
+                "columnCount": 8,
+                "missingCells": 0,
+                "duplicateCount": 0,
+                "qualityScore": 80,
+                "qualityIssuesCount": 0,
+                "numericColumnCount": 5,
+                "categoricalColumnCount": 3,
+            },
+        ),
+    )
+    assert intent.name == "dataset_assessment"
+
+
+def test_dataset_assessment_uses_existing_context_without_tools():
+    orchestrator = build_runtime()
+    response = orchestrator.run_turn(
+        AgentTurnRequest(
+            session_id="s-assessment",
+            message="comment tu trouves le dataset ?",
+            context=AssistantContext(
+                activeDatasetId="ds1",
+                uiState={
+                    "datasetName": "Financial Sample.xlsx",
+                    "rowCount": 700,
+                    "columnCount": 8,
+                    "missingCells": 0,
+                    "duplicateCount": 0,
+                    "qualityScore": 80,
+                    "qualityIssuesCount": 0,
+                    "numericColumnCount": 5,
+                    "categoricalColumnCount": 3,
+                },
+            ),
+        )
+    )
+
+    assert response.status == "completed"
+    assert response.steps == []
+    assert "80/100" in response.message
+    assert "700 lignes" in response.message
+    assert "8 variables" in response.message
+    assert "aucune cellule manquante" in response.message
+    assert "aucun doublon" in response.message

@@ -23,15 +23,16 @@ import {
 } from '../lib/api';
 import { assistantEventBus } from '../lib/assistant/event-bus';
 import { AIProviderControlCenter } from '../components/assistant/AIProviderControlCenter';
+import { NotebookStudio } from '../components/NotebookStudio';
 
 type AnyObj = Record<string, any>;
-type View = 'identity' | 'actions' | 'operations' | 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance' | 'ai-settings';
+type View = 'identity' | 'actions' | 'operations' | 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'notebook' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance' | 'ai-settings';
 type AreaKey = 'overview'|'data'|'analyze'|'model'|'decide'|'publish'|'collaborate'|'governance';
 
 const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; views:View[] }[] = [
   {key:'overview',label:'Vue d’ensemble',icon:'⌂',defaultView:'home',views:['home']},
   {key:'data',label:'Données',icon:'▦',defaultView:'data',views:['data','quality','prepare','stats']},
-  {key:'analyze',label:'Analyser',icon:'∑',defaultView:'visual',views:['visual','tests','sql','regression','anova','pca','cluster']},
+  {key:'analyze',label:'Analyser',icon:'∑',defaultView:'visual',views:['visual','tests','sql','notebook','regression','anova','pca','cluster']},
   {key:'model',label:'Modéliser',icon:'◆',defaultView:'model',views:['model','forecast','anomaly','xai','predict']},
   {key:'decide',label:'Décider',icon:'✦',defaultView:'inbox',views:['inbox','ai','semantic','decision','actions','trust']},
   {key:'publish',label:'Publier',icon:'▧',defaultView:'dashboard',views:['dashboard','report']},
@@ -40,10 +41,10 @@ const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; vi
 ];
 const viewLabels: Record<View,string> = {
   home:'Vue d’ensemble',data:'Aperçu des données',quality:'Qualité',prepare:'Préparation',stats:'Statistiques descriptives',
-  visual:'Visualisation',tests:'Tests & corrélations',sql:'SQL',regression:'Régression',anova:'ANOVA',pca:'ACP',cluster:'Clustering',
+  visual:'Visualisation',tests:'Tests & corrélations',sql:'SQL',notebook:'Notebook',regression:'Régression',anova:'ANOVA',pca:'ACP',cluster:'Clustering',
   model:'AutoML',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',actions:'Actions & Automation',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',reliability:'Fiabilité & Lineage',sources:'Sources & Refresh',operations:'Observabilité & Eval',identity:'Identité & Secrets','ai-settings':'IA & Modèles',governance:'Gouvernance'
 };
-const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',actions:'⚡',trust:'✓',dashboard:'▦',report:'▧',review:'◎',reliability:'◫',sources:'↻',operations:'◉',identity:'◈','ai-settings':'✦',governance:'⌾'};
+const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',notebook:'⌘',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',actions:'⚡',trust:'✓',dashboard:'▦',report:'▧',review:'◎',reliability:'◫',sources:'↻',operations:'◉',identity:'◈','ai-settings':'✦',governance:'⌾'};
 function areaForView(view:View){ return areaConfig.find(a=>a.views.includes(view)) ?? areaConfig[0]; }
 
 function formatNumber(value: unknown, digits = 3) {
@@ -175,7 +176,26 @@ export default function Home() {
         training,
         automlRunning,
         predicting,
+        datasetName: result?.dataset?.name,
+        rowCount: result?.profile?.rows,
+        columnCount: result?.profile?.columns_count,
+        duplicateCount: result?.profile?.duplicates,
+        missingCells:
+          result?.profile?.columns?.reduce(
+            (total: number, column: AnyObj) =>
+              total + Number(column.missing ?? 0),
+            0,
+          ) ?? 0,
         qualityScore: result?.quality?.score,
+        qualityIssuesCount: result?.quality?.issues_count,
+        numericColumnCount:
+          result?.profile?.columns?.filter((column: AnyObj) =>
+            isNumeric(column),
+          ).length ?? 0,
+        categoricalColumnCount:
+          result?.profile?.columns?.filter((column: AnyObj) =>
+            !isNumeric(column),
+          ).length ?? 0,
         datasetSchema:
           result?.profile?.columns?.map((column: AnyObj) => ({
             name: column.name,
@@ -195,6 +215,12 @@ export default function Home() {
     training,
     automlRunning,
     predicting,
+    result?.dataset?.name,
+    result?.profile?.rows,
+    result?.profile?.columns_count,
+    result?.profile?.duplicates,
+    result?.quality?.score,
+    result?.quality?.issues_count,
     enterpriseBadge?.workspace?.id,
     enterpriseBadge?.workspace?.organization_id,
   ]);
@@ -298,6 +324,7 @@ export default function Home() {
         {view==='prepare'&&<PrepareView result={result} setError={setError} onTransformed={acceptTransformed} onActivate={id=>activateDataset(id,'prepare')}/>} 
         {view==='visual'&&<VisualizationStudio result={result} setError={setError}/>} 
         {view==='sql'&&<SqlWorkspace result={result} setError={setError}/>} 
+        {view==='notebook'&&<NotebookStudio dataset={result?.dataset??null} setError={setError}/>} 
         {view==='regression'&&<RegressionView result={result} setError={setError}/>} 
         {view==='anova'&&<AnovaView result={result} setError={setError}/>} 
         {view==='pca'&&<PcaView result={result} setError={setError}/>} 

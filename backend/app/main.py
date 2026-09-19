@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.routes.datasets import router as datasets_router
 from app.api.routes.enterprise import router as enterprise_router
+from app.api.routes.notebooks import router as notebooks_router
 from app.assistant.router import router as assistant_router
 from app.core.config import get_settings
 from app.services.auth_service import has_permission
@@ -19,7 +20,7 @@ from app.services.tenant_access import (
 )
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="2.17.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.18.2", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -175,6 +176,53 @@ async def tenant_aware_data_access(request: Request, call_next):
 
 
 @app.middleware("http")
+async def notebook_tenant_access(request: Request, call_next):
+    """Propagate v2.12 Enterprise auth context into Notebook execution."""
+    path = request.url.path
+    if request.method.upper() == "OPTIONS" or not path.startswith("/api/v1/notebooks"):
+        return await call_next(request)
+
+    workspace_id = request.headers.get("x-workspace-id")
+    authorization = request.headers.get("authorization")
+    token = None
+    ctx = None
+    try:
+        ctx = build_access_context(authorization, workspace_id)
+        token = set_access_context(ctx)
+        if ctx and not has_permission(
+            ctx.user_id,
+            ctx.workspace_id,
+            "analysis:run",
+        ):
+            raise PermissionError("Permission insuffisante: analysis:run.")
+        response = await call_next(request)
+        if ctx:
+            response.headers["X-DataVision-Governed"] = "true"
+            response.headers["X-DataVision-Role"] = ctx.role
+            response.headers["X-DataVision-Workspace"] = ctx.workspace_id
+        return response
+    except PermissionError as exc:
+        return JSONResponse(
+            status_code=403,
+            content={
+                "detail": str(exc),
+                "security_boundary": "notebook-tenant-access",
+            },
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "detail": str(exc),
+                "security_boundary": "notebook-tenant-access",
+            },
+        )
+    finally:
+        if token is not None:
+            reset_access_context(token)
+
+
+@app.middleware("http")
 async def assistant_tenant_access(request: Request, call_next):
     """Propagate the existing v2.12 Enterprise auth context into assistant tools."""
     path = request.url.path
@@ -205,7 +253,7 @@ async def assistant_tenant_access(request: Request, call_next):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": settings.app_name, "version": "2.17.0"}
+    return {"status": "ok", "product": settings.app_name, "version": "2.18.2"}
 
 
 @app.get("/api/v1/capabilities")
@@ -218,6 +266,8 @@ def capabilities():
             "dataset_join_concat", "groupby_aggregation", "pivot_unpivot", "feature_engineering",
             "one_hot_encoding", "statistical_test_advisor", "parametric_tests", "nonparametric_tests",
             "correlations", "visualization_studio", "sql_workspace_readonly", "duckdb_polars_layer",
+            "notebook_workspace", "sandboxed_python_cells", "sandboxed_r_cells",
+            "notebook_sql_cells", "notebook_run_provenance", "notebook_artifacts",
             "linear_regression", "anova_one_way", "anova_two_way", "pca", "kmeans_clustering",
             "ml_train_validation_test", "ml_cross_validation", "automl_benchmark", "controlled_hyperparameter_tuning",
             "ml_guardrails", "class_imbalance_detection", "leakage_heuristics", "feature_importance",
@@ -267,5 +317,6 @@ def capabilities():
 
 app.include_router(datasets_router, prefix="/api/v1")
 app.include_router(enterprise_router, prefix="/api/v1")
+app.include_router(notebooks_router, prefix="/api/v1")
 
 app.include_router(assistant_router, prefix="/api/v1")

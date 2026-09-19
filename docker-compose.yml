@@ -26,11 +26,30 @@ services:
       - ./data:/app/data
     ports:
       - "8005:8005"
+    networks:
+      - default
+      - notebook_sandbox
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_started
+
+  sandbox:
+    build: ./sandbox
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=768m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    pids_limit: 96
+    mem_limit: 1g
+    cpus: 1.5
+    networks:
+      - notebook_sandbox
+    restart: unless-stopped
 
   worker:
     build: ./backend
@@ -61,3 +80,8 @@ services:
 volumes:
   postgres_data:
   redis_data:
+
+
+networks:
+  notebook_sandbox:
+    internal: true

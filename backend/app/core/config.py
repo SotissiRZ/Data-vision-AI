@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     frontend_url: str = "http://localhost:3005"
     metadata_fallback_sqlite: bool = True
     worker_poll_seconds: int = 5
+    notebook_sandbox_url: str = "http://sandbox:8090"
+    notebook_timeout_seconds: int = 20
+    notebook_memory_mb: int = 768
+    notebook_max_code_chars: int = 100000
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

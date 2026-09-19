@@ -1,4 +1,4 @@
-# DataVision AI — v2.17.0
+# DataVision AI — v2.18.2
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
 
@@ -126,6 +126,161 @@ nom de colonne + type
 sans transmettre les lignes ou valeurs brutes.
 
 Les noms de colonnes peuvent être masqués pour les providers externes.
+
+
+
+## Nouveau dans v2.18.0 — Notebook sandboxé Python / SQL / R
+
+La zone **Analyser → Notebook** ajoute un workspace reproductible multi-cellules.
+
+### Langages
+
+- Python ;
+- SQL read-only ;
+- R ;
+- Markdown.
+
+### Isolation
+
+Python et R ne s'exécutent jamais dans le processus FastAPI principal.
+
+```text
+Frontend
+  ↓
+Notebook API
+  ↓
+dataset gouverné par RBAC/RLS
+  ↓
+service sandbox privé
+  ├── utilisateur non-root
+  ├── filesystem read-only
+  ├── tmpfs
+  ├── cap_drop ALL
+  ├── no-new-privileges
+  ├── limite CPU / mémoire / PID
+  ├── timeout par cellule
+  └── réseau Docker internal-only
+```
+
+Le service sandbox n'expose aucun port sur l'hôte.
+
+### Reproductibilité
+
+Chaque run conserve :
+
+- notebook ;
+- cellule ;
+- source hashée ;
+- langage ;
+- dataset ;
+- version du dataset ;
+- moteur ;
+- stdout / stderr ;
+- résultat structuré ;
+- artefacts ;
+- temps d'exécution ;
+- timestamp ;
+- provenance.
+
+### SQL
+
+Les cellules SQL réutilisent le SQL Workspace DataVision existant :
+
+- `SELECT` / `WITH` uniquement ;
+- DuckDB préféré ;
+- aucune mutation ;
+- table gouvernée `dataset`.
+
+### Agent
+
+L'assistant connaît désormais les notebooks et peut proposer
+`execute_notebook_cell`.
+
+Cette action exige toujours une **confirmation humaine**, même si la cellule
+est exécutée dans le sandbox.
+
+
+
+## Correction v2.18.1 — Assistant plus naturel et contrôle vocal
+
+### Synthèse vocale
+
+La synthèse vocale est désormais :
+- désactivée par défaut ;
+- activable/désactivable indépendamment du microphone ;
+- persistée dans le navigateur ;
+- immédiatement interrompue lorsqu'elle est désactivée.
+
+`Conversation continue` concerne uniquement l'écoute vocale. Elle ne force plus
+DataVision à lire toutes ses réponses.
+
+### Compréhension sans LLM obligatoire
+
+Un dataset actif expose maintenant au Context Engine :
+- nom ;
+- nombre de lignes ;
+- nombre de variables ;
+- score qualité ;
+- nombre de problèmes qualité ;
+- cellules manquantes ;
+- doublons ;
+- nombre de variables numériques/catégorielles ;
+- schéma des colonnes.
+
+Ainsi une question naturelle comme :
+
+```text
+Comment tu trouves le dataset ?
+```
+
+reçoit une appréciation factuelle immédiate, même si aucun provider LLM n'est
+configuré.
+
+Le Model Gateway reste utilisé pour les formulations plus complexes, mais il
+n'est plus nécessaire pour les questions courantes sur le dataset.
+
+
+
+## Nouveau dans v2.18.2 — Mémoire conversationnelle courte
+
+L'assistant conserve désormais une mémoire sémantique compacte de la session :
+
+- dernière intention ;
+- dernières entités analytiques ;
+- variables récemment focalisées ;
+- dernier résumé de résultat ;
+- décisions exécutées.
+
+Il ne conserve pas une copie brute illimitée de la conversation.
+
+Exemples pris en charge :
+
+```text
+« fais un graphique de Sales »
+« fais pareil avec Profit »
+```
+
+```text
+« comment tu trouves le dataset ? »
+« et pourquoi ? »
+```
+
+```text
+« montre-moi ça en graphique »
+```
+
+Les références ambiguës ne sont pas devinées :
+
+```text
+« compare-le avec l'autre »
+```
+
+Si deux variables récentes ne permettent pas de résoudre précisément
+« l'autre », DataVision demande la deuxième variable.
+
+Le contexte de session reste stable dans le navigateur via
+`sessionStorage`, ce qui permet aux relances successives de partager la même
+mémoire courte.
 
 
 ## Ports

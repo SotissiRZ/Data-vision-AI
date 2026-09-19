@@ -1,0 +1,34 @@
+{
+  "version": "2.18.0",
+  "base": "2.17.0 cumulative",
+  "feature": "Sandboxed Notebook Workspace",
+  "languages": [
+    "markdown",
+    "python",
+    "sql",
+    "r"
+  ],
+  "validation": {
+    "python_ast": "OK",
+    "pytest": "\u001b[32m\u001b[32m\u001b[1m145 passed\u001b[0m\u001b[32m in 18.54s\u001b[0m\u001b[0m",
+    "ts_tsx_structural": "OK",
+    "docker_security_contract": {
+      "notebook_router": true,
+      "sandbox_service": true,
+      "internal_network": true,
+      "read_only_sandbox": true,
+      "cap_drop_all": true,
+      "no_new_privileges": true,
+      "no_sandbox_host_port": true,
+      "assistant_confirmation": true,
+      "notebook_frontend": true
+    }
+  },
+  "explicit_limits": [
+    "no persistent kernels between cells",
+    "no Jupyter protocol",
+    "no GPU sandbox",
+    "no runtime package installation",
+    "no collaborative multi-cursor editing"
+  ]
+}

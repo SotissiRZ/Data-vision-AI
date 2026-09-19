@@ -227,6 +227,15 @@ def build_default_registry() -> AssistantToolRegistry:
             requires_dataset=True,
         ),
         ToolSpec(
+            name="execute_notebook_cell",
+            description="Exécuter une cellule existante dans le notebook sandboxé DataVision.",
+            category="notebook",
+            risk="reversible",
+            required_permissions=("analysis:create",),
+            deterministic=True,
+            metadata={"human_confirmation_required": True, "sandboxed": True},
+        ),
+        ToolSpec(
             name="send_external_message",
             description="Envoyer un message via un connecteur externe gouverné.",
             category="actions",

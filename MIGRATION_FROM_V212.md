@@ -77,3 +77,18 @@ frontend/components/assistant/
 frontend/lib/assistant/
 backend/app/assistant/
 ```
+
+
+## v2.18 — Nouveau service sandbox
+
+La v2.18 ajoute un conteneur Docker interne `sandbox`.
+
+Reconstruire l'ensemble :
+
+```powershell
+docker compose build api sandbox web
+docker compose up -d
+docker compose ps
+```
+
+Le service `sandbox` ne publie aucun port sur la machine hôte.

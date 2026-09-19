@@ -91,7 +91,7 @@ def assistant_health():
     return {
         "status": "ok",
         "component": "conversational_voice_agent",
-        "version": "2.17.0",
+        "version": "2.18.2",
         "tool_count": len(tool_registry.list()),
     }
 

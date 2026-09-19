@@ -1,0 +1,17 @@
+{
+  "version": "2.18.1",
+  "base": "2.18.0 cumulative",
+  "focus": "assistant UX, TTS control, contextual dataset assessment",
+  "validation": {
+    "python_ast": "OK",
+    "pytest": "\u001b[32m\u001b[32m\u001b[1m149 passed\u001b[0m\u001b[32m in 19.47s\u001b[0m\u001b[0m",
+    "checks": {
+      "tts_default_off": true,
+      "tts_persistent": true,
+      "tts_response_guard": true,
+      "tts_toggle_label": true,
+      "dataset_assessment_intent": true,
+      "dataset_assessment_context": true
+    }
+  }
+}

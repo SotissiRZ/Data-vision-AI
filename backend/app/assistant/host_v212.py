@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.services.advanced_analysis import regression_analysis
 from app.services.auth_service import has_permission
 from app.services.modeling import automl_train, get_model_card, train_model
+from app.services.notebook_service import run_cell as run_notebook_cell
 from app.services.preparation import apply_operation, combine_dataframes
 from app.services.profiling import profile_dataframe
 from app.services.report_builder import build_report, export_report
@@ -567,6 +568,30 @@ class V212MLBridge:
         raise ValueError(f"Méthode XAI non supportée : {method}")
 
 
+class V212NotebookBridge:
+    def execute_notebook_cell(
+        self,
+        *,
+        context: AssistantContext,
+        notebook_id: str,
+        cell_id: str,
+        **_: Any,
+    ) -> dict[str, Any]:
+        result = run_notebook_cell(notebook_id, cell_id)
+        return {
+            "status": result.get("status"),
+            "notebook_id": notebook_id,
+            "cell_id": cell_id,
+            "run_id": result.get("id"),
+            "engine": result.get("engine"),
+            "result": result.get("result"),
+            "artifacts": result.get("artifacts", []),
+            "provenance": result.get("provenance", {}),
+            "elapsed_ms": result.get("elapsed_ms"),
+            "error": result.get("stderr") if result.get("status") != "succeeded" else None,
+        }
+
+
 class V212ReportBridge:
     def generate_report(
         self,
@@ -700,6 +725,7 @@ def bind_v212_host(registry: AssistantToolRegistry) -> None:
     ml = V212MLBridge()
     reports = V212ReportBridge()
     files = V212FileBridge()
+    notebooks = V212NotebookBridge()
 
     mapping = {
         "profile_dataset": data.profile_dataset,
@@ -719,6 +745,7 @@ def bind_v212_host(registry: AssistantToolRegistry) -> None:
         "inspect_uploaded_file": files.inspect_uploaded_file,
         "export_dataset": files.export_dataset,
         "export_sensitive_data": files.export_sensitive_data,
+        "execute_notebook_cell": notebooks.execute_notebook_cell,
     }
 
     for name, handler in mapping.items():

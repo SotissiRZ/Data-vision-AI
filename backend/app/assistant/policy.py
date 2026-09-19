@@ -18,6 +18,7 @@ CONFIRMATION_TOOLS = {
     "send_external_message",
     "publish_report",
     "export_sensitive_data",
+    "execute_notebook_cell",
 }
 
 

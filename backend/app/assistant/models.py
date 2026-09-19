@@ -174,6 +174,8 @@ AgentIntentName = Literal[
     "report",
     "file_analysis",
     "show_results",
+    "dataset_assessment",
+    "explain_previous",
     "capabilities",
     "conversation",
     "unknown",

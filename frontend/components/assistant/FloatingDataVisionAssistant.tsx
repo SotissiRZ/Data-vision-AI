@@ -43,6 +43,7 @@ export function FloatingDataVisionAssistant({
   const [busy, setBusy] = useState(false);
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [continuousVoice, setContinuousVoice] = useState(false);
+  const [speechEnabled, setSpeechEnabled] = useState(false);
   const [context, setContext] = useState<AssistantContextSnapshot>(
     assistantEventBus.getContext(),
   );
@@ -72,6 +73,19 @@ export function FloatingDataVisionAssistant({
     [locale],
   );
 
+
+useEffect(() => {
+  try {
+    setSpeechEnabled(
+      window.localStorage.getItem(
+        "datavision.assistant.tts.enabled",
+      ) === "true",
+    );
+  } catch {
+    setSpeechEnabled(false);
+  }
+}, []);
+
   useEffect(() => {
     const offContext = assistantEventBus.onContext(setContext);
     const offEvent = assistantEventBus.onEvent(async (event, currentContext) => {
@@ -87,7 +101,10 @@ export function FloatingDataVisionAssistant({
         const mostImportant =
           newAlerts.find((a) => a.severity === "critical") ?? newAlerts[0];
 
-        if (shouldSpeakAlert(mostImportant, proactiveVoiceMode)) {
+        if (
+          speechEnabled &&
+          shouldSpeakAlert(mostImportant, proactiveVoiceMode)
+        ) {
           voice.speak(toSpeechText(`${mostImportant.title}. ${mostImportant.message}`), {
             language: locale,
           });
@@ -102,7 +119,7 @@ export function FloatingDataVisionAssistant({
       offEvent();
       voice.destroy();
     };
-  }, [adapter, locale, proactiveVoiceMode, voice]);
+  }, [adapter, locale, proactiveVoiceMode, speechEnabled, voice]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -150,7 +167,7 @@ export function FloatingDataVisionAssistant({
 
       setAttachments([]);
 
-      if (response.speak !== false) {
+      if (speechEnabled && response.speak !== false) {
         voice.speak(toSpeechText(response.message), { language: locale });
       }
     } catch (error) {
@@ -250,7 +267,7 @@ export function FloatingDataVisionAssistant({
         },
       ]);
 
-      if (response.speak !== false) {
+      if (speechEnabled && response.speak !== false) {
         voice.speak(toSpeechText(response.message), { language: locale });
       }
     } catch (error) {
@@ -312,7 +329,7 @@ export function FloatingDataVisionAssistant({
               <div>
                 <div className={styles.title}>DataVision AI</div>
                 <div className={styles.status}>
-                  {statusLabel(voiceState, busy)}
+                  {statusLabel(voiceState, busy)}{speechEnabled ? " · voix active" : " · voix coupée"}
                 </div>
               </div>
             </div>
@@ -433,26 +450,53 @@ export function FloatingDataVisionAssistant({
 
           <footer className={styles.footer}>
             <div className={styles.voiceOptions}>
-              <label className={styles.checkboxLabel}>
-                <input
-                  type="checkbox"
-                  checked={continuousVoice}
-                  onChange={(event) => {
-                    const checked = event.target.checked;
-                    setContinuousVoice(checked);
-                    if (!checked) voice.stopListening();
-                  }}
-                />
-                Conversation continue
-              </label>
+              <div className={styles.voiceToggles}>
+                <label className={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={speechEnabled}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setSpeechEnabled(checked);
+                      if (!checked) {
+                        voice.stopSpeaking();
+                      }
+                      try {
+                        window.localStorage.setItem(
+                          "datavision.assistant.tts.enabled",
+                          String(checked),
+                        );
+                      } catch {
+                        // Local preference persistence is best-effort only.
+                      }
+                    }}
+                  />
+                  Synthèse vocale
+                </label>
 
-              <button
-                type="button"
-                onClick={() => voice.stopSpeaking()}
-                className={styles.textButton}
-              >
-                Arrêter la voix
-              </button>
+                <label className={styles.checkboxLabel}>
+                  <input
+                    type="checkbox"
+                    checked={continuousVoice}
+                    onChange={(event) => {
+                      const checked = event.target.checked;
+                      setContinuousVoice(checked);
+                      if (!checked) voice.stopListening();
+                    }}
+                  />
+                  Conversation continue
+                </label>
+              </div>
+
+              {voiceState === "speaking" && (
+                <button
+                  type="button"
+                  onClick={() => voice.stopSpeaking()}
+                  className={styles.textButton}
+                >
+                  Arrêter la voix
+                </button>
+              )}
             </div>
 
             <div className={styles.composer}>

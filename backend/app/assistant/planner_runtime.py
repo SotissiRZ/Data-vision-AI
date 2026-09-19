@@ -71,19 +71,38 @@ class DeterministicPlanner:
             ]
 
         if name == "visualize":
-            # A chart cannot be invented safely without variables.
+            x = intent.entities.get("x") or intent.entities.get("column")
+            y = intent.entities.get("y")
             selected = context.selectedEntity
-            if selected and selected.type in {"column", "variable"} and selected.id:
+
+            if not x and selected and selected.type in {"column", "variable"}:
+                x = selected.id
+
+            if x and y:
                 return [
                     AgentPlanStep(
                         tool="create_visualization",
-                        label=f"Visualiser {selected.label or selected.id}",
+                        label=f"Comparer {x} et {y}",
                         args={
-                            "chart_type": "histogram",
-                            "x": selected.id,
+                            "chart_type": "scatter",
+                            "x": x,
+                            "y": y,
                         },
                     )
                 ]
+
+            if x:
+                return [
+                    AgentPlanStep(
+                        tool="create_visualization",
+                        label=f"Visualiser {x}",
+                        args={
+                            "chart_type": "histogram",
+                            "x": x,
+                        },
+                    )
+                ]
+
             return []
 
         if name == "predict_target":

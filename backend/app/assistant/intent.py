@@ -27,6 +27,23 @@ RULES: tuple[IntentRule, ...] = (
         ),
         0.98,
     ),
+
+IntentRule(
+    "dataset_assessment",
+    (
+        r"\bcomment\s+(?:tu\s+)?trouv(?:e|es)[- ]?(?:tu)?\s+(?:le|ce|mon)?\s*dataset\b",
+        r"\bcomment\s+(?:tu\s+)?trouv(?:e|es)[- ]?(?:tu)?\s+(?:les|mes|ces)?\s*donn[eé]es\b",
+        r"\bqu['’]est[- ]ce\s+que\s+tu\s+penses?\s+(?:du|de\s+ce|des)\s+(?:dataset|donn[eé]es)\b",
+        r"\bque\s+penses[- ]tu\s+(?:du|de\s+ce|des)\s+(?:dataset|donn[eé]es)\b",
+        r"\bton\s+avis\s+sur\s+(?:le|ce|mon)?\s*(?:dataset|jeu\s+de\s+donn[eé]es|donn[eé]es)\b",
+        r"\b(?:ce|le|mon)\s+dataset\s+est[- ]il\s+(?:bon|propre|fiable|correct)\b",
+        r"\b(?:les|mes|ces)\s+donn[eé]es\s+sont[- ]elles\s+(?:bonnes|propres|fiables|correctes)\b",
+        r"\bcomment\s+est\s+(?:la\s+)?qualit[eé]\s+(?:du|de\s+ce)\s+dataset\b",
+        r"\bqu['’]y\s+a[- ]t[- ]il\s+dans\s+(?:le|ce)\s+dataset\b",
+        r"\bdonne[- ]moi\s+un\s+avis\s+sur\s+(?:le|ce)\s+dataset\b",
+    ),
+    0.97,
+),
     IntentRule(
         "capabilities",
         (

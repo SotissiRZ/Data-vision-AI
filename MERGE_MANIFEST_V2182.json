@@ -1,0 +1,24 @@
+{
+  "version": "2.18.2",
+  "base": "2.18.1 cumulative",
+  "focus": "short-term conversational memory and reference resolution",
+  "validation": {
+    "python_ast": "OK",
+    "pytest": "\u001b[32m\u001b[32m\u001b[1m158 passed\u001b[0m\u001b[32m in 18.37s\u001b[0m\u001b[0m",
+    "ts_tsx_structural": "OK",
+    "checks": {
+      "reference_resolver": true,
+      "memory_last_intent": true,
+      "memory_recent_columns": true,
+      "explain_previous": true,
+      "resolved_context_used": true,
+      "session_storage": true
+    }
+  },
+  "supported_followups": [
+    "et pourquoi ?",
+    "fais pareil avec <colonne>",
+    "montre-moi ça en graphique",
+    "compare-le avec l'autre (si deux colonnes récentes sont non ambiguës)"
+  ]
+}
