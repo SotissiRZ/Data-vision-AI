@@ -173,6 +173,9 @@ AgentIntentName = Literal[
     "geospatial_analysis",
     "report",
     "file_analysis",
+    "show_results",
+    "capabilities",
+    "conversation",
     "unknown",
 ]
 

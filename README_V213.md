@@ -1,4 +1,4 @@
-# DataVision AI — Patch v2.14.2
+# DataVision AI — Patch v2.15.0
 ## Conversational & Voice Agent
 
 Ce patch introduit la couche produit nécessaire pour transformer l'AI Analyst existant en assistant global, flottant, contextuel, vocal et proactif.
@@ -171,3 +171,18 @@ dépôt v2.12 ne sont pas raccordés au Tool Registry.
 - composant `DataVisionAssistantRoot` prêt à monter dans le layout global ;
 - conservation du texte + voix sur le même orchestrateur ;
 - aucun upload fictif : endpoint hôte explicitement requis.
+
+
+## Ajouts v2.15.0
+
+- Model Gateway indépendant du fournisseur ;
+- registry de providers ;
+- politiques `local_only / prefer_local / allow_external` ;
+- consentement externe explicite ;
+- provider local configurable ;
+- provider générique OpenAI-compatible ;
+- projection minimale du contexte ;
+- `GatewayPlannerProvider` structuré ;
+- sélection du planner via variables d'environnement ;
+- endpoints de découverte et prévisualisation du routage ;
+- fallback déterministe conservé.

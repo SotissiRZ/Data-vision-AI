@@ -1,3 +1,4 @@
+import { assistantAuthHeaders } from "./request-auth";
 export type JsonSchema = {
   title?: string;
   type?: string;
@@ -30,7 +31,7 @@ export type AssistantToolCatalogItem = {
 export async function getAssistantToolCatalog(apiBaseUrl: string) {
   const response = await fetch(
     `${apiBaseUrl.replace(/\/$/, "")}/ai/assistant/tools`,
-    { credentials: "include" },
+    { credentials: "include", headers: assistantAuthHeaders() },
   );
   if (!response.ok) throw new Error(await response.text());
   return response.json() as Promise<AssistantToolCatalogItem[]>;
@@ -46,7 +47,7 @@ export async function validateAssistantToolArguments(input: {
     {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: assistantAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify(input.args),
     },
   );

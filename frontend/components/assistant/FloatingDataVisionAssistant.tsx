@@ -6,15 +6,17 @@ import type {
   AssistantActionProposal,
   AssistantAttachment,
   ProactiveAlert,
-} from "@/lib/assistant/adapter";
+} from "../../lib/assistant/adapter";
 import {
   assistantEventBus,
   type AssistantContextSnapshot,
-} from "@/lib/assistant/event-bus";
+} from "../../lib/assistant/event-bus";
 import {
   BrowserVoiceController,
   type VoiceState,
-} from "@/lib/assistant/voice";
+} from "../../lib/assistant/voice";
+import { toSpeechText } from "../../lib/assistant/speech-text";
+import styles from "./FloatingDataVisionAssistant.module.css";
 
 type Message = {
   id: string;
@@ -66,7 +68,6 @@ export function FloatingDataVisionAssistant({
           void sendMessage(text);
         },
       }),
-    // locale intentionally rebuilds the voice controller
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [locale],
   );
@@ -83,14 +84,16 @@ export function FloatingDataVisionAssistant({
 
         setAlerts((prev) => [...newAlerts, ...prev].slice(0, 5));
 
-        const mostImportant = newAlerts.find((a) => a.severity === "critical") ?? newAlerts[0];
+        const mostImportant =
+          newAlerts.find((a) => a.severity === "critical") ?? newAlerts[0];
+
         if (shouldSpeakAlert(mostImportant, proactiveVoiceMode)) {
-          voice.speak(`${mostImportant.title}. ${mostImportant.message}`, {
+          voice.speak(toSpeechText(`${mostImportant.title}. ${mostImportant.message}`), {
             language: locale,
           });
         }
       } catch {
-        // Observation is best-effort and must never break the host UI.
+        // Best-effort only: the host UI must remain usable.
       }
     });
 
@@ -148,7 +151,7 @@ export function FloatingDataVisionAssistant({
       setAttachments([]);
 
       if (response.speak !== false) {
-        voice.speak(response.message, { language: locale });
+        voice.speak(toSpeechText(response.message), { language: locale });
       }
     } catch (error) {
       setMessages((prev) => [
@@ -177,7 +180,7 @@ export function FloatingDataVisionAssistant({
         {
           id: crypto.randomUUID(),
           role: "system",
-          text: "Le connecteur d'upload doit être raccordé à l'endpoint de fichiers existant de DataVision.",
+          text: "Le connecteur d'upload DataVision n'est pas disponible.",
         },
       ]);
       return;
@@ -216,17 +219,18 @@ export function FloatingDataVisionAssistant({
         {
           id: crypto.randomUUID(),
           role: "system",
-          text:
-            "Cette action doit être raccordée au moteur d'actions gouverné de DataVision.",
+          text: "Cette action n'est pas raccordée au moteur gouverné.",
         },
       ]);
       return;
     }
 
-    const sensitive = action.risk === "destructive" || action.risk === "external";
+    const sensitive =
+      action.risk === "destructive" || action.risk === "external";
+
     if (sensitive) {
       const accepted = window.confirm(
-        `Confirmer l'action : ${action.label}\n\n${action.description ?? ""}`,
+        `DataVision demande votre confirmation.\n\n${action.label}\n\n${action.description ?? ""}\n\nL'action sera contrôlée à nouveau côté serveur avant exécution.`,
       );
       if (!accepted) return;
     }
@@ -245,71 +249,102 @@ export function FloatingDataVisionAssistant({
           metadata: response.metadata,
         },
       ]);
+
       if (response.speak !== false) {
-        voice.speak(response.message, { language: locale });
+        voice.speak(toSpeechText(response.message), { language: locale });
       }
+    } catch (error) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "system",
+          text:
+            error instanceof Error
+              ? error.message
+              : "L'action DataVision AI a échoué.",
+        },
+      ]);
     } finally {
       setBusy(false);
     }
   }
 
   function toggleListening() {
-    if (voiceState === "listening" || voiceState === "requesting_permission") {
+    if (
+      voiceState === "listening" ||
+      voiceState === "requesting_permission"
+    ) {
       voice.stopListening();
       return;
     }
+
     voice.listen({ continuous: continuousVoice });
   }
 
+  const hasCriticalAlert = alerts.some(
+    (alert) => alert.severity === "critical",
+  );
+
   return (
-    <>
+    <div className={styles.portal} data-datavis-assistant="mounted">
       <button
         type="button"
-        aria-label="Ouvrir DataVision AI"
+        aria-label={open ? "Fermer DataVision AI" : "Ouvrir DataVision AI"}
+        aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="fixed bottom-6 right-6 z-[100] flex h-14 w-14 items-center justify-center rounded-full bg-slate-950 text-white shadow-2xl ring-1 ring-white/10 transition hover:scale-105"
+        className={`${styles.launcher} ${open ? styles.launcherOpen : ""}`}
       >
-        <span className="text-lg font-semibold">AI</span>
-        {alerts.some((a) => a.severity === "critical") && (
-          <span className="absolute -right-1 -top-1 h-4 w-4 rounded-full bg-red-500 ring-2 ring-white" />
-        )}
+        <span className={styles.launcherMark}>DV</span>
+        <span className={styles.launcherText}>AI</span>
+        {hasCriticalAlert && <span className={styles.criticalDot} />}
       </button>
 
       {open && (
-        <section className="fixed bottom-24 right-6 z-[99] flex h-[min(720px,78vh)] w-[min(440px,calc(100vw-2rem))] flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl">
-          <header className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
-            <div>
-              <div className="font-semibold text-slate-950">DataVision AI</div>
-              <div className="text-xs text-slate-500">
-                {statusLabel(voiceState, busy)}
+        <section
+          className={styles.panel}
+          role="dialog"
+          aria-label="Assistant DataVision AI"
+        >
+          <header className={styles.header}>
+            <div className={styles.headerIdentity}>
+              <div className={styles.logo}>DV</div>
+              <div>
+                <div className={styles.title}>DataVision AI</div>
+                <div className={styles.status}>
+                  {statusLabel(voiceState, busy)}
+                </div>
               </div>
             </div>
+
             <button
               type="button"
               onClick={() => {
                 voice.stopSpeaking();
                 setOpen(false);
               }}
-              className="rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100"
+              className={styles.closeButton}
+              aria-label="Fermer"
             >
-              ✕
+              ×
             </button>
           </header>
 
           {alerts.length > 0 && (
-            <div className="max-h-36 space-y-2 overflow-y-auto border-b border-slate-200 bg-slate-50 p-3">
+            <div className={styles.alerts}>
               {alerts.map((alert) => (
-                <div key={alert.id} className="rounded-xl border bg-white p-3">
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                <div key={alert.id} className={styles.alertCard}>
+                  <div className={styles.alertSeverity}>
                     {alert.severity}
                   </div>
-                  <div className="mt-1 text-sm font-semibold">{alert.title}</div>
-                  <div className="mt-1 text-sm text-slate-600">{alert.message}</div>
+                  <div className={styles.alertTitle}>{alert.title}</div>
+                  <div className={styles.alertMessage}>{alert.message}</div>
+
                   {alert.action && (
                     <button
                       type="button"
                       onClick={() => void executeAction(alert.action!)}
-                      className="mt-2 rounded-lg bg-slate-950 px-3 py-1.5 text-xs font-medium text-white"
+                      className={styles.darkButton}
                     >
                       {alert.actionLabel ?? alert.action.label}
                     </button>
@@ -319,50 +354,57 @@ export function FloatingDataVisionAssistant({
             </div>
           )}
 
-          <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto p-4">
+          <div ref={scrollRef} className={styles.messages}>
             {messages.map((message) => (
               <div
                 key={message.id}
                 className={
                   message.role === "user"
-                    ? "ml-auto max-w-[88%] rounded-2xl rounded-br-md bg-slate-950 px-3 py-2 text-sm text-white"
+                    ? `${styles.message} ${styles.userMessage}`
                     : message.role === "system"
-                      ? "max-w-[92%] rounded-2xl bg-amber-50 px-3 py-2 text-sm text-amber-900"
-                      : "max-w-[92%] rounded-2xl rounded-bl-md bg-slate-100 px-3 py-2 text-sm text-slate-900"
+                      ? `${styles.message} ${styles.systemMessage}`
+                      : `${styles.message} ${styles.assistantMessage}`
                 }
               >
-                <div className="whitespace-pre-wrap">{message.text}</div>
-                {Array.isArray(message.metadata?.steps) && (
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-white/70 p-2">
-                    <div className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                      Plan DataVision
-                    </div>
-                    <div className="space-y-1">
-                      {(message.metadata.steps as Array<any>).map((step) => (
-                        <div key={step.id} className="flex items-center gap-2 text-xs">
-                          <span>{stepStatusIcon(step.status)}</span>
-                          <span className="min-w-0 flex-1 truncate">{step.label}</span>
-                          <span className="text-[10px] text-slate-400">{step.status}</span>
+                <div className={styles.messageText}>{message.text}</div>
+
+                {getPlanSteps(message.metadata).length > 0 && (
+                  <div className={styles.plan}>
+                    <div className={styles.planTitle}>Plan DataVision</div>
+                    <div className={styles.planSteps}>
+                      {getPlanSteps(message.metadata).map((step) => (
+                        <div key={step.id} className={styles.planStep}>
+                          <span className={styles.planIcon}>
+                            {stepStatusIcon(step.status)}
+                          </span>
+                          <span className={styles.planLabel}>
+                            {step.label}
+                          </span>
+                          <span className={styles.planStatus}>
+                            {step.status}
+                          </span>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
+
                 {!!message.attachments?.length && (
-                  <div className="mt-2 space-y-1 text-xs opacity-80">
+                  <div className={styles.messageAttachments}>
                     {message.attachments.map((file) => (
                       <div key={file.id}>📎 {file.name}</div>
                     ))}
                   </div>
                 )}
+
                 {!!message.actions?.length && (
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className={styles.actionRow}>
                     {message.actions.map((action) => (
                       <button
                         key={action.id}
                         type="button"
                         onClick={() => void executeAction(action)}
-                        className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-900"
+                        className={styles.actionButton}
                       >
                         {action.label}
                       </button>
@@ -371,29 +413,27 @@ export function FloatingDataVisionAssistant({
                 )}
               </div>
             ))}
+
             {busy && (
-              <div className="max-w-[92%] rounded-2xl bg-slate-100 px-3 py-2 text-sm text-slate-600">
+              <div className={`${styles.message} ${styles.assistantMessage}`}>
                 Analyse en cours…
               </div>
             )}
           </div>
 
           {!!attachments.length && (
-            <div className="flex gap-2 overflow-x-auto border-t border-slate-200 px-3 py-2">
+            <div className={styles.pendingAttachments}>
               {attachments.map((file) => (
-                <div
-                  key={file.id}
-                  className="whitespace-nowrap rounded-full bg-slate-100 px-3 py-1 text-xs"
-                >
+                <div key={file.id} className={styles.attachmentChip}>
                   📎 {file.name}
                 </div>
               ))}
             </div>
           )}
 
-          <div className="border-t border-slate-200 p-3">
-            <div className="mb-2 flex items-center justify-between text-xs text-slate-500">
-              <label className="flex items-center gap-2">
+          <footer className={styles.footer}>
+            <div className={styles.voiceOptions}>
+              <label className={styles.checkboxLabel}>
                 <input
                   type="checkbox"
                   checked={continuousVoice}
@@ -405,24 +445,27 @@ export function FloatingDataVisionAssistant({
                 />
                 Conversation continue
               </label>
+
               <button
                 type="button"
                 onClick={() => voice.stopSpeaking()}
-                className="hover:text-slate-950"
+                className={styles.textButton}
               >
                 Arrêter la voix
               </button>
             </div>
 
-            <div className="flex items-end gap-2">
-              <label className="flex h-10 w-10 cursor-pointer items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50">
+            <div className={styles.composer}>
+              <label className={styles.iconButton} title="Ajouter un fichier">
                 📎
                 <input
                   type="file"
                   multiple
-                  className="hidden"
+                  className={styles.hiddenInput}
                   onChange={(event) => {
-                    if (event.target.files) void handleFiles(event.target.files);
+                    if (event.target.files) {
+                      void handleFiles(event.target.files);
+                    }
                     event.target.value = "";
                   }}
                 />
@@ -431,11 +474,9 @@ export function FloatingDataVisionAssistant({
               <button
                 type="button"
                 onClick={toggleListening}
-                className={
-                  voiceState === "listening"
-                    ? "flex h-10 w-10 items-center justify-center rounded-xl bg-red-500 text-white"
-                    : "flex h-10 w-10 items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50"
-                }
+                className={`${styles.iconButton} ${
+                  voiceState === "listening" ? styles.listening : ""
+                }`}
                 title="Parler à DataVision AI"
               >
                 🎙️
@@ -452,27 +493,29 @@ export function FloatingDataVisionAssistant({
                 }}
                 placeholder="Écrivez ou parlez à DataVision AI…"
                 rows={1}
-                className="max-h-28 min-h-10 flex-1 resize-none rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none focus:border-slate-400"
+                className={styles.textarea}
               />
 
               <button
                 type="button"
                 disabled={busy || !input.trim()}
                 onClick={() => void sendMessage()}
-                className="h-10 rounded-xl bg-slate-950 px-3 text-sm font-medium text-white disabled:opacity-40"
+                className={styles.sendButton}
               >
                 Envoyer
               </button>
             </div>
 
-            <div className="mt-2 truncate text-[11px] text-slate-400">
+            <div className={styles.contextLine}>
               Contexte : {context.screen ?? context.route ?? "application"}
-              {context.activeDatasetId ? ` · dataset ${context.activeDatasetId}` : ""}
+              {context.activeDatasetId
+                ? ` · dataset ${context.activeDatasetId}`
+                : ""}
             </div>
-          </div>
+          </footer>
         </section>
       )}
-    </>
+    </div>
   );
 }
 
@@ -480,21 +523,32 @@ function statusLabel(voiceState: VoiceState, busy: boolean) {
   if (busy) return "Analyse…";
   if (voiceState === "listening") return "Écoute…";
   if (voiceState === "speaking") return "Parle…";
-  if (voiceState === "requesting_permission") return "Autorisation microphone…";
-  if (voiceState === "unsupported") return "Voix navigateur non disponible";
+  if (voiceState === "requesting_permission") {
+    return "Autorisation microphone…";
+  }
+  if (voiceState === "unsupported") {
+    return "Voix navigateur non disponible";
+  }
   if (voiceState === "error") return "Erreur vocale";
   return "Prêt";
 }
 
-function shouldSpeakAlert(alert: ProactiveAlert, mode: ProactiveVoiceMode) {
+function shouldSpeakAlert(
+  alert: ProactiveAlert,
+  mode: ProactiveVoiceMode,
+) {
   if (mode === "off") return false;
-  if (mode === "critical_only") return alert.severity === "critical";
+  if (mode === "critical_only") {
+    return alert.severity === "critical";
+  }
   if (mode === "important") {
-    return alert.severity === "critical" || alert.severity === "warning";
+    return (
+      alert.severity === "critical" ||
+      alert.severity === "warning"
+    );
   }
   return alert.speak;
 }
-
 
 function stepStatusIcon(status: string) {
   if (status === "succeeded") return "✓";
@@ -503,4 +557,27 @@ function stepStatusIcon(status: string) {
   if (status === "running") return "…";
   if (status === "skipped") return "–";
   return "○";
+}
+
+type PlanStepView = {
+  id: string;
+  label: string;
+  status: string;
+};
+
+function getPlanSteps(
+  metadata?: Record<string, unknown>,
+): PlanStepView[] {
+  const steps = metadata?.steps;
+  if (!Array.isArray(steps)) return [];
+
+  return steps.filter((step): step is PlanStepView => {
+    if (!step || typeof step !== "object") return false;
+    const value = step as Record<string, unknown>;
+    return (
+      typeof value.id === "string" &&
+      typeof value.label === "string" &&
+      typeof value.status === "string"
+    );
+  });
 }

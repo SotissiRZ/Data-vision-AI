@@ -1,3 +1,4 @@
+import { assistantAuthHeaders } from "./request-auth";
 import type { AssistantContextSnapshot } from "./event-bus";
 
 export type AgentIntent = {
@@ -74,7 +75,7 @@ export async function runAssistantTurn(input: {
     {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: assistantAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         session_id: input.sessionId,
         message: input.message,
@@ -100,7 +101,7 @@ export async function continueAssistantTurn(input: {
     {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: assistantAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         confirmed_action_run_id: input.confirmedActionRunId,
       }),
@@ -120,7 +121,7 @@ export async function cancelAssistantTurn(input: {
     {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: assistantAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ reason: input.reason }),
     },
   );

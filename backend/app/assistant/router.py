@@ -8,7 +8,7 @@ from fastapi.responses import StreamingResponse
 from .activity import ActivityMonitor, alerts_from_activity
 from .contracts import tool_json_schema, validate_tool_arguments
 from .action_runs import ActionLifecycleManager, ActionRunStore
-from .executor import AllowAllDevelopmentAuthorization, GovernedToolExecutor
+from .executor import GovernedToolExecutor
 from .context_store import InMemoryAssistantContextStore
 from .models import (
     ActionCheckRequest,
@@ -35,15 +35,35 @@ from .proactive import evaluate_proactive_event
 from .realtime import AssistantRealtimeHub, RealtimeMessage
 from .runtime import build_orchestrator
 from .turn_runs import AgentTurnRunStore
+from .model_gateway_config import build_model_gateway_from_env
+from .model_gateway import RoutingPolicy, NoEligibleProvider, ModelRequest
+from .planner_config import build_planner_from_env
+from .settings_planner import SettingsAwarePlanner
 from .tools import build_default_registry
 from .workflows import list_workflows
+from .host_v212 import V212HostAuthorization, bind_v212_host
+from app.services.tenant_access import current_access_context
+from .ai_settings import (
+    AssistantAISettings,
+    ProviderProfileInput,
+    delete_provider_profile,
+    get_ai_settings,
+    list_provider_profiles,
+    monthly_usage,
+    route_preview,
+    save_ai_settings,
+    save_provider_profile,
+    scope_from_access,
+    test_provider_connection,
+)
 
 router = APIRouter(prefix="/ai/assistant", tags=["assistant-v2.13"])
 store = InMemoryAssistantContextStore()
 tool_registry = build_default_registry()
 activity_monitors: dict[str, ActivityMonitor] = defaultdict(ActivityMonitor)
 
-authorization = AllowAllDevelopmentAuthorization()
+bind_v212_host(tool_registry)
+authorization = V212HostAuthorization()
 tool_executor = GovernedToolExecutor(tool_registry, authorization)
 action_run_store = ActionRunStore()
 action_lifecycle = ActionLifecycleManager(
@@ -51,12 +71,18 @@ action_lifecycle = ActionLifecycleManager(
     store=action_run_store,
 )
 realtime_hub = AssistantRealtimeHub()
+model_gateway = build_model_gateway_from_env()
 turn_run_store = AgentTurnRunStore()
+# v2.16: settings are resolved per local/workspace context at runtime.
+# No server restart is required after changing Model Gateway settings.
+configured_planner = SettingsAwarePlanner(tool_registry)
+
 agent_orchestrator = build_orchestrator(
     registry=tool_registry,
     authorization=authorization,
     action_lifecycle=action_lifecycle,
     turn_store=turn_run_store,
+    planner=configured_planner,
 )
 
 
@@ -65,7 +91,7 @@ def assistant_health():
     return {
         "status": "ok",
         "component": "conversational_voice_agent",
-        "version": "2.13.1",
+        "version": "2.17.0",
         "tool_count": len(tool_registry.list()),
     }
 
@@ -105,10 +131,7 @@ def observe(request: ObserveRequest):
             alerts.append(alert)
             seen.add(signature)
 
-
-# Realtime delivery is handled separately by the host/event loop in production.
-# The synchronous observe endpoint still returns all alerts immediately.
-return ObserveResponse(alerts=alerts)
+    return ObserveResponse(alerts=alerts)
 
 
 @router.post("/activity/check", response_model=ActivityObservationResponse)
@@ -152,7 +175,7 @@ def validate_plan(request: AgentPlanValidationRequest):
         steps=request.steps,
         context=request.context,
         registry=tool_registry,
-        authorization=AllowAllDevelopmentAuthorization(),
+        authorization=authorization,
     )
 
 
@@ -249,7 +272,16 @@ async def mark_action_rolled_back(run_id: str, request: ActionRunRollbackRequest
 
 @router.get("/events")
 def assistant_event_stream(workspace_id: str | None = None):
-    channel = workspace_id or "__anonymous__"
+    if workspace_id:
+        access = current_access_context()
+        if access is None or str(access.workspace_id) != str(workspace_id):
+            raise HTTPException(
+                status_code=403,
+                detail="Flux realtime workspace non autorisé.",
+            )
+        channel = workspace_id
+    else:
+        channel = "__anonymous__"
     return StreamingResponse(
         realtime_hub.subscribe(channel),
         media_type="text/event-stream",
@@ -353,3 +385,224 @@ async def cancel_agent_turn(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
     return response
+
+
+@router.get("/models/providers")
+def list_model_providers():
+    providers = []
+    for provider in model_gateway.registry.list():
+        d = provider.descriptor
+        providers.append(
+            {
+                "id": d.id,
+                "kind": d.kind,
+                "model": d.model,
+                "enabled": d.enabled,
+                "priority": d.priority,
+                "capabilities": {
+                    "structured_output": d.capabilities.structured_output,
+                    "tools": d.capabilities.tools,
+                    "streaming": d.capabilities.streaming,
+                    "max_context_tokens": d.capabilities.max_context_tokens,
+                },
+            }
+        )
+    return {
+        "providers": providers,
+        "planner": agent_orchestrator.planner.__class__.__name__,
+    }
+
+
+@router.post("/models/route")
+def preview_model_route(payload: dict):
+    policy = RoutingPolicy(
+        privacy_mode=payload.get("privacy_mode", "local_only"),
+        allow_external_ai=bool(payload.get("allow_external_ai", False)),
+        require_structured_output=bool(
+            payload.get("require_structured_output", True)
+        ),
+        preferred_provider_id=payload.get("preferred_provider_id"),
+    )
+
+    req = ModelRequest(
+        task=payload.get("task", "planner"),
+        system="",
+        user="",
+        response_schema=(
+            {"type": "object"}
+            if policy.require_structured_output
+            else None
+        ),
+    )
+
+    try:
+        provider = model_gateway.select_provider(
+            request=req,
+            policy=policy,
+        )
+    except NoEligibleProvider as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    return {
+        "provider_id": provider.descriptor.id,
+        "kind": provider.descriptor.kind,
+        "model": provider.descriptor.model,
+    }
+
+
+def _assistant_settings_scope(require_manage: bool = True):
+    try:
+        return scope_from_access(require_manage=require_manage)
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get("/settings")
+def get_assistant_ai_settings():
+    scope_type, scope_id, _actor = _assistant_settings_scope(True)
+    settings = get_ai_settings(scope_type, scope_id)
+    providers = list_provider_profiles(scope_type, scope_id)
+    return {
+        "scope": {"type": scope_type, "id": scope_id},
+        "settings": settings.model_dump(mode="json"),
+        "providers": [p.model_dump(mode="json") for p in providers],
+        "usage": monthly_usage(scope_type, scope_id),
+        "routes": {
+            task: route_preview(scope_type, scope_id, task=task)
+            for task in ["planner", "explanation", "critic", "summarization"]
+        },
+        "runtime": {
+            "planner": agent_orchestrator.planner.__class__.__name__,
+            "settings_live_reload": True,
+        },
+    }
+
+
+@router.put("/settings")
+def update_assistant_ai_settings(payload: AssistantAISettings):
+    scope_type, scope_id, actor_id = _assistant_settings_scope(True)
+    provider_ids = {
+        p.id for p in list_provider_profiles(scope_type, scope_id)
+    }
+
+    unknown_routes = [
+        provider_id
+        for provider_id in payload.task_routes.values()
+        if provider_id and provider_id not in provider_ids
+    ]
+    unknown_fallbacks = [
+        provider_id
+        for provider_id in payload.fallback_order
+        if provider_id not in provider_ids
+    ]
+    if unknown_routes or unknown_fallbacks:
+        raise HTTPException(
+            status_code=422,
+            detail="Les routes/fallbacks doivent référencer des providers du contexte actif.",
+        )
+
+    saved = save_ai_settings(
+        scope_type,
+        scope_id,
+        payload,
+        actor_id=actor_id,
+    )
+    return {
+        "scope": {"type": scope_type, "id": scope_id},
+        "settings": saved.model_dump(mode="json"),
+        "routes": {
+            task: route_preview(scope_type, scope_id, task=task)
+            for task in ["planner", "explanation", "critic", "summarization"]
+        },
+    }
+
+
+@router.post("/settings/providers")
+def create_assistant_model_provider(payload: ProviderProfileInput):
+    scope_type, scope_id, actor_id = _assistant_settings_scope(True)
+    try:
+        profile = save_provider_profile(
+            scope_type,
+            scope_id,
+            payload,
+            actor_id=actor_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return profile.model_dump(mode="json")
+
+
+@router.put("/settings/providers/{provider_id}")
+def update_assistant_model_provider(
+    provider_id: str,
+    payload: ProviderProfileInput,
+):
+    scope_type, scope_id, actor_id = _assistant_settings_scope(True)
+    try:
+        profile = save_provider_profile(
+            scope_type,
+            scope_id,
+            payload,
+            actor_id=actor_id,
+            provider_id=provider_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return profile.model_dump(mode="json")
+
+
+@router.delete("/settings/providers/{provider_id}")
+def remove_assistant_model_provider(provider_id: str):
+    scope_type, scope_id, actor_id = _assistant_settings_scope(True)
+    try:
+        delete_provider_profile(
+            scope_type,
+            scope_id,
+            provider_id,
+            actor_id=actor_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    settings = get_ai_settings(scope_type, scope_id)
+    settings.task_routes = {
+        task: (None if value == provider_id else value)
+        for task, value in settings.task_routes.items()
+    }
+    settings.fallback_order = [
+        value for value in settings.fallback_order
+        if value != provider_id
+    ]
+    save_ai_settings(
+        scope_type,
+        scope_id,
+        settings,
+        actor_id=actor_id,
+    )
+    return {"ok": True, "provider_id": provider_id}
+
+
+@router.post("/settings/providers/{provider_id}/test")
+def test_assistant_model_provider(provider_id: str):
+    scope_type, scope_id, actor_id = _assistant_settings_scope(True)
+    try:
+        return test_provider_connection(
+            scope_type,
+            scope_id,
+            provider_id,
+            actor_id=actor_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/settings/route/{task}")
+def preview_assistant_task_route(task: str):
+    if task not in {"planner", "explanation", "critic", "summarization"}:
+        raise HTTPException(status_code=404, detail="Tâche IA inconnue.")
+    scope_type, scope_id, _actor_id = _assistant_settings_scope(True)
+    return route_preview(scope_type, scope_id, task=task)

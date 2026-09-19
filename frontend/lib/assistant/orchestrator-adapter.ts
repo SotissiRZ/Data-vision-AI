@@ -5,6 +5,7 @@ import type {
   AssistantAttachment,
 } from "./adapter";
 import type { AssistantContextSnapshot } from "./event-bus";
+import { assistantAuthHeaders } from "./request-auth";
 import {
   continueAssistantTurn,
   runAssistantTurn,
@@ -101,7 +102,7 @@ export function createOrchestratorAssistantAdapter(options: {
       const response = await fetch(`${base}${observePath}`, {
         method: "POST",
         credentials: "include",
-        headers: { "Content-Type": "application/json" },
+        headers: assistantAuthHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(input),
       });
       const raw = await jsonOrThrow(response);
@@ -123,13 +124,18 @@ export function createOrchestratorAssistantAdapter(options: {
         const response = await fetch(`${base}${options.uploadPath}`, {
           method: "POST",
           credentials: "include",
+          headers: assistantAuthHeaders(),
           body: form,
         });
         const raw = await jsonOrThrow(response);
         uploaded.push({
-          id: raw?.id ?? raw?.file_id ?? raw?.dataset_id,
-          name: raw?.name ?? file.name,
-          mimeType: raw?.mime_type ?? file.type,
+          id:
+            raw?.id ??
+            raw?.file_id ??
+            raw?.dataset_id ??
+            raw?.dataset?.id,
+          name: raw?.name ?? raw?.dataset?.name ?? file.name,
+          mimeType: raw?.mime_type ?? raw?.dataset?.format ?? file.type,
           size: raw?.size ?? file.size,
         });
       }

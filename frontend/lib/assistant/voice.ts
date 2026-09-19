@@ -154,7 +154,7 @@ export class BrowserVoiceController {
 
     this.stopSpeaking();
 
-    const utterance = new SpeechSynthesisUtterance(text);
+    const utterance = new SpeechSynthesisUtterance(sanitizeSpeechText(text));
     utterance.lang = options?.language ?? this.language;
     utterance.rate = options?.rate ?? 1;
     utterance.pitch = options?.pitch ?? 1;
@@ -177,4 +177,12 @@ export class BrowserVoiceController {
     this.stopSpeaking();
     this.recognition = null;
   }
+}
+
+
+function sanitizeSpeechText(text: string): string {
+  return text
+    .replace(/\(s\)|\(e\)|\(es\)|\(x\)/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }

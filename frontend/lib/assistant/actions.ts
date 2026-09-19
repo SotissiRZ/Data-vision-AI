@@ -1,3 +1,4 @@
+import { assistantAuthHeaders } from "./request-auth";
 import type { AssistantActionProposal } from "./adapter";
 import type { AssistantContextSnapshot } from "./event-bus";
 
@@ -39,7 +40,7 @@ export async function proposeAssistantAction(input: {
   const response = await fetch(`${base}/ai/assistant/actions`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: assistantAuthHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({
       action: input.action,
       context: input.context,
@@ -60,7 +61,7 @@ export async function confirmAssistantAction(input: {
     {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: assistantAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ confirmed: input.confirmed }),
     },
   );

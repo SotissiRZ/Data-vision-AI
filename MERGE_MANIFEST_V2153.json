@@ -1,0 +1,36 @@
+{
+  "product": "DataVision AI",
+  "version": "2.15.3",
+  "base_version": "2.12.0",
+  "release_type": "complete cumulative merged project",
+  "base_files": 109,
+  "missing_base_files": [],
+  "changed_base_files": [
+    ".env.example",
+    "README.md",
+    "VERSION",
+    "backend/app/main.py",
+    "frontend/app/layout.tsx",
+    "frontend/app/page.tsx"
+  ],
+  "added_files_count": 181,
+  "intermediate_versions_included": [
+    "2.13.0",
+    "2.13.1",
+    "2.13.2",
+    "2.13.3",
+    "2.13.4",
+    "2.14.0",
+    "2.14.1",
+    "2.14.2",
+    "2.15.0",
+    "2.15.3"
+  ],
+  "validation": {
+    "python_ast": "OK",
+    "pytest": "121 passed",
+    "frontend_structural_typescript": "OK",
+    "host_bridge_smoke": "OK",
+    "next_full_build": "not run to completion: npm dependency installation unavailable in generation environment"
+  }
+}

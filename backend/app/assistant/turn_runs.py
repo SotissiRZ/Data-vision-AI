@@ -26,3 +26,24 @@ class AgentTurnRunStore:
         with self._lock:
             self._runs[run.id] = run
         return run.model_copy(deep=True)
+
+    def latest_for_session(
+        self,
+        session_id: str,
+        *,
+        statuses: set[str] | None = None,
+    ) -> AgentTurnRun | None:
+        with self._lock:
+            items = [
+                run
+                for run in self._runs.values()
+                if run.session_id == session_id
+                and (statuses is None or run.status in statuses)
+            ]
+            if not items:
+                return None
+            items.sort(
+                key=lambda run: (run.updated_at, run.created_at),
+                reverse=True,
+            )
+            return items[0].model_copy(deep=True)

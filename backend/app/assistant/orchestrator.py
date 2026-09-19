@@ -5,6 +5,10 @@ from datetime import datetime, timezone
 
 from .action_runs import ActionLifecycleManager
 from .critic import DeterministicCritic
+from .conversation import ConversationalResponder
+from .result_composer import compose_run_results, compact_results
+from .settings_intent import SettingsAwareIntentResolver
+from .grounded_conversation import SettingsAwareConversationEngine
 from .intent import resolve_intent
 from .memory import SessionMemoryStore
 from .models import (
@@ -39,17 +43,67 @@ class AgentOrchestrator:
         self.memory.get_or_create(request.session_id, request.context.workspaceId)
         self.memory.set_objective(request.session_id, request.message)
 
+        original_intent = intent
+        if intent.name == "unknown":
+            intent = SettingsAwareIntentResolver().resolve(
+                message=request.message,
+                context=request.context,
+                current=intent,
+            )
+
+        # Deterministic conversational answers remain first choice for results,
+        # capabilities and simple greetings.
+        conversational = ConversationalResponder(self.turn_store).respond(
+            session_id=request.session_id,
+            message=request.message,
+            intent=intent,
+            context=request.context,
+        )
+
+        # If hybrid NLU reclassified an otherwise unknown request as a
+        # conversation, ask the configured explanation model to answer using
+        # only governed semantic context + deterministic prior results.
+        if (
+            original_intent.name == "unknown"
+            and intent.name == "conversation"
+        ):
+            grounded = SettingsAwareConversationEngine(
+                self.turn_store
+            ).answer(
+                session_id=request.session_id,
+                message=request.message,
+                context=request.context,
+            )
+            if grounded:
+                return AgentTurnResponse(
+                    session_id=request.session_id,
+                    intent=intent,
+                    message=grounded,
+                    speak=True,
+                    status="completed",
+                    steps=[],
+                    metadata={
+                        "conversation_only": True,
+                        "grounded_model_answer": True,
+                    },
+                )
+
+        if conversational is not None:
+            return conversational
+
         if intent.name == "unknown":
             return AgentTurnResponse(
                 session_id=request.session_id,
                 intent=intent,
                 message=(
-                    "Je n'ai pas suffisamment de contexte pour choisir une action sûre. "
-                    "Sélectionnez un dataset, un modèle ou un objet, ou précisez l'objectif."
+                    "Je ne veux pas interpréter votre question comme une analyse par défaut. "
+                    "Précisez ce que vous voulez savoir ou faire. "
+                    "Par exemple : « analyse ce dataset », « montre les résultats », "
+                    "« compare ces deux groupes » ou « crée un graphique de cette variable »."
                 ),
                 speak=True,
                 status="needs_clarification",
-                metadata={},
+                metadata={"safe_fallback": True},
             )
 
         plan = self.planner.plan(
@@ -322,7 +376,12 @@ class AgentOrchestrator:
 
         if run.current_step_index >= len(run.steps):
             run.status = "completed"
-            run.final_message = self._success_message(run.intent.name, run.steps)
+            run.final_message = compose_run_results(run)
+            self.memory.remember_fact(
+                run.session_id,
+                "last_results",
+                compact_results(run),
+            )
         elif run.status == "failed":
             run.final_message = self._failure_message(run.steps)
 
@@ -401,7 +460,9 @@ class AgentOrchestrator:
     @staticmethod
     def _success_message(intent_name: str, steps: list[AgentTurnStep]) -> str:
         completed = sum(1 for step in steps if step.status == "succeeded")
-        return f"Analyse terminée. {completed} étape(s) exécutée(s) et validée(s)."
+        if completed == 1:
+            return "Analyse terminée. 1 étape exécutée et validée."
+        return f"Analyse terminée. {completed} étapes exécutées et validées."
 
     @staticmethod
     def _failure_message(steps: list[AgentTurnStep]) -> str:

@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.routes.datasets import router as datasets_router
 from app.api.routes.enterprise import router as enterprise_router
+from app.assistant.router import router as assistant_router
 from app.core.config import get_settings
 from app.services.auth_service import has_permission
 from app.services.tenant_access import (
@@ -18,7 +19,7 @@ from app.services.tenant_access import (
 )
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="2.12.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.17.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -173,9 +174,38 @@ async def tenant_aware_data_access(request: Request, call_next):
             reset_access_context(token)
 
 
+@app.middleware("http")
+async def assistant_tenant_access(request: Request, call_next):
+    """Propagate the existing v2.12 Enterprise auth context into assistant tools."""
+    path = request.url.path
+    if request.method.upper() == "OPTIONS" or not path.startswith("/api/v1/ai/assistant"):
+        return await call_next(request)
+
+    workspace_id = request.headers.get("x-workspace-id")
+    authorization = request.headers.get("authorization")
+    token = None
+    try:
+        ctx = build_access_context(authorization, workspace_id)
+        token = set_access_context(ctx)
+        return await call_next(request)
+    except PermissionError as exc:
+        return JSONResponse(
+            status_code=403,
+            content={"detail": str(exc), "security_boundary": "assistant-tenant-access"},
+        )
+    except ValueError as exc:
+        return JSONResponse(
+            status_code=401,
+            content={"detail": str(exc), "security_boundary": "assistant-tenant-access"},
+        )
+    finally:
+        if token is not None:
+            reset_access_context(token)
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": settings.app_name, "version": "2.12.0"}
+    return {"status": "ok", "product": settings.app_name, "version": "2.17.0"}
 
 
 @app.get("/api/v1/capabilities")
@@ -220,10 +250,14 @@ def capabilities():
             "persistent_auth_sessions", "rotating_refresh_tokens", "server_side_session_revocation",
             "oidc_sso", "oidc_authorization_code_pkce", "oidc_rs256_validation", "oidc_jit_provisioning",
             "versioned_secret_vault", "environment_secret_references", "hashicorp_vault_kv2_references",
+            "floating_voice_assistant", "semantic_context_engine", "assistant_tool_registry",
+            "assistant_action_lifecycle", "assistant_plan_validation", "assistant_turn_resume",
+            "assistant_model_gateway", "assistant_privacy_routing",
         ],
         "partial": [
             "scheduled_proactive_scans", "shap", "fairness", "nlq", "running_job_preemptive_cancellation",
             "model_artifact_policy_snapshot", "database_native_rls", "provider_token_cost_instrumentation", "external_kms_key_management",
+            "assistant_gis_execution", "assistant_pptx_export", "assistant_shap_provider",
         ],
         "planned": [
             "multi_agent", "r_workspace", "kubernetes_enterprise", "scim_provisioning",
@@ -233,3 +267,5 @@ def capabilities():
 
 app.include_router(datasets_router, prefix="/api/v1")
 app.include_router(enterprise_router, prefix="/api/v1")
+
+app.include_router(assistant_router, prefix="/api/v1")

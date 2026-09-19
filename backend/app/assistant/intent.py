@@ -15,6 +15,32 @@ class IntentRule:
 
 RULES: tuple[IntentRule, ...] = (
     IntentRule(
+        "show_results",
+        (
+            r"\bo[uù]\s+sont\s+(?:les\s+)?r[eé]sultats?\b",
+            r"\bmontre(?:-moi)?\s+(?:les\s+)?r[eé]sultats?\b",
+            r"\bquels?\s+(?:sont\s+)?(?:les\s+)?r[eé]sultats?\b",
+            r"\bqu['’]as[- ]tu\s+trouv[eé]\b",
+            r"\bqu['’]est[- ]ce\s+que\s+tu\s+as\s+trouv[eé]\b",
+            r"\br[eé]sum[eé]\s+(?:les\s+)?r[eé]sultats?\b",
+            r"\br[eé]sultat\s+de\s+l['’]analyse\b",
+        ),
+        0.98,
+    ),
+    IntentRule(
+        "capabilities",
+        (
+            r"\bacc[eè]s\s+[aà]\s+internet\b",
+            r"\btu\s+as\s+internet\b",
+            r"\bpeux[- ]tu\s+(?:aller|chercher|naviguer)\s+(?:sur\s+)?internet\b",
+            r"\bpeux[- ]tu\s+chercher\s+sur\s+le\s+web\b",
+            r"\bque\s+peux[- ]tu\s+faire\b",
+            r"\bquelles?\s+sont\s+tes\s+capacit[eé]s\b",
+            r"\btes\s+capacit[eé]s\b",
+        ),
+        0.98,
+    ),
+    IntentRule(
         "predict_target",
         (
             r"\bpr[eé]di(?:re|ction|s)\b",
@@ -110,8 +136,19 @@ RULES: tuple[IntentRule, ...] = (
             r"\banalyser\b",
             r"\bexplore\b",
             r"\bcomprends?\b.*\bdonn",
+            r"\bprofil(?:e|er|age)\b.*\bdataset\b",
         ),
-        0.78,
+        0.82,
+    ),
+    IntentRule(
+        "conversation",
+        (
+            r"^(?:bonjour|bonsoir|salut|hello|hey)\b",
+            r"^(?:merci|merci beaucoup)\b",
+            r"\bqui\s+es[- ]tu\b",
+            r"\bcomment\s+[cç]a\s+va\b",
+        ),
+        0.95,
     ),
 )
 
@@ -123,11 +160,10 @@ def resolve_intent(message: str, context: AssistantContext) -> AgentIntent:
     for rule in RULES:
         for pattern in rule.patterns:
             if re.search(pattern, text, flags=re.IGNORECASE):
-                entities = _extract_entities(text, context)
                 candidate = AgentIntent(
                     name=rule.name,
                     confidence=rule.confidence,
-                    entities=entities,
+                    entities=_extract_entities(text, context),
                     rationale=f"Correspondance déterministe avec le motif: {pattern}",
                 )
                 if best is None or candidate.confidence > best.confidence:
@@ -137,19 +173,16 @@ def resolve_intent(message: str, context: AssistantContext) -> AgentIntent:
     if best is not None:
         return best
 
-    if context.activeDatasetId:
-        return AgentIntent(
-            name="analyze_dataset",
-            confidence=0.55,
-            entities=_extract_entities(text, context),
-            rationale="Fallback sur le dataset actif.",
-        )
-
+    # Critical v2.16.2 change:
+    # an active dataset is CONTEXT, not an instruction to analyze it.
     return AgentIntent(
         name="unknown",
-        confidence=0.25,
-        entities={},
-        rationale="Aucune intention fiable détectée.",
+        confidence=0.20,
+        entities=_extract_entities(text, context),
+        rationale=(
+            "Aucune intention fiable détectée. "
+            "Le dataset actif n'est plus utilisé comme fallback d'analyse."
+        ),
     )
 
 
@@ -185,5 +218,4 @@ def _extract_entities(text: str, context: AssistantContext) -> dict:
     elif re.search(r"\bclustering\b|\bsegmentation non supervis", text):
         entities["ml_task"] = "clustering"
 
-    # Conservative extraction: do not guess statistical columns from arbitrary nouns.
     return entities

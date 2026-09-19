@@ -1,0 +1,15 @@
+{
+  "version": "2.16.1",
+  "python_ast": "OK",
+  "pytest": "\u001b[33m\u001b[32m125 passed\u001b[0m, \u001b[33m\u001b[1m1 warning\u001b[0m\u001b[33m in 19.67s\u001b[0m\u001b[0m",
+  "checks": {
+    "singular_sentence": true,
+    "plural_sentence": true,
+    "tts_s_filter": true,
+    "tts_e_filter": true,
+    "component_sanitizes_response": true,
+    "component_sanitizes_alerts": true,
+    "voice_final_safety": true,
+    "no_assistant_shorthand": true
+  }
+}

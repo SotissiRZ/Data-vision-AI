@@ -1,0 +1,26 @@
+{
+  "version": "2.17.0",
+  "base": "2.16.2 cumulative",
+  "features": [
+    "AI Control Center",
+    "provider CRUD and connectivity test",
+    "privacy and budget policy",
+    "per-task routing and fallback",
+    "hybrid NLU fallback",
+    "grounded conversational explanation",
+    "dataset schema semantic context"
+  ],
+  "validation": {
+    "python_ast": "OK",
+    "pytest": "\u001b[32m\u001b[32m\u001b[1m140 passed\u001b[0m\u001b[32m in 19.14s\u001b[0m\u001b[0m",
+    "tsx_structural": "OK",
+    "checks": {
+      "ai_settings_view": true,
+      "control_center_rendered": true,
+      "gateway_ui": true,
+      "hybrid_nlu": true,
+      "closed_intent_list": true,
+      "dataset_schema_context": true
+    }
+  }
+}

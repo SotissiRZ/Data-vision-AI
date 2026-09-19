@@ -26,3 +26,10 @@ def test_root_uses_orchestrator_adapter():
         / "frontend/components/assistant/DataVisionAssistantRoot.tsx"
     ).read_text()
     assert "createOrchestratorAssistantAdapter" in text
+
+
+def test_model_gateway_frontend_contract_exists():
+    text = (ROOT / "frontend/lib/assistant/model-gateway.ts").read_text()
+    assert "local_only" in text
+    assert "allowExternalAi" in text
+    assert "previewAssistantModelRoute" in text

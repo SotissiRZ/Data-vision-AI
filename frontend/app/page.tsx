@@ -21,9 +21,11 @@ import {
   getOperationalOverview, getOperationalUsage, getOperationalTelemetry, getEvaluationSuites, createEvaluationSuite, getEvaluationSuite, addEvaluationCase, runEvaluationSuite, getEvaluationRun,
   getActionSummary, getActionDestinations, createActionDestination, deleteActionDestination, getActionRules, saveActionRule, deleteActionRule, dispatchActionEvent, getActionRuns, getActionRun, approveActionRun, rejectActionRun, replayActionRun, testActionDestination,
 } from '../lib/api';
+import { assistantEventBus } from '../lib/assistant/event-bus';
+import { AIProviderControlCenter } from '../components/assistant/AIProviderControlCenter';
 
 type AnyObj = Record<string, any>;
-type View = 'identity' | 'actions' | 'operations' | 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance';
+type View = 'identity' | 'actions' | 'operations' | 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance' | 'ai-settings';
 type AreaKey = 'overview'|'data'|'analyze'|'model'|'decide'|'publish'|'collaborate'|'governance';
 
 const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; views:View[] }[] = [
@@ -34,14 +36,14 @@ const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; vi
   {key:'decide',label:'Décider',icon:'✦',defaultView:'inbox',views:['inbox','ai','semantic','decision','actions','trust']},
   {key:'publish',label:'Publier',icon:'▧',defaultView:'dashboard',views:['dashboard','report']},
   {key:'collaborate',label:'Collaborer',icon:'◎',defaultView:'review',views:['review']},
-  {key:'governance',label:'Gouverner',icon:'⌾',defaultView:'reliability',views:['reliability','sources','operations','identity','governance']},
+  {key:'governance',label:'Gouverner',icon:'⌾',defaultView:'reliability',views:['reliability','sources','operations','identity','ai-settings','governance']},
 ];
 const viewLabels: Record<View,string> = {
   home:'Vue d’ensemble',data:'Aperçu des données',quality:'Qualité',prepare:'Préparation',stats:'Statistiques descriptives',
   visual:'Visualisation',tests:'Tests & corrélations',sql:'SQL',regression:'Régression',anova:'ANOVA',pca:'ACP',cluster:'Clustering',
-  model:'AutoML',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',actions:'Actions & Automation',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',reliability:'Fiabilité & Lineage',sources:'Sources & Refresh',operations:'Observabilité & Eval',identity:'Identité & Secrets',governance:'Gouvernance'
+  model:'AutoML',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',actions:'Actions & Automation',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',reliability:'Fiabilité & Lineage',sources:'Sources & Refresh',operations:'Observabilité & Eval',identity:'Identité & Secrets','ai-settings':'IA & Modèles',governance:'Gouvernance'
 };
-const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',actions:'⚡',trust:'✓',dashboard:'▦',report:'▧',review:'◎',reliability:'◫',sources:'↻',operations:'◉',identity:'◈',governance:'⌾'};
+const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',actions:'⚡',trust:'✓',dashboard:'▦',report:'▧',review:'◎',reliability:'◫',sources:'↻',operations:'◉',identity:'◈','ai-settings':'✦',governance:'⌾'};
 function areaForView(view:View){ return areaConfig.find(a=>a.views.includes(view)) ?? areaConfig[0]; }
 
 function formatNumber(value: unknown, digits = 3) {
@@ -146,6 +148,94 @@ export default function Home() {
     return () => { cancelled = true; };
   }, [result, selectedColumn, view]);
 
+
+  useEffect(() => {
+    assistantEventBus.setContext({
+      workspaceId: enterpriseBadge?.workspace?.id || undefined,
+      organizationId: enterpriseBadge?.workspace?.organization_id || undefined,
+      route: `/${view}`,
+      screen: view,
+      activeDatasetId: result?.dataset?.id || undefined,
+      activeDatasetVersionId:
+        result?.dataset?.version != null
+          ? String(result.dataset.version)
+          : undefined,
+      activeModelId: model?.model_id || undefined,
+      selectedEntity: selectedColumn
+        ? {
+            type: "column",
+            id: selectedColumn,
+            label: selectedColumn,
+          }
+        : null,
+      uiState: {
+        target,
+        algorithm,
+        busy,
+        training,
+        automlRunning,
+        predicting,
+        qualityScore: result?.quality?.score,
+        datasetSchema:
+          result?.profile?.columns?.map((column: AnyObj) => ({
+            name: column.name,
+            dtype: column.dtype,
+          })) ?? [],
+      },
+    });
+  }, [
+    view,
+    result?.dataset?.id,
+    result?.dataset?.version,
+    model?.model_id,
+    selectedColumn,
+    target,
+    algorithm,
+    busy,
+    training,
+    automlRunning,
+    predicting,
+    enterpriseBadge?.workspace?.id,
+    enterpriseBadge?.workspace?.organization_id,
+  ]);
+
+  useEffect(() => {
+    if (!result?.dataset?.id) return;
+    assistantEventBus.emit({
+      type: "dataset.loaded",
+      payload: {
+        datasetId: result.dataset.id,
+        version: result.dataset.version ?? 1,
+        rows: result.profile?.rows,
+        columns: result.profile?.columns_count,
+      },
+    });
+  }, [result?.dataset?.id, result?.dataset?.version]);
+
+  useEffect(() => {
+    if (!model?.model_id) return;
+    assistantEventBus.emit({
+      type: "ml.training.completed",
+      payload: {
+        modelId: model.model_id,
+        task: model.task,
+        algorithm: model.algorithm,
+      },
+    });
+  }, [model?.model_id]);
+
+  useEffect(() => {
+    if (!error) return;
+    assistantEventBus.emit({
+      type: "analysis.failed",
+      severity: "warning",
+      payload: {
+        screen: view,
+        message: error.slice(0, 1000),
+      },
+    });
+  }, [error, view]);
+
   async function doTrain() {
     if (!result || !target) return;
     setTraining(true); setError('');
@@ -230,6 +320,7 @@ export default function Home() {
         {view==='sources'&&<SourcesRefreshCenter setError={setError} setView={setView} onActivate={id=>activateDataset(id,'data')}/>}
         {view==='operations'&&<OperationalIntelligenceCenter result={result} setError={setError} setView={setView}/>}
         {view==='identity'&&<IdentitySecurityCenter setError={setError} setView={setView}/>}
+        {view==='ai-settings'&&<AIProviderControlCenter setError={setError}/>} 
         {view==='governance'&&<GovernanceCenter result={result} setError={setError}/>}  
       </section>
     </div>
@@ -462,7 +553,7 @@ function PrepareView({ result, setError, onTransformed, onActivate }: { result:A
 
     <div className="two-col">
       <Panel title="Combiner avec un autre dataset"><div className="analysis-config prep-config"><label>Dataset secondaire<select value={otherDataset} onChange={e=>setOtherDataset(e.target.value)}><option value="">— sélectionner —</option>{catalog.map((d:AnyObj)=><option value={d.id} key={d.id}>{d.source_name??d.name} · v{d.version}</option>)}</select></label><label>Opération<select value={combineType} onChange={e=>setCombineType(e.target.value)}><option value="merge">Jointure par clé</option><option value="concat_rows">Concaténer les lignes</option><option value="concat_columns">Concaténer les colonnes</option></select></label>{combineType==='merge'&&<><label>Clé gauche<select value={leftKey||columns[0]?.name||''} onChange={e=>setLeftKey(e.target.value)}>{columns.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><label>Clé droite<select value={rightKey} onChange={e=>setRightKey(e.target.value)}>{otherColumns.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><label>Type<select value={joinHow} onChange={e=>setJoinHow(e.target.value)}><option value="inner">Inner</option><option value="left">Left</option><option value="right">Right</option><option value="outer">Outer</option></select></label></>}<RunButton busy={busy} label="Combiner et versionner" busyLabel="Combinaison…" onClick={combine}/><small className="help-text">La provenance du dataset secondaire est enregistrée dans l’opération.</small></div></Panel>
-      <Panel title="Pipelines sauvegardés"><div className="pipeline-save"><input value={pipelineName} onChange={e=>setPipelineName(e.target.value)} placeholder="Nom du pipeline"/><button className="primary-btn" disabled={pipelineBusy==='save'} onClick={saveCurrentPipeline}>{pipelineBusy==='save'?'Enregistrement…':'Enregistrer la branche active'}</button></div><div className="saved-pipelines">{pipelines.length===0?<p className="quiet">Aucun pipeline enregistré.</p>:pipelines.map((p:AnyObj)=><div key={p.id}><div><b>{p.name}</b><small>{p.steps_count} étape(s) · {new Date(p.created_at).toLocaleString('fr-FR')}</small></div><button className="ghost-btn" disabled={pipelineBusy===p.id} onClick={()=>replayPipeline(p.id)}>{pipelineBusy===p.id?'Exécution…':'Rejouer depuis la source'}</button></div>)}</div></Panel>
+      <Panel title="Pipelines sauvegardés"><div className="pipeline-save"><input value={pipelineName} onChange={e=>setPipelineName(e.target.value)} placeholder="Nom du pipeline"/><button className="primary-btn" disabled={pipelineBusy==='save'} onClick={saveCurrentPipeline}>{pipelineBusy==='save'?'Enregistrement…':'Enregistrer la branche active'}</button></div><div className="saved-pipelines">{pipelines.length===0?<p className="quiet">Aucun pipeline enregistré.</p>:pipelines.map((p:AnyObj)=><div key={p.id}><div><b>{p.name}</b><small>{p.steps_count} étapes · {new Date(p.created_at).toLocaleString('fr-FR')}</small></div><button className="ghost-btn" disabled={pipelineBusy===p.id} onClick={()=>replayPipeline(p.id)}>{pipelineBusy===p.id?'Exécution…':'Rejouer depuis la source'}</button></div>)}</div></Panel>
     </div>
 
     <Panel title="Aperçu de la version active" action={<span className="quiet">v{result.dataset.version??1} · {result.preview.shown}/{result.preview.total}</span>}><DataTable preview={result.preview}/></Panel>
@@ -858,7 +949,7 @@ function AIAnalystView({ result, setError, initialQuestion='' }: { result: AnyOb
       </section>
       <aside className="ai-examples"><b>Exemples</b>{examples.map(x=><button key={x} onClick={()=>setQuestion(x)}>{x}</button>)}</aside>
     </div>
-    {history.length>0&&<Panel title="Historique AI Analyst" action={<span className="quiet">{history.length} session(s)</span>}><div className="analysis-history">{history.slice(0,8).map((h:AnyObj)=><button key={h.session_id} onClick={async()=>{try{setOut(await getAIHistoryItem(result!.dataset.id,h.session_id));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}}><div><b>{h.question}</b><small>{h.intent} · {h.critic_status} · v{h.dataset_version}</small></div><span>{h.executed_at?new Date(h.executed_at).toLocaleString('fr-FR'):''}</span></button>)}</div></Panel>}
+    {history.length>0&&<Panel title="Historique AI Analyst" action={<span className="quiet">{history.length} sessions</span>}><div className="analysis-history">{history.slice(0,8).map((h:AnyObj)=><button key={h.session_id} onClick={async()=>{try{setOut(await getAIHistoryItem(result!.dataset.id,h.session_id));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}}><div><b>{h.question}</b><small>{h.intent} · {h.critic_status} · v{h.dataset_version}</small></div><span>{h.executed_at?new Date(h.executed_at).toLocaleString('fr-FR'):''}</span></button>)}</div></Panel>}
     {out&&<>
       <Panel title="Réponse synthétique" action={<span className="ai-intent">intention : {out.intent}</span>}><div className="ai-answer">{out.answer}</div></Panel>
       <div className="two-col">
@@ -894,7 +985,7 @@ function ReportPreview({ report }: { report:AnyObj }) {
       {block.type==='methodology'&&<div className="report-preview-methods">{(block.items??[]).slice(0,5).map((x:string,ix:number)=><div key={ix}><span>{String(ix+1).padStart(2,'0')}</span><p>{x}</p></div>)}</div>}
       {block.type==='provenance'&&<div className="report-preview-provenance">{Object.entries(block.data??{}).slice(0,8).map(([k,v])=><div key={k}><span>{k}</span><b>{String(v??'—')}</b></div>)}</div>}
     </section>)}
-    {blocks.length>5&&<div className="report-preview-more">+ {blocks.length-5} autre(s) section(s) dans le rapport exporté</div>}
+    {blocks.length>5&&<div className="report-preview-more">+ {blocks.length-5} autres section(s) dans le rapport exporté</div>}
   </div>;
 }
 
@@ -1332,7 +1423,7 @@ function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)
   }
   async function discoverConnector(id:string){
     setBusy(true);setNotice('');
-    try{const r=await discoverDataConnector(token,workspaceId,id);setSelectedConnector(id);setDiscovery(r);setNotice(`${r.tables?.length??0} table(s) découverte(s).`);}
+    try{const r=await discoverDataConnector(token,workspaceId,id);setSelectedConnector(id);setDiscovery(r);setNotice(`${r.tables?.length??0} tables découvertes.`);}
     catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
   }
   function useTable(table:AnyObj){
@@ -1386,7 +1477,7 @@ function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)
         <div className="source-section-head"><div><span>CONNEXIONS</span><h3>Connecteurs</h3></div><small>{connectors.length} configuré(s)</small></div>
         <div className="connector-list">{connectors.map((c:AnyObj)=><article key={c.id} className={`connector-card ${selectedConnector===c.id?'selected':''}`} onClick={()=>setSelectedConnector(c.id)}><div className="connector-logo">{c.connector_type==='postgresql'?'PG':'MY'}</div><div className="connector-copy"><div><b>{c.name}</b><span className={`connector-status ${c.status}`}>{c.status}</span></div><p>{c.host?`${c.host}:${c.port} · ${c.database_name}`:'Connexion gouvernée'}</p><small>{c.username} · TLS {c.ssl_mode}{c.last_tested_at?` · testé ${new Date(c.last_tested_at).toLocaleString('fr-FR')}`:''}</small>{c.last_error&&<em>{c.last_error}</em>}</div><div className="connector-actions">{canManage&&<button onClick={e=>{e.stopPropagation();testConnector(c.id)}} disabled={busy}>Tester</button>}<button onClick={e=>{e.stopPropagation();discoverConnector(c.id)}} disabled={busy}>Explorer</button></div></article>)}{!connectors.length&&<div className="quiet-empty">Aucun connecteur. Créez une connexion PostgreSQL ou MySQL.</div>}</div>
 
-        {discovery&&<div className="discovery-panel"><div className="source-section-head"><div><span>CATALOGUE SOURCE</span><h3>{discovery.connector?.name}</h3></div><button className="ghost-btn" onClick={()=>setDiscovery(null)}>Fermer</button></div><div className="discovered-tables">{(discovery.tables??[]).map((t:AnyObj)=><button key={t.qualified_name} onClick={()=>useTable(t)}><span>▦</span><div><b>{t.qualified_name}</b><small>{t.columns?.length??0} colonne(s) · {(t.columns??[]).slice(0,4).map((c:AnyObj)=>c.name).join(', ')}</small></div><i>+ Source</i></button>)}</div></div>}
+        {discovery&&<div className="discovery-panel"><div className="source-section-head"><div><span>CATALOGUE SOURCE</span><h3>{discovery.connector?.name}</h3></div><button className="ghost-btn" onClick={()=>setDiscovery(null)}>Fermer</button></div><div className="discovered-tables">{(discovery.tables??[]).map((t:AnyObj)=><button key={t.qualified_name} onClick={()=>useTable(t)}><span>▦</span><div><b>{t.qualified_name}</b><small>{t.columns?.length??0} colonnes · {(t.columns??[]).slice(0,4).map((c:AnyObj)=>c.name).join(', ')}</small></div><i>+ Source</i></button>)}</div></div>}
       </section>
 
       <section className="source-column source-wide">
@@ -1548,7 +1639,7 @@ function IdentitySecurityCenter({ setError, setView }: { setError:(s:string)=>vo
   async function rotateSecretNow(){if(!rotateTarget||!rotateValue)return;setBusy(true);try{await rotateWorkspaceSecret(token,workspaceId,rotateTarget,rotateValue);setRotateTarget('');setRotateValue('');setMessage('Nouvelle version du secret activée.');await refresh();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
   async function testSecretNow(id:string){try{const r=await testWorkspaceSecret(token,workspaceId,id);setMessage(`Secret résolu sans exposition · longueur ${r.length} · checksum ${r.checksum}`);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
   async function revokeSessionNow(id:string){try{await revokeEnterpriseAuthSession(token,id);await refresh();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
-  async function closeOtherSessions(){try{const r=await logoutAllEnterpriseSessions(token);setMessage(`${r.revoked??0} autre(s) session(s) révoquée(s).`);await refresh();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
+  async function closeOtherSessions(){try{const r=await logoutAllEnterpriseSessions(token);setMessage(`${r.revoked??0} autres sessions révoquées.`);await refresh();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
 
   if(!token||!session)return <div className="page identity-page"><div className="page-title"><div><span className="eyebrow">IDENTITY & SECRET MANAGEMENT · V2.12</span><h1>Identité & Secrets</h1><p>SSO, sessions révocables et coffre de secrets versionné nécessitent une session Enterprise.</p></div></div><div className="collab-auth-empty"><span>◈</span><div><h3>Session Enterprise requise</h3><p>Connectez-vous ou initialisez l’organisation depuis Gouvernance.</p></div><button className="primary-btn" onClick={()=>setView('governance')}>Ouvrir Gouvernance</button></div></div>;
   const workspaces=session.workspaces??[]; const active=workspaces.find((x:AnyObj)=>x.id===workspaceId)??workspaces[0]; const canManage=['owner','admin'].includes(active?.role);
@@ -1651,7 +1742,7 @@ function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(
     <div className="governance-scorecards"><Stat label="Rôle actif" value={detail?.role??'—'} detail="RBAC workspace"/><Stat label="Membres" value={detail?.members_count??0} detail="Utilisateurs autorisés"/><Stat label="Datasets" value={detail?.datasets_count??0} detail="Ressources liées"/><Stat label="Politiques" value={workspace?.policies?.length??0} detail="Colonnes / lignes"/><Stat label="Jobs" value={jobs.length} detail="Historique asynchrone"/></div>
     <div className="two-col governance-main-grid">
       <Panel title="Membres & rôles" action={<span className="quiet">owner · admin · data scientist · analyst · viewer</span>}><div className="member-table">{(workspace?.members??[]).map((m:AnyObj)=><div key={m.id}><div className="member-avatar">{String(m.display_name||m.email).slice(0,2).toUpperCase()}</div><div><b>{m.display_name}</b><small>{m.email}</small></div><span className={`role-pill role-${m.role}`}>{m.role}</span></div>)}</div><details className="governance-details"><summary>Provisionner / ajouter un membre</summary><div className="stack-form compact-governance-form"><label>Email<input value={memberEmail} onChange={e=>setMemberEmail(e.target.value)}/></label><label>Nom<input value={memberName} onChange={e=>setMemberName(e.target.value)}/></label><label>Mot de passe initial<input type="password" value={memberPassword} onChange={e=>setMemberPassword(e.target.value)} placeholder="Requis si nouvel utilisateur"/></label><label>Rôle<select value={memberRole} onChange={e=>setMemberRole(e.target.value)}>{['admin','data_scientist','analyst','viewer'].map(r=><option key={r}>{r}</option>)}</select></label><button className="primary-btn" onClick={provisionMember}>Ajouter / mettre à jour</button></div></details></Panel>
-      <Panel title="Datasets gouvernés" action={result?<div className="button-row governance-access-test"><button className="secondary-btn" onClick={bindCurrent}>Lier le dataset actif</button><select value={previewRole} onChange={e=>setPreviewRole(e.target.value)}><option value="data_scientist">Data scientist</option><option value="analyst">Analyst</option><option value="viewer">Viewer</option></select><button className="secondary-btn" onClick={previewGoverned}>Tester l’accès</button></div>:undefined}><div className="governed-resource-list">{governedDatasets.length?governedDatasets.map((d:AnyObj)=><div key={d.dataset_id}><span>▦</span><div><b>{d.dataset_id.slice(0,12)}…</b><small>lié le {new Date(d.created_at).toLocaleString('fr-FR')}</small></div></div>):<div className="quiet-empty">Aucun dataset lié à ce workspace.</div>}</div>{governedPreview&&<div className="governed-preview-summary"><b>Aperçu gouverné · {governedPreview.effective_role??previewRole}</b><span>{governedPreview.total_rows} ligne(s) · {(governedPreview.columns??[]).length} colonne(s)</span><small>{(governedPreview.columns??[]).join(' · ')}</small></div>}{result&&<details className="governance-details"><summary>Créer une politique sur le dataset actif</summary><div className="stack-form compact-governance-form"><label>Nom<input value={policyName} onChange={e=>setPolicyName(e.target.value)}/></label><label>Colonnes autorisées<input value={policyColumns} onChange={e=>setPolicyColumns(e.target.value)} placeholder="region, sales, margin"/></label><label>Rôle<select value={policyRole} onChange={e=>setPolicyRole(e.target.value)}>{['data_scientist','analyst','viewer'].map(r=><option key={r}>{r}</option>)}</select></label><div className="policy-filter-builder"><label>Filtre ligne (optionnel)<select value={policyFilterColumn} onChange={e=>setPolicyFilterColumn(e.target.value)}><option value="">Aucun</option>{(result?.profile?.columns??[]).map((c:AnyObj)=><option key={c.name} value={c.name}>{c.name}</option>)}</select></label><label>Opérateur<select value={policyFilterOperator} onChange={e=>setPolicyFilterOperator(e.target.value)}>{['eq','neq','gt','gte','lt','lte','contains'].map(op=><option key={op} value={op}>{op}</option>)}</select></label><label>Valeur<input value={policyFilterValue} onChange={e=>setPolicyFilterValue(e.target.value)}/></label></div><button className="primary-btn" onClick={createPolicy}>Enregistrer la politique</button></div></details>}</Panel>
+      <Panel title="Datasets gouvernés" action={result?<div className="button-row governance-access-test"><button className="secondary-btn" onClick={bindCurrent}>Lier le dataset actif</button><select value={previewRole} onChange={e=>setPreviewRole(e.target.value)}><option value="data_scientist">Data scientist</option><option value="analyst">Analyst</option><option value="viewer">Viewer</option></select><button className="secondary-btn" onClick={previewGoverned}>Tester l’accès</button></div>:undefined}><div className="governed-resource-list">{governedDatasets.length?governedDatasets.map((d:AnyObj)=><div key={d.dataset_id}><span>▦</span><div><b>{d.dataset_id.slice(0,12)}…</b><small>lié le {new Date(d.created_at).toLocaleString('fr-FR')}</small></div></div>):<div className="quiet-empty">Aucun dataset lié à ce workspace.</div>}</div>{governedPreview&&<div className="governed-preview-summary"><b>Aperçu gouverné · {governedPreview.effective_role??previewRole}</b><span>{governedPreview.total_rows} lignes · {(governedPreview.columns??[]).length} colonnes</span><small>{(governedPreview.columns??[]).join(' · ')}</small></div>}{result&&<details className="governance-details"><summary>Créer une politique sur le dataset actif</summary><div className="stack-form compact-governance-form"><label>Nom<input value={policyName} onChange={e=>setPolicyName(e.target.value)}/></label><label>Colonnes autorisées<input value={policyColumns} onChange={e=>setPolicyColumns(e.target.value)} placeholder="region, sales, margin"/></label><label>Rôle<select value={policyRole} onChange={e=>setPolicyRole(e.target.value)}>{['data_scientist','analyst','viewer'].map(r=><option key={r}>{r}</option>)}</select></label><div className="policy-filter-builder"><label>Filtre ligne (optionnel)<select value={policyFilterColumn} onChange={e=>setPolicyFilterColumn(e.target.value)}><option value="">Aucun</option>{(result?.profile?.columns??[]).map((c:AnyObj)=><option key={c.name} value={c.name}>{c.name}</option>)}</select></label><label>Opérateur<select value={policyFilterOperator} onChange={e=>setPolicyFilterOperator(e.target.value)}>{['eq','neq','gt','gte','lt','lte','contains'].map(op=><option key={op} value={op}>{op}</option>)}</select></label><label>Valeur<input value={policyFilterValue} onChange={e=>setPolicyFilterValue(e.target.value)}/></label></div><button className="primary-btn" onClick={createPolicy}>Enregistrer la politique</button></div></details>}</Panel>
     </div>
     <div className="two-col governance-main-grid">
       <Panel title="Jobs asynchrones" action={result?<button className="secondary-btn" onClick={submitJob}>Mettre en file</button>:undefined}>{result&&<div className="job-compose"><select value={jobType} onChange={e=>setJobType(e.target.value)}><option value="ai_analysis">AI Analyst</option><option value="automl">AutoML</option><option value="forecast">Forecasting</option><option value="report">Rapport</option><option value="proactive_scan">Proactive scan</option></select><div><textarea value={jobPayload} onChange={e=>setJobPayload(e.target.value)} spellCheck={false}/><div className="job-retry-config"><label>Retries max<input type="number" min={0} max={5} value={jobRetries} onChange={e=>setJobRetries(Math.max(0,Math.min(5,Number(e.target.value)||0)))}/></label><label>Backoff initial (s)<input type="number" min={1} max={3600} value={jobBackoff} onChange={e=>setJobBackoff(Math.max(1,Math.min(3600,Number(e.target.value)||1)))}/></label></div></div></div>}<div className="job-list">{jobs.length?jobs.slice(0,12).map((j:AnyObj)=><div key={j.id}><span className={`job-status ${j.status}`}>{j.status}</span><div><b>{j.job_type}</b><small>{j.dataset_id?`${j.dataset_id.slice(0,10)}… · `:''}{j.created_at?new Date(j.created_at).toLocaleString('fr-FR'):''}</small></div><div className="job-progress"><i style={{width:`${Number(j.progress)||0}%`}}/></div>{!['completed','failed','cancelled'].includes(j.status)&&<button onClick={()=>cancelJob(j.id)}>Annuler</button>}</div>):<div className="quiet-empty">Aucun job pour ce workspace.</div>}</div></Panel>

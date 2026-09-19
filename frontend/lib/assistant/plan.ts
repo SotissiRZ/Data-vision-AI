@@ -1,3 +1,4 @@
+import { assistantAuthHeaders } from "./request-auth";
 import type { AssistantContextSnapshot } from "./event-bus";
 
 export type AgentPlanStep = {
@@ -32,7 +33,7 @@ export async function validateAssistantPlan(input: {
     {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: assistantAuthHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({
         steps: input.steps,
         context: input.context,

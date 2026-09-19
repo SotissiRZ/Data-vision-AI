@@ -1,0 +1,19 @@
+{
+  "version": "2.16.2",
+  "validation": {
+    "python_ast": "OK",
+    "pytest": "\u001b[32m\u001b[32m\u001b[1m132 passed\u001b[0m\u001b[32m in 18.73s\u001b[0m\u001b[0m",
+    "checks": {
+      "turn_store_followup": true,
+      "no_active_dataset_fallback": true,
+      "results_followup_test": true,
+      "internet_capability_test": true
+    }
+  },
+  "behavioral_regressions": [
+    "where_are_results",
+    "internet_capability_question",
+    "unknown_question_does_not_trigger_analysis",
+    "analysis_exposes_real_results"
+  ]
+}

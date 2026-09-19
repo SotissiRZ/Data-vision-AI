@@ -1,6 +1,132 @@
-# DataVision AI — v2.12.0
+# DataVision AI — v2.17.0
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
+
+
+## Nouveau dans v2.15.3 — Assistant agentique cumulatif v2.13 → v2.15
+
+Cette distribution est construite directement sur la base complète v2.12 et conserve
+tous les modules historiques et Enterprise existants.
+
+Les évolutions intermédiaires sont cumulées :
+
+- **v2.13.0** : assistant flottant, texte/voix, Context Engine, Event Bus ;
+- **v2.13.1** : Tool Registry, mémoire de session, Activity Monitor, executor gouverné ;
+- **v2.13.2** : validation structurée des plans ;
+- **v2.13.3** : Host Bridge, ActionRun, confirmation, realtime SSE ;
+- **v2.13.4** : contrats métier Data/Stats/ML/GIS/Reporting/Fichiers ;
+- **v2.14.0** : Agent Orchestrator, intent resolver, planner, Critic, recovery ;
+- **v2.14.1** : séquencement strict et reprise après confirmation ;
+- **v2.14.2** : liaison complète Floating UI ↔ Orchestrator ;
+- **v2.15.0** : Model Gateway local/cloud avec politique de confidentialité ;
+- **v2.15.3** : fusion réelle avec les moteurs et RBAC de DataVision v2.12.
+
+Le LLM reste un planner/explainer : les calculs statistiques et ML proviennent
+des moteurs déterministes de DataVision.
+
+
+## Correction v2.15.4 — Assistant visible sans Tailwind
+
+La base v2.12 n'utilise pas Tailwind CSS. Le composant flottant v2.15.3
+employait encore des classes utilitaires Tailwind, qui n'étaient donc pas
+appliquées.
+
+La v2.15.4 remplace entièrement ce styling par un CSS Module natif Next.js :
+
+- bouton `DV AI` réellement fixé en bas à droite ;
+- z-index élevé ;
+- panneau conversationnel complet ;
+- responsive mobile ;
+- aucune dépendance Tailwind ;
+- toutes les fonctions texte, voix, fichiers, plans et actions sont conservées.
+
+
+## Correction v2.16.1 — Parole naturelle
+
+Le moteur vocal ne lit plus les marqueurs visuels comme `(s)`, `(e)` ou `(es)`.
+
+Les messages générés utilisent désormais une vraie flexion française :
+
+```text
+1 étape exécutée et validée
+3 étapes exécutées et validées
+```
+
+Une couche `toSpeechText()` nettoie aussi le Markdown, les URLs et certains
+séparateurs techniques avant synthèse vocale.
+
+
+
+## Correction v2.16.2 — Compréhension conversationnelle et résultats
+
+L'assistant ne transforme plus une question inconnue en analyse du dataset
+simplement parce qu'un dataset est actif.
+
+Exemples :
+
+```text
+« Où sont les résultats ? »
+→ restitue les résultats du dernier TurnRun.
+
+« Tu as accès à internet ? »
+→ explique les capacités réseau réelles de DataVision.
+
+Question non comprise
+→ demande une clarification sans lancer de calcul.
+```
+
+Les analyses terminées exposent désormais directement leurs résultats
+déterministes (lignes, variables, doublons, valeurs manquantes, métriques
+disponibles) au lieu d'afficher uniquement le nombre d'étapes réussies.
+
+
+
+## Nouveau dans v2.17.0 — AI Control Center & compréhension hybride
+
+### Gouverner → IA & Modèles
+
+DataVision dispose maintenant d'un Control Center natif pour :
+
+- ajouter des providers locaux, on-premise ou OpenAI-compatibles ;
+- tester leur connexion sans envoyer de dataset ;
+- choisir le modèle utilisé pour Planner, Explication, Critic et Résumé ;
+- définir un ordre de fallback ;
+- appliquer `local_only`, `prefer_local` ou `allow_external` ;
+- autoriser explicitement l'IA externe ;
+- définir un budget mensuel ;
+- suivre les tokens et coûts estimés ;
+- référencer le Secret Vault Enterprise ou une variable d'environnement locale.
+
+### Compréhension hybride
+
+Le routeur déterministe reste prioritaire.
+
+Si une question n'est pas comprise et que le Model Gateway est activé :
+
+```text
+question inconnue
+    ↓
+classification LLM structurée
+    ↓
+validation par liste fermée d'intentions
+    ↓
+planner / réponse explicative / clarification
+```
+
+Le modèle ne reçoit aucune capacité d'exécution directe.
+
+### Contexte sémantique enrichi
+
+L'assistant connaît maintenant le schéma du dataset :
+
+```text
+nom de colonne + type
+```
+
+sans transmettre les lignes ou valeurs brutes.
+
+Les noms de colonnes peuvent être masqués pour les providers externes.
+
 
 ## Ports
 
