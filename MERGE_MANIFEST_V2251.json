@@ -1,0 +1,17 @@
+{
+  "version": "2.25.1",
+  "base": "2.25.0 cumulative",
+  "changes": [
+    "global UI typography increased slightly",
+    "AI Analyst prompt, options and examples enlarged",
+    "sidebar, topbar and cards enlarged",
+    "assistant floating panel enlarged",
+    "responsive readability improved"
+  ],
+  "validation": {
+    "css_updated": true,
+    "assistant_css_updated": true,
+    "backend_logic_changed": false,
+    "api_changed": false
+  }
+}

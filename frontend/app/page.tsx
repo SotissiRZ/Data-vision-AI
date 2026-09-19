@@ -26,16 +26,20 @@ import {
 import { assistantEventBus } from '../lib/assistant/event-bus';
 import { AIProviderControlCenter } from '../components/assistant/AIProviderControlCenter';
 import { NotebookStudio } from '../components/NotebookStudio';
+import { ResponsibleAIView } from '../components/ResponsibleAIView';
+import { ModelRegistryView } from '../components/ModelRegistryView';
+import { FeatureServingView } from '../components/FeatureServingView';
 
 type AnyObj = Record<string, any>;
-type View = 'identity' | 'actions' | 'operations' | 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'notebook' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance' | 'ai-settings' | 'plugins';
+type View = 'identity' | 'actions' | 'operations' | 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'notebook' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'registry' | 'serving' | 'forecast' | 'anomaly' | 'xai' | 'responsible' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance' | 'ai-settings' | 'plugins';
 type AreaKey = 'overview'|'data'|'analyze'|'model'|'decide'|'publish'|'collaborate'|'governance';
+type AccessibilityMode = 'normal' | 'comfortable' | 'large';
 
 const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; views:View[] }[] = [
   {key:'overview',label:'Vue d’ensemble',icon:'⌂',defaultView:'home',views:['home']},
   {key:'data',label:'Données',icon:'▦',defaultView:'data',views:['data','quality','prepare','stats']},
   {key:'analyze',label:'Analyser',icon:'∑',defaultView:'visual',views:['visual','tests','sql','notebook','regression','anova','pca','cluster']},
-  {key:'model',label:'Modéliser',icon:'◆',defaultView:'model',views:['model','forecast','anomaly','xai','predict']},
+  {key:'model',label:'Modéliser',icon:'◆',defaultView:'model',views:['model','registry','serving','forecast','anomaly','xai','responsible','predict']},
   {key:'decide',label:'Décider',icon:'✦',defaultView:'inbox',views:['inbox','ai','semantic','decision','actions','trust']},
   {key:'publish',label:'Publier',icon:'▧',defaultView:'dashboard',views:['dashboard','report']},
   {key:'collaborate',label:'Collaborer',icon:'◎',defaultView:'review',views:['review']},
@@ -44,9 +48,9 @@ const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; vi
 const viewLabels: Record<View,string> = {
   home:'Vue d’ensemble',data:'Aperçu des données',quality:'Qualité',prepare:'Préparation',stats:'Statistiques descriptives',
   visual:'Visualisation',tests:'Tests & corrélations',sql:'SQL',notebook:'Notebook',regression:'Régression',anova:'ANOVA',pca:'ACP',cluster:'Clustering',
-  model:'AutoML',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',actions:'Actions & Automation',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',reliability:'Fiabilité & Lineage',sources:'Sources & Refresh',operations:'Observabilité & Eval',identity:'Identité & Secrets',plugins:'Plugins & MCP','ai-settings':'IA & Modèles',governance:'Gouvernance'
+  model:'AutoML',registry:'Model Registry',serving:'Feature Store & Serving',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',responsible:'Responsible AI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',actions:'Actions & Automation',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',reliability:'Fiabilité & Lineage',sources:'Sources & Refresh',operations:'Observabilité & Eval',identity:'Identité & Secrets',plugins:'Plugins & MCP','ai-settings':'IA & Modèles',governance:'Gouvernance'
 };
-const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',notebook:'⌘',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',actions:'⚡',trust:'✓',dashboard:'▦',report:'▧',review:'◎',reliability:'◫',sources:'↻',operations:'◉',identity:'◈',plugins:'⌘','ai-settings':'✦',governance:'⌾'};
+const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',notebook:'⌘',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',registry:'▣',serving:'⇆',forecast:'⌁',anomaly:'⚠',xai:'◇',responsible:'⚖',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',actions:'⚡',trust:'✓',dashboard:'▦',report:'▧',review:'◎',reliability:'◫',sources:'↻',operations:'◉',identity:'◈',plugins:'⌘','ai-settings':'✦',governance:'⌾'};
 function areaForView(view:View){ return areaConfig.find(a=>a.views.includes(view)) ?? areaConfig[0]; }
 
 function formatNumber(value: unknown, digits = 3) {
@@ -97,6 +101,9 @@ export default function Home() {
   const [trustSummary,setTrustSummary]=useState<AnyObj|null>(null);
   const [aiSeed,setAiSeed]=useState('');
   const [enterpriseBadge,setEnterpriseBadge]=useState<AnyObj|null>(null);
+  const [uiMode,setUiMode]=useState<AccessibilityMode>('comfortable');
+  const [uiZoom,setUiZoom]=useState(105);
+  const [displayToolsOpen,setDisplayToolsOpen]=useState(false);
   const previousSecurityScope=useRef('local');
 
   async function activateDataset(id: string, nextView?: View) {
@@ -136,6 +143,22 @@ export default function Home() {
   }
 
   useEffect(()=>{ const handler=(e:KeyboardEvent)=>{ if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setPaletteOpen(v=>!v);} if(e.key==='Escape')setPaletteOpen(false); }; window.addEventListener('keydown',handler); return()=>window.removeEventListener('keydown',handler); },[]);
+
+useEffect(()=>{
+  if(typeof window==='undefined') return;
+  const storedMode = localStorage.getItem('dv_accessibility_mode');
+  const storedZoom = Number(localStorage.getItem('dv_ui_zoom') || '105');
+  if(storedMode==='normal' || storedMode==='comfortable' || storedMode==='large') setUiMode(storedMode);
+  if(Number.isFinite(storedZoom) && storedZoom>=90 && storedZoom<=140) setUiZoom(storedZoom);
+},[]);
+useEffect(()=>{
+  if(typeof window==='undefined') return;
+  const root = document.documentElement;
+  root.dataset.dvMode = uiMode;
+  root.style.setProperty('--dv-user-zoom', String(uiZoom/100));
+  localStorage.setItem('dv_accessibility_mode', uiMode);
+  localStorage.setItem('dv_ui_zoom', String(uiZoom));
+},[uiMode,uiZoom]);
   useEffect(()=>{ const refresh=()=>{ if(typeof window==='undefined')return; const t=localStorage.getItem('dv_enterprise_token')||''; if(!t){setEnterpriseBadge(null);return;} getEnterpriseSession(t).then(s=>{const preferred=localStorage.getItem('dv_enterprise_workspace')||s.workspaces?.[0]?.id||''; const ws=s.workspaces?.find((x:AnyObj)=>x.id===preferred)??s.workspaces?.[0]??null; setEnterpriseBadge({user:s.user,workspace:ws});}).catch(()=>setEnterpriseBadge(null)); }; refresh(); window.addEventListener('datavision-enterprise-session',refresh); return()=>window.removeEventListener('datavision-enterprise-session',refresh); },[]);
   useEffect(()=>{ if(typeof window==='undefined')return; const url=new URL(window.location.href); const code=url.searchParams.get('code'); const state=url.searchParams.get('state'); const provider=sessionStorage.getItem('dv_oidc_provider')||''; if(!code||!state||!provider)return; const redirectUri=window.location.origin; exchangeEnterpriseOIDC({provider_id:provider,code,state,redirect_uri:redirectUri}).then(body=>{localStorage.setItem('dv_enterprise_token',body.access_token);if(body.refresh_token)localStorage.setItem('dv_enterprise_refresh',body.refresh_token);if(body.workspace_id)localStorage.setItem('dv_enterprise_workspace',body.workspace_id);sessionStorage.removeItem('dv_oidc_provider');window.history.replaceState({},document.title,window.location.pathname);window.dispatchEvent(new Event('datavision-enterprise-session'));setView('identity');}).catch((e:unknown)=>{sessionStorage.removeItem('dv_oidc_provider');setError(e instanceof Error?e.message:String(e));window.history.replaceState({},document.title,window.location.pathname);}); },[]);
   useEffect(()=>{ const scope=enterpriseBadge?.workspace?.id?`workspace:${enterpriseBadge.workspace.id}`:'local'; if(previousSecurityScope.current!==scope){ setResult(null); setModel(null); setPrediction(null); setColumnAnalysis(null); setTrustSummary(null); previousSecurityScope.current=scope; } },[enterpriseBadge?.workspace?.id]);
@@ -203,6 +226,8 @@ export default function Home() {
             name: column.name,
             dtype: column.dtype,
           })) ?? [],
+        accessibilityMode: uiMode,
+        uiZoom,
       },
     });
   }, [
@@ -225,6 +250,8 @@ export default function Home() {
     result?.quality?.issues_count,
     enterpriseBadge?.workspace?.id,
     enterpriseBadge?.workspace?.organization_id,
+    uiMode,
+    uiZoom,
   ]);
 
   useEffect(() => {
@@ -298,15 +325,17 @@ export default function Home() {
     finally { setPredicting(false); }
   }
 
-  const activeArea=areaForView(view);
-  const paletteItems=Object.entries(viewLabels).map(([key,label])=>({key:key as View,label,area:areaForView(key as View).label,icon:viewIcons[key as View]??'•'}));
-  return <main className="app-shell professional-shell">
+
+const activeArea=areaForView(view);
+const paletteItems=Object.entries(viewLabels).map(([key,label])=>({key:key as View,label,area:areaForView(key as View).label,icon:viewIcons[key as View]??'•'}));
+const setZoomWithinBounds = (next:number) => setUiZoom(Math.max(90, Math.min(140, next)));
+return <main className="app-shell professional-shell">
     <header className="topbar pro-topbar">
       <div className="brand-mini"><div className="brand-mark">DV</div><div><b>DataVision AI</b><span>Intelligence analytique vérifiable</span></div></div>
       <div className="top-context">
         {result?<><span className="top-dataset" title={result.dataset.name}><b>{result.dataset.name}</b><small>v{result.dataset.version??1}</small></span>{result.access?.governed&&<button className="governed-chip" onClick={()=>setView('governance')} title={`${result.access.policy_count??0} politique(s) active(s)`}>◈ Accès gouverné · {result.access.role}</button>}<span className="top-quality">Qualité <b>{result.quality.score}/100</b></span>{trustSummary&&<button className="trust-pill" onClick={()=>setView('trust')}>Trust {trustSummary.overall_score}/100 · {trustSummary.grade}</button>}</>:<span className="top-empty">Aucun dataset actif</span>}
       </div>
-      <div className="top-actions"><span className="runtime-dot"/>{enterpriseBadge?<button className="enterprise-pill" onClick={()=>setView('governance')}><b>{enterpriseBadge.workspace?.name??'Enterprise'}</b><small>{enterpriseBadge.user?.display_name??enterpriseBadge.user?.email}</small></button>:<span>Local</span>}<button className="command-trigger" onClick={()=>setPaletteOpen(true)}><span>⌘</span> Rechercher <kbd>Ctrl K</kbd></button><button className="avatar" onClick={()=>enterpriseBadge&&setView('governance')}>{enterpriseBadge?String(enterpriseBadge.user?.display_name??'DV').slice(0,2).toUpperCase():'DV'}</button></div>
+      <div className="top-actions"><span className="runtime-dot"/>{enterpriseBadge?<button className="enterprise-pill" onClick={()=>setView('governance')}><b>{enterpriseBadge.workspace?.name??'Enterprise'}</b><small>{enterpriseBadge.user?.display_name??enterpriseBadge.user?.email}</small></button>:<span>Local</span>}<div className="display-tools"><button className="display-trigger" aria-label="Régler l'affichage" onClick={()=>setDisplayToolsOpen(v=>!v)}><span>Aa</span><b>{uiZoom}%</b></button>{displayToolsOpen&&<div className="display-popover"><div className="display-popover-head"><div><b>Affichage</b><small>Lecture confortable et mémorisée</small></div><button className="display-close" onClick={()=>setDisplayToolsOpen(false)}>×</button></div><div className="display-mode-group"><span>Mode de lecture</span><div className="segmented-control"><button className={uiMode==='normal'?'active':''} onClick={()=>setUiMode('normal')}>Normal</button><button className={uiMode==='comfortable'?'active':''} onClick={()=>setUiMode('comfortable')}>Confort</button><button className={uiMode==='large'?'active':''} onClick={()=>setUiMode('large')}>Grand texte</button></div></div><div className="display-zoom-row"><span>Zoom UI</span><div><button onClick={()=>setZoomWithinBounds(uiZoom-5)}>−</button><strong>{uiZoom}%</strong><button onClick={()=>setZoomWithinBounds(uiZoom+5)}>+</button><button className="ghost" onClick={()=>setZoomWithinBounds(100)}>100%</button></div></div><small className="display-footnote">Réglage enregistré sur cet appareil pour toute l’interface DataVision.</small></div>}</div><button className="command-trigger command-trigger-wide" onClick={()=>setPaletteOpen(true)}><span>⌕</span><span className="command-trigger-label">Rechercher dans DataVision…</span><kbd>Ctrl K</kbd></button><button className="settings-nav-button" aria-label="Ouvrir les paramètres" title="Paramètres" onClick={()=>setView('governance')}>⚙</button><button className="avatar" onClick={()=>enterpriseBadge&&setView('governance')}>{enterpriseBadge?String(enterpriseBadge.user?.display_name??'DV').slice(0,2).toUpperCase():'DV'}</button></div>
     </header>
     <div className="app-grid pro-grid">
       <aside className="sidebar pro-sidebar">
@@ -332,9 +361,11 @@ export default function Home() {
         {view==='pca'&&<PcaView result={result} setError={setError}/>} 
         {view==='cluster'&&<ClusterView result={result} setError={setError}/>} 
         {view==='model'&&<ModelView result={result} target={target} setTarget={setTarget} algorithm={algorithm} setAlgorithm={setAlgorithm} training={training} automlRunning={automlRunning} doTrain={doTrain} doAutoML={doAutoML} model={model} setError={setError}/>} 
+        {view==='registry'&&<ModelRegistryView activeModel={model} activeDataset={result?.dataset??null} setError={setError}/>}
         {view==='forecast'&&<ForecastView result={result} setError={setError}/>} 
         {view==='anomaly'&&<AnomalyView result={result} setError={setError}/>} 
         {view==='xai'&&<XaiView result={result} model={model} setError={setError}/>} 
+        {view==='responsible'&&<ResponsibleAIView result={result} model={model} setError={setError}/>} 
         {view==='predict'&&<PredictView model={model} text={predictionText} setText={setPredictionText} predicting={predicting} doPredict={doPredict} prediction={prediction}/>} 
         {view==='inbox'&&<ProactiveInbox result={result} setError={setError} setView={setView}/>} 
         {view==='ai'&&<AIAnalystView result={result} setError={setError} initialQuestion={aiSeed}/>} 
@@ -906,7 +937,7 @@ function XaiView({ result, model, setError }: { result:AnyObj|null; model:AnyObj
   async function explain(){setExplaining(true);setError('');try{setLocal(await explainModelPrediction(model!.model_id,JSON.parse(rowText)));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setExplaining(false);}}
   async function runShap(){setXaiBusy('shap');setError('');try{setShap(await runModelSHAP(model!.model_id,{row:JSON.parse(rowText),max_rows:50}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setXaiBusy('');}}
   async function runPdp(){if(!pdpFeatures.length)return;setXaiBusy('pdp');setError('');try{setPdp(await runModelPDP(model!.model_id,{features:pdpFeatures,grid_points:16}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setXaiBusy('');}}
-  async function runCf(){setXaiBusy('cf');setError('');try{const row=JSON.parse(rowText);const payload:AnyObj={row,max_changes:2,max_results:5};if(model!.task==='regression'){if(desiredValue.trim())payload.desired_value=Number(desiredValue);else payload.direction='increase';}setCf(await runModelCounterfactuals(model!.model_id,payload as any));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setXaiBusy('');}}
+  async function runCf(){setXaiBusy('cf');setError('');try{const row=JSON.parse(rowText);const payload:AnyObj={row,max_changes:2,max_results:5};if(model.task==='regression'){if(desiredValue.trim())payload.desired_value=Number(desiredValue);else payload.direction='increase';}setCf(await runModelCounterfactuals(model!.model_id,payload));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setXaiBusy('');}}
 
   return <div className="page">
     <div className="page-title">
@@ -1910,7 +1941,7 @@ function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)
     {notice&&<div className="source-notice"><span>◎</span><p>{notice}</p><button onClick={()=>setNotice('')}>×</button></div>}
     <div className="sources-scorecards"><Stat label="Connecteurs" value={health?.connectors??0} detail={`${health?.connector_errors??0} en erreur`}/><Stat label="Sources" value={health?.sources??0} detail={`${health?.scheduled??0} planifiée(s)`}/><Stat label="Fraîches" value={fresh} detail={`${stale} stale / erreur`}/><Stat label="Succès refresh" value={health?.success_rate==null?'—':`${health.success_rate}%`} detail={`${health?.runs_considered??0} exécution(s)`}/><Stat label="Lignes ingérées" value={formatNumber(health?.rows_fetched??0,0)} detail={health?.avg_duration_seconds==null?'Durée n/a':`Ø ${formatNumber(health.avg_duration_seconds,1)} s`}/></div>
 
-    {showConnectorForm&&<Panel title="Nouveau connecteur sécurisé" action={<span className="quiet">Le secret est chiffré avant stockage. Les options JSON ne doivent jamais contenir de secret.</span>}><div className="connector-form-grid"><label>Nom<input value={connectorName} onChange={e=>setConnectorName(e.target.value)}/></label><label>Moteur<select value={connectorType} onChange={e=>changeConnectorType(e.target.value)}>{(connectorCatalog.length?connectorCatalog:[{key:'postgresql',label:'PostgreSQL',default_port:5432,driver_available:true},{key:'mysql',label:'MySQL',default_port:3306,driver_available:true}]).map((spec:AnyObj)=><option key={spec.key} value={spec.key}>{spec.label}{spec.driver_available===false?' · driver absent':''}</option>)}</select></label>{connectorSpec?.host_required!==false&&<label>Hôte / compte<input value={connectorHost} onChange={e=>setConnectorHost(e.target.value)} placeholder={connectorType==='snowflake'?'org-account':connectorType==='databricks'?'dbc-xxxx.cloud.databricks.com':'db.company.internal'}/></label>}{(connectorSpec?.default_port??0)>0&&<label>Port<input value={connectorPort} onChange={e=>setConnectorPort(e.target.value)}/></label>}<label>{connectorType==='bigquery'?'Projet':connectorType==='sqlite'?'Fichier SQLite':connectorType==='databricks'?'Catalog (optionnel)':'Base'}<input value={connectorDb} onChange={e=>setConnectorDb(e.target.value)} placeholder={connectorType==='sqlite'?'warehouse.db':connectorType==='bigquery'?'my-gcp-project':''}/></label>{connectorSpec?.username_required!==false&&<label>Utilisateur<input value={connectorUser} onChange={e=>setConnectorUser(e.target.value)}/></label>}{connectorType!=='sqlite'&&<label>{connectorSpec?.secret_label??'Secret'}<textarea className={connectorType==='bigquery'?'connector-secret-json':''} value={connectorPassword} onChange={e=>setConnectorPassword(e.target.value)} placeholder={connectorType==='bigquery'?'JSON service account ou vide pour ADC':''}/></label>}{!['sqlite','bigquery'].includes(connectorType)&&<label>TLS<select value={connectorSsl} onChange={e=>setConnectorSsl(e.target.value)}><option value="require">Require</option><option value="prefer">Prefer</option><option value="disable">Disable</option></select></label>}{(connectorSpec?.options??[]).length>0&&<label className="span-2">Options non secrètes JSON<textarea value={connectorOptionsText} onChange={e=>setConnectorOptionsText(e.target.value)} spellCheck={false}/><small>{(connectorSpec?.options??[]).join(' · ')}</small></label>}<div className="connector-form-actions"><button className="secondary-btn" onClick={()=>setShowConnectorForm(false)}>Annuler</button><button className="primary-btn" onClick={createConnector} disabled={busy}>Enregistrer</button></div></div>{connectorSpec&&<div className="connector-driver-note"><b>{connectorSpec.label}</b><span>{connectorSpec.docs_hint}</span><em className={connectorSpec.driver_available?'available':'missing'}>{connectorSpec.driver_available?'driver disponible':'driver absent dans ce runtime'}</em></div>}</Panel>}
+    {showConnectorForm&&<Panel title="Nouveau connecteur sécurisé" action={<span className="quiet">Le secret est chiffré avant stockage. Les options JSON ne doivent jamais contenir de secret.</span>}><div className="connector-form-grid"><label>Nom<input value={connectorName} onChange={e=>setConnectorName(e.target.value)}/></label><label>Moteur<select value={connectorType} onChange={e=>changeConnectorType(e.target.value)}>{(connectorCatalog.length?connectorCatalog:[{key:'postgresql',label:'PostgreSQL',default_port:5432,driver_available:true},{key:'mysql',label:'MySQL',default_port:3306,driver_available:true}]).map((spec:AnyObj)=><option key={spec.key} value={spec.key}>{spec.label}{spec.driver_available===false?' · driver absent':''}</option>)}</select></label>{connectorSpec?.host_required!==false&&<label>Hôte / compte<input value={connectorHost} onChange={e=>setConnectorHost(e.target.value)} placeholder={connectorType==='snowflake'?'org-account':connectorType==='databricks'?'dbc-xxxx.cloud.databricks.com':'db.company.internal'}/></label>}{(connectorSpec?.default_port??0)>0&&<label>Port<input value={connectorPort} onChange={e=>setConnectorPort(e.target.value)}/></label>}<label>{connectorType==='bigquery'?'Projet':connectorType==='sqlite'?'Fichier SQLite':connectorType==='databricks'?'Catalog (optionnel)':'Base'}<input value={connectorDb} onChange={e=>setConnectorDb(e.target.value)} placeholder={connectorType==='sqlite'?'warehouse.db':connectorType==='bigquery'?'my-gcp-project':''}/></label>{connectorSpec?.username_required!==false&&<label>Utilisateur<input value={connectorUser} onChange={e=>setConnectorUser(e.target.value)}/></label>}{connectorType!=='sqlite'&&<label>{connectorSpec?.secret_label??'Secret'}<textarea className={connectorType==='bigquery'?'connector-secret-json':''} value={connectorPassword} onChange={e=>setConnectorPassword(e.target.value)} placeholder={connectorType==='bigquery'?'JSON service account ou vide pour ADC':''}/></label>}{!['sqlite','bigquery'].includes(connectorType)&&<label>TLS<select value={connectorSsl} onChange={e=>setConnectorSsl(e.target.value)}><option value="require">Require</option><option value="prefer">Prefer</option><option value="disable">Disable</option></select></label>}{(connectorSpec?.options??[]).length>0&&<label className="span-2">Options non secrètes JSON<textarea value={connectorOptionsText} onChange={e=>setConnectorOptionsText(e.target.value)} spellCheck={false}/><small>{(connectorSpec.options??[]).join(' · ')}</small></label>}<div className="connector-form-actions"><button className="secondary-btn" onClick={()=>setShowConnectorForm(false)}>Annuler</button><button className="primary-btn" onClick={createConnector} disabled={busy}>Enregistrer</button></div></div>{connectorSpec&&<div className="connector-driver-note"><b>{connectorSpec.label}</b><span>{connectorSpec.docs_hint}</span><em className={connectorSpec.driver_available?'available':'missing'}>{connectorSpec.driver_available?'driver disponible':'driver absent dans ce runtime'}</em></div>}</Panel>}
 
     <div className="sources-main-grid">
       <section className="source-column">

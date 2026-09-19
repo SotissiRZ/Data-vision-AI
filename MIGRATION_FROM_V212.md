@@ -142,3 +142,118 @@ docker compose ps
 Les credentials de plugin doivent être créés dans **Identité & Secrets**, puis
 référencés par `secret_id` dans **Plugins & MCP**. Ne placez aucun token dans
 l'endpoint, le manifest ou les options JSON.
+
+
+## v2.23 — Responsible AI
+
+Aucune migration SQL obligatoire n'est ajoutée pour ce module.
+
+Les audits Responsible AI sont calculés depuis les artefacts modèles existants
+et les datasets de référence. Les résumés persistés sont stockés dans la Model
+Card du modèle.
+
+Après remplacement :
+
+```powershell
+docker compose down
+docker compose build api worker web
+docker compose up -d
+docker compose ps
+```
+
+Les anciens modèles continuent de fonctionner. Ils apparaissent simplement avec
+un statut Responsible AI non évalué jusqu'à ce qu'un audit soit exécuté.
+
+
+## v2.24 — Model Registry & MLOps
+
+La v2.24 ajoute uniquement des tables metadata et du code applicatif ; aucune
+base externe supplémentaire n'est requise.
+
+Reconstruction recommandée :
+
+```powershell
+docker compose down
+docker compose build api worker web
+docker compose up -d
+docker compose ps
+```
+
+Les modèles nouvellement entraînés sont enregistrés automatiquement en `draft`.
+Les anciens artefacts restent compatibles et peuvent être enregistrés depuis
+**Modéliser → Model Registry**.
+
+
+## v2.25 — Feature Store & Serving
+
+v2.25 ajoute plusieurs tables de métadonnées créées automatiquement au
+démarrage :
+
+```text
+feature_sets
+feature_materializations
+model_deployments
+model_deployment_revisions
+model_serving_requests
+```
+
+Aucune migration manuelle n'est requise avec le metadata store DataVision.
+
+Après remplacement du dossier :
+
+```powershell
+docker compose down
+docker compose build api worker web
+docker compose up -d
+docker compose ps
+```
+
+Le `sandbox` n'a pas changé dans cette version.
+
+Le serving v2.25 est fourni par l'API DataVision elle-même. Aucun cluster
+Kubernetes ou service cloud externe n'est créé automatiquement.
+
+
+## v2.25.1 — Hotfix de lisibilité UI
+
+Cette version ne demande **aucune migration de données**.
+
+Après remplacement du dossier :
+
+```powershell
+docker compose down
+docker compose build web
+docker compose up -d
+```
+
+Le changement concerne surtout le frontend : tailles de police, densité,
+lisibilité des panneaux et assistant flottant.
+
+
+## v2.26.0 — Accessibilité d’affichage
+
+Aucune migration de données n’est nécessaire.
+
+Après remplacement du dossier :
+
+```powershell
+docker compose down
+docker compose build web
+docker compose up -d
+```
+
+Cette version modifie seulement le frontend : topbar, contrôles de zoom,
+modes de lecture et responsive.
+
+
+## v2.26.1 — Topbar
+
+Aucune migration de données n'est nécessaire.
+
+```powershell
+docker compose down
+docker compose build web
+docker compose up -d
+```
+
+La version modifie uniquement le frontend : barre de recherche et bouton de paramétrage.

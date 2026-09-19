@@ -1,0 +1,48 @@
+{
+  "version": "2.25.0",
+  "base": "2.24.0 cumulative from user-provided archive",
+  "focus": "Feature Store, training-serving consistency, internal serving and governed deployment",
+  "validation": {
+    "python_ast": "OK",
+    "full_backend_pytest": "241 passed in 31.56s",
+    "focused_v225_pytest": "\u001b[32m\u001b[32m\u001b[1m9 passed\u001b[0m\u001b[32m in 2.51s\u001b[0m\u001b[0m",
+    "typescript_syntax": "OK",
+    "nextjs_build": "not run - frontend node_modules unavailable",
+    "docker_compose": "not run in this execution environment",
+    "v224_files_preserved": "284/284",
+    "missing_v224_files": [],
+    "checks": {
+      "version": true,
+      "feature_store_tables": true,
+      "deployment_tables": true,
+      "feature_store_service": true,
+      "training_serving_contract": true,
+      "shadow_canary": true,
+      "governed_rollback": true,
+      "batch_scoring": true,
+      "serving_api": true,
+      "frontend": true,
+      "assistant_tools": true,
+      "typed_contracts": true,
+      "assistant_bindings": true,
+      "capabilities": true,
+      "v224_preserved": true
+    }
+  },
+  "features": [
+    "persistent declarative feature store",
+    "immutable feature materializations",
+    "model feature contracts",
+    "training-serving schema consistency checks",
+    "internal champion serving",
+    "shadow scoring summaries",
+    "deterministic canary routing",
+    "deployment revisions",
+    "governed rollback through Model Registry",
+    "serving telemetry without raw-row persistence",
+    "batch scoring to immutable dataset versions",
+    "background batch_scoring jobs",
+    "assistant Feature Store and Serving tools"
+  ],
+  "explicit_limit": "v2.25 serves models through the installed DataVision API only; no external cloud endpoint is claimed unless a real serving backend is configured."
+}

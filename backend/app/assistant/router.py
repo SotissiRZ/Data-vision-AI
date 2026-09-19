@@ -93,7 +93,7 @@ def assistant_health():
     return {
         "status": "ok",
         "component": "conversational_voice_agent",
-        "version": "2.22.0",
+        "version": "2.26.1",
         "tool_count": len([spec for spec in tool_registry.list() if spec.metadata.get("origin") != "plugin"]),
         "plugin_tools": "tenant_scoped",
     }

@@ -1,0 +1,42 @@
+{
+  "version": "2.23.0",
+  "base": "2.22.0 cumulative",
+  "focus": "Responsible AI, fairness diagnostics, population drift and model governance",
+  "validation": {
+    "python_ast": "OK",
+    "pytest": "222 passed in 26.92s",
+    "pytest_returncode": 0,
+    "typescript_syntax": "OK",
+    "nextjs_build": "not run - npm install timed out in this environment",
+    "docker_compose": "not run - Docker CLI unavailable in this environment",
+    "baseline_files": 267,
+    "baseline_missing": [],
+    "checks": {
+      "fairness_service": true,
+      "classification_parity": true,
+      "regression_group_errors": true,
+      "explicit_group_selection": true,
+      "population_drift": true,
+      "model_risk": true,
+      "publication_gate": true,
+      "organization_thresholds": true,
+      "model_card_persistence": true,
+      "api_routes": true,
+      "assistant_tools": true,
+      "typed_contracts": true,
+      "host_bridge": true,
+      "frontend_view": true,
+      "frontend_explicit_selection": true,
+      "certification_guard": true,
+      "version": true,
+      "baseline_preserved": true
+    }
+  },
+  "responsible_ai_policy": {
+    "sensitive_attribute_selection": "explicit_user_selection_only",
+    "universal_fairness_verdict": false,
+    "publication_thresholds": "organization_defined",
+    "small_groups": "excluded_and_reported",
+    "human_review": "authoritative"
+  }
+}

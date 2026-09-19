@@ -373,6 +373,22 @@ def certify_review(actor_id: str, workspace_id: str, review_id: str, *, valid_un
         if not gate.get("allowed", True):
             names = ", ".join(str(x.get("name") or x.get("contract_id")) for x in gate.get("blockers", []))
             raise ValueError(f"Certification bloquée par le Data Reliability Gate: {names or 'contrat critique en échec'}.")
+    if review.get("resource_type") == "model":
+        from app.services.modeling import get_model_card
+        try:
+            card = get_model_card(str(review["resource_id"]))
+        except FileNotFoundError as exc:
+            raise ValueError("Certification impossible: Model Card introuvable.") from exc
+        responsible = card.get("responsible_ai") or {}
+        model_gate = responsible.get("publication_gate") or {}
+        if model_gate and model_gate.get("allowed") is False:
+            blockers = model_gate.get("blockers") or []
+            codes = ", ".join(str(item.get("code") or "contrôle") for item in blockers[:8])
+            raise ValueError(
+                "Certification bloquée par le Responsible AI Gate: "
+                + (codes or "contrôle Responsible AI en échec")
+                + "."
+            )
     execute(
         "UPDATE resource_certifications SET status='revoked' WHERE workspace_id=:ws AND resource_type=:rtype AND resource_id=:rid AND status='active'",
         {"ws": workspace_id, "rtype": review["resource_type"], "rid": review["resource_id"]},

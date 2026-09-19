@@ -10,12 +10,24 @@ from app.core.config import get_settings
 from app.services.advanced_analysis import regression_analysis
 from app.services.auth_service import has_permission
 from app.services.modeling import automl_train, benchmark_models, get_model_card, train_model
+from app.services.model_registry import (
+    LOCAL_ACTOR, LOCAL_WORKSPACE, check_retraining, get_registry_entry,
+    monitor_model, transition_model,
+)
+from app.services.feature_store import list_feature_sets, materialize_feature_set
+from app.services.model_serving import (
+    batch_score_dataset,
+    list_deployments,
+    rollback_deployment,
+    score_deployment,
+)
 from app.services.notebook_service import run_cell as run_notebook_cell
 from app.services.preparation import apply_operation, combine_dataframes
 from app.services.profiling import profile_dataframe
 from app.services.report_builder import build_report, export_report
 from app.services.root_cause import root_cause_analysis
 from app.services.decision_lab import optimize_scenarios
+from app.services.responsible_ai import fairness_report, model_risk_assessment, responsible_ai_gate
 from app.services.connector_service import (
     discover_connector,
     list_connectors,
@@ -44,6 +56,7 @@ _PERMISSION_MAP = {
     "analysis:read": "analysis:run",
     "model:create": "model:run",
     "model:read": "model:run",
+    "model:publish": "publish:write",
     "report:create": "publish:write",
     "dataset:export": "publish:write",
     "file:read": "dataset:read",
@@ -624,6 +637,79 @@ class V212MLBridge:
         )
 
 
+    def evaluate_model_fairness(
+        self,
+        *,
+        context: AssistantContext,
+        protected_columns: list[str],
+        positive_label: Any | None = None,
+        mode: str = "both",
+        min_group_size: int = 20,
+        **_: Any,
+    ) -> dict[str, Any]:
+        model_id = context.activeModelId
+        if not model_id:
+            raise ValueError("Aucun modèle actif.")
+        card = get_model_card(model_id)
+        dataset_id = card.get("dataset", {}).get("id") or context.activeDatasetId
+        if not dataset_id:
+            raise ValueError("Dataset de référence introuvable.")
+        return fairness_report(
+            model_id, load_dataframe(dataset_id),
+            protected_columns=protected_columns, positive_label=positive_label,
+            mode=mode, min_group_size=min_group_size,
+        )
+
+    def assess_model_risk(
+        self,
+        *,
+        context: AssistantContext,
+        protected_columns: list[str] | None = None,
+        positive_label: Any | None = None,
+        mode: str = "both",
+        min_group_size: int = 20,
+        **_: Any,
+    ) -> dict[str, Any]:
+        model_id = context.activeModelId
+        if not model_id:
+            raise ValueError("Aucun modèle actif.")
+        fairness = None
+        if protected_columns:
+            card = get_model_card(model_id)
+            dataset_id = card.get("dataset", {}).get("id") or context.activeDatasetId
+            if not dataset_id:
+                raise ValueError("Dataset de référence introuvable.")
+            fairness = fairness_report(
+                model_id, load_dataframe(dataset_id),
+                protected_columns=protected_columns, positive_label=positive_label,
+                mode=mode, min_group_size=min_group_size,
+            )
+        return model_risk_assessment(model_id, fairness=fairness)
+
+    def responsible_ai_publication_gate(
+        self,
+        *,
+        context: AssistantContext,
+        protected_columns: list[str],
+        positive_label: Any | None = None,
+        mode: str = "both",
+        min_group_size: int = 20,
+        policy: dict[str, Any] | None = None,
+        **_: Any,
+    ) -> dict[str, Any]:
+        model_id = context.activeModelId
+        if not model_id:
+            raise ValueError("Aucun modèle actif.")
+        card = get_model_card(model_id)
+        dataset_id = card.get("dataset", {}).get("id") or context.activeDatasetId
+        if not dataset_id:
+            raise ValueError("Dataset de référence introuvable.")
+        return responsible_ai_gate(
+            model_id, load_dataframe(dataset_id),
+            protected_columns=protected_columns, positive_label=positive_label,
+            mode=mode, min_group_size=min_group_size, policy=policy,
+        )
+
     def explain_model(
         self,
         *,
@@ -791,6 +877,186 @@ class V212ConnectorBridge:
         )
 
 
+class V212MLOpsBridge:
+    @staticmethod
+    def _identity(context: AssistantContext) -> tuple[str, str]:
+        access = current_access_context()
+        if context.workspaceId is None:
+            return LOCAL_ACTOR, LOCAL_WORKSPACE
+        if access is None:
+            raise PermissionError("Contexte Enterprise requis pour cette opération MLOps.")
+        return str(access.user_id), str(access.workspace_id)
+
+    def get_model_registry_status(
+        self,
+        *,
+        context: AssistantContext,
+        **_: Any,
+    ) -> dict[str, Any]:
+        _actor, workspace_id = self._identity(context)
+        if not context.activeModelId:
+            raise ValueError("Aucun modèle actif.")
+        return get_registry_entry(workspace_id, context.activeModelId)
+
+    def monitor_model_health(
+        self,
+        *,
+        context: AssistantContext,
+        current_dataset_id: str | None = None,
+        policy: dict[str, Any] | None = None,
+        **_: Any,
+    ) -> dict[str, Any]:
+        actor, workspace_id = self._identity(context)
+        if not context.activeModelId:
+            raise ValueError("Aucun modèle actif.")
+        dataset_id = current_dataset_id or context.activeDatasetId
+        if not dataset_id:
+            raise ValueError("Aucun dataset courant fourni pour le monitoring.")
+        return monitor_model(
+            actor,
+            workspace_id,
+            context.activeModelId,
+            current_dataset_id=dataset_id,
+            policy=policy,
+        )
+
+    def check_model_retraining(
+        self,
+        *,
+        context: AssistantContext,
+        create_request: bool = False,
+        **_: Any,
+    ) -> dict[str, Any]:
+        actor, workspace_id = self._identity(context)
+        if not context.activeModelId:
+            raise ValueError("Aucun modèle actif.")
+        return check_retraining(
+            actor,
+            workspace_id,
+            context.activeModelId,
+            create_request=bool(create_request),
+        )
+
+    def request_model_retraining(
+        self,
+        *,
+        context: AssistantContext,
+        create_request: bool = True,
+        **_: Any,
+    ) -> dict[str, Any]:
+        return self.check_model_retraining(
+            context=context,
+            create_request=True,
+        )
+
+    def transition_model_stage(
+        self,
+        *,
+        context: AssistantContext,
+        target_stage: str,
+        note: str = "",
+        **_: Any,
+    ) -> dict[str, Any]:
+        actor, workspace_id = self._identity(context)
+        if not context.activeModelId:
+            raise ValueError("Aucun modèle actif.")
+        return transition_model(
+            actor,
+            workspace_id,
+            context.activeModelId,
+            target_stage=target_stage,
+            note=note,
+        )
+
+
+    def list_feature_sets(
+        self,
+        *,
+        context: AssistantContext,
+        **_: Any,
+    ) -> dict[str, Any]:
+        _actor, workspace_id = self._identity(context)
+        rows = list_feature_sets(workspace_id)
+        return {"feature_sets": rows, "count": len(rows)}
+    
+    def materialize_feature_set(
+        self,
+        *,
+        context: AssistantContext,
+        feature_set_id: str,
+        source_dataset_id: str | None = None,
+        **_: Any,
+    ) -> dict[str, Any]:
+        actor, workspace_id = self._identity(context)
+        return materialize_feature_set(
+            actor,
+            workspace_id,
+            feature_set_id,
+            source_dataset_id=source_dataset_id,
+        )
+    
+    def list_model_deployments(
+        self,
+        *,
+        context: AssistantContext,
+        **_: Any,
+    ) -> dict[str, Any]:
+        _actor, workspace_id = self._identity(context)
+        rows = list_deployments(workspace_id)
+        return {"deployments": rows, "count": len(rows)}
+    
+    def score_model_deployment(
+        self,
+        *,
+        context: AssistantContext,
+        endpoint_key: str,
+        rows: list[dict[str, Any]],
+        request_id: str | None = None,
+        **_: Any,
+    ) -> dict[str, Any]:
+        _actor, workspace_id = self._identity(context)
+        return score_deployment(
+            workspace_id,
+            endpoint_key,
+            rows,
+            request_id=request_id,
+        )
+    
+    def batch_score_model(
+        self,
+        *,
+        context: AssistantContext,
+        dataset_id: str,
+        prediction_column: str = "prediction",
+        **_: Any,
+    ) -> dict[str, Any]:
+        actor, workspace_id = self._identity(context)
+        model_id = context.activeModelId
+        if not model_id:
+            raise ValueError("Aucun modèle actif.")
+        return batch_score_dataset(
+            actor,
+            workspace_id,
+            model_id=model_id,
+            dataset_id=dataset_id,
+            prediction_column=prediction_column,
+        )
+    
+    def rollback_model_deployment(
+        self,
+        *,
+        context: AssistantContext,
+        deployment_id: str,
+        **_: Any,
+    ) -> dict[str, Any]:
+        actor, workspace_id = self._identity(context)
+        return rollback_deployment(
+            actor,
+            workspace_id,
+            deployment_id,
+        )
+    
+    
 class V212NotebookBridge:
     def execute_notebook_cell(
         self,
@@ -949,6 +1215,7 @@ def bind_v212_host(registry: AssistantToolRegistry) -> None:
     reports = V212ReportBridge()
     files = V212FileBridge()
     notebooks = V212NotebookBridge()
+    mlops = V212MLOpsBridge()
     connectors = V212ConnectorBridge()
 
     mapping = {
@@ -967,12 +1234,26 @@ def bind_v212_host(registry: AssistantToolRegistry) -> None:
         "benchmark_models": ml.benchmark_models,
         "run_automl": ml.run_automl,
         "explain_model": ml.explain_model,
+        "evaluate_model_fairness": ml.evaluate_model_fairness,
+        "assess_model_risk": ml.assess_model_risk,
+        "responsible_ai_publication_gate": ml.responsible_ai_publication_gate,
         "optimize_decision_scenarios": ml.optimize_decision_scenarios,
         "generate_report": reports.generate_report,
         "inspect_uploaded_file": files.inspect_uploaded_file,
         "export_dataset": files.export_dataset,
         "export_sensitive_data": files.export_sensitive_data,
         "execute_notebook_cell": notebooks.execute_notebook_cell,
+        "list_feature_sets": mlops.list_feature_sets,
+        "materialize_feature_set": mlops.materialize_feature_set,
+        "list_model_deployments": mlops.list_model_deployments,
+        "score_model_deployment": mlops.score_model_deployment,
+        "batch_score_model": mlops.batch_score_model,
+        "rollback_model_deployment": mlops.rollback_model_deployment,
+        "get_model_registry_status": mlops.get_model_registry_status,
+        "monitor_model_health": mlops.monitor_model_health,
+        "check_model_retraining": mlops.check_model_retraining,
+        "request_model_retraining": mlops.request_model_retraining,
+        "transition_model_stage": mlops.transition_model_stage,
         "list_data_connectors": connectors.list_data_connectors,
         "discover_data_connector": connectors.discover_data_connector,
         "test_data_connector": connectors.test_data_connector,

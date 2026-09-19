@@ -140,6 +140,56 @@ IntentRule(
         0.88,
     ),
     IntentRule(
+        "fairness_analysis",
+        (
+            r"\bfairness\b",
+            r"\b[eé]quit[eé]\b.*\bmod[eè]le\b",
+            r"\bbiais\b.*\bmod[eè]le\b",
+            r"\bperformance\b.*\bgroup",
+            r"\bdisparit[eé]\b.*\bgroup",
+        ),
+        0.94,
+    ),
+    IntentRule(
+        "model_risk",
+        (
+            r"\brisque\b.*\bmod[eè]le\b",
+            r"\bmodel risk\b",
+            r"\bresponsible ai\b",
+        ),
+        0.92,
+    ),
+IntentRule(
+    "model_registry",
+    (
+        r"\bmodel\s+registry\b",
+        r"\bstage\s+du\s+mod[eè]le\b",
+        r"\bchampion\b.*\bchallenger\b",
+        r"\bpromouvo?ir\b.*\bmod[eè]le\b",
+        r"\bmettre\b.*\bproduction\b",
+    ),
+    0.96,
+),
+IntentRule(
+    "monitor_model",
+    (
+        r"\bmonitor(?:ing|er)\b.*\bmod[eè]le\b",
+        r"\bd[eé]gradation\b.*\bmod[eè]le\b",
+        r"\bdrift\b.*\bmod[eè]le\b",
+        r"\bperformance\b.*\bproduction\b",
+    ),
+    0.95,
+),
+IntentRule(
+    "retraining_check",
+    (
+        r"\br[eé]entra[iî]n(?:er|ement)\b",
+        r"\bretrain(?:ing)?\b",
+        r"\bfaut[- ]il\b.*\br[eé]entra[iî]ner\b",
+    ),
+    0.94,
+),
+    IntentRule(
         "explain_model",
         (
             r"\bexplique\b.*\bmod[eè]le\b",

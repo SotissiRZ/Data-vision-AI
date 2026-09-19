@@ -1,0 +1,46 @@
+{
+  "version": "2.24.0",
+  "base": "2.23.0 cumulative",
+  "focus": "Persistent Model Registry and MLOps lifecycle",
+  "validation": {
+    "python_ast": "OK",
+    "full_backend_pytest": "232 passed in 28.67s",
+    "focused_mlops_pytest": "10 passed in 2.99s",
+    "typescript_syntax": "OK (tsc --noCheck)",
+    "nextjs_build": "not run: npm install timed out before dependencies were available",
+    "docker_compose": "not run in this environment",
+    "v223_files_preserved": "276/276",
+    "missing_v223_files": [],
+    "checks": {
+      "version": true,
+      "persistent_registry": true,
+      "lifecycle": true,
+      "artifact_integrity": true,
+      "production_certification_gate": true,
+      "monitoring": true,
+      "scheduled_monitoring": true,
+      "retraining_policy": true,
+      "retraining_requests": true,
+      "api_registry": true,
+      "api_monitor": true,
+      "api_schedule": true,
+      "frontend_registry": true,
+      "assistant_mlops": true,
+      "capabilities": true,
+      "base_preserved": true
+    }
+  },
+  "features": [
+    "persistent registry entries and events",
+    "draft/staging/production/retired lifecycle",
+    "champion/challenger governance",
+    "artifact and model-card SHA256 integrity",
+    "enterprise certification gate before production",
+    "Responsible AI gate preservation",
+    "performance and feature drift monitoring",
+    "scheduled model_monitor jobs",
+    "retraining policies",
+    "traceable retraining requests without silent retraining",
+    "assistant MLOps tools with confirmation for consequential actions"
+  ]
+}

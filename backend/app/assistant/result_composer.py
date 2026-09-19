@@ -79,6 +79,70 @@ def compose_run_results(run: AgentTurnRun) -> str:
                 facts.append(f"identifiant du modèle : {model_id}")
 
 
+        elif step.tool == "evaluate_model_fairness":
+            rows = result.get("rows_evaluated")
+            views = result.get("reports") or []
+            used = result.get("protected_feature_usage") or []
+            text = f"audit Responsible AI calculé sur {rows} lignes" if rows is not None else "audit Responsible AI calculé"
+            if views:
+                text += f", {len(views)} vue(s) de groupe"
+            if used:
+                text += f", attention : {len(used)} variable(s) d’audit utilisée(s) comme feature"
+            facts.append(text)
+
+        elif step.tool == "assess_model_risk":
+            level = result.get("risk_level")
+            factors = result.get("factors") or []
+            if level:
+                facts.append(f"risque modèle : {level}, {len(factors)} facteur(s) à examiner")
+
+        elif step.tool == "responsible_ai_publication_gate":
+            allowed = result.get("allowed")
+            blockers = result.get("blockers") or []
+            if allowed is not None:
+                facts.append(
+                    "publication gate Responsible AI ouvert"
+                    if allowed
+                    else f"publication gate Responsible AI bloqué par {len(blockers)} contrôle(s)"
+                )
+
+        elif step.tool == "get_model_registry_status":
+            stage = result.get("stage")
+            role = result.get("role")
+            version = result.get("version_no")
+            if stage:
+                facts.append(
+                    f"Model Registry : stage {stage}, rôle {role or '—'}, "
+                    f"version v{version or '—'}"
+                )
+
+        elif step.tool == "monitor_model_health":
+            status = result.get("status")
+            degradation = result.get("degradation") or {}
+            metric = degradation.get("relative_metric_degradation")
+            drift = degradation.get("max_feature_drift_score")
+            bits = [f"monitoring modèle : {status or 'terminé'}"]
+            if metric is not None:
+                bits.append(f"dégradation relative {format_number(float(metric) * 100)}%")
+            if drift is not None:
+                bits.append(f"drift feature max {format_number(drift)}")
+            facts.append(", ".join(bits))
+
+        elif step.tool in {"check_model_retraining", "request_model_retraining"}:
+            recommended = bool(result.get("retraining_recommended"))
+            created = bool(result.get("request_created"))
+            if created:
+                facts.append("réentraînement recommandé ; demande traçable créée")
+            elif recommended:
+                facts.append("réentraînement recommandé selon la politique MLOps")
+            else:
+                facts.append("aucun réentraînement recommandé selon la politique actuelle")
+
+        elif step.tool == "transition_model_stage":
+            stage = result.get("stage")
+            role = result.get("role")
+            facts.append(f"modèle déplacé vers {stage or 'le stage demandé'} ({role or 'rôle mis à jour'})")
+
         elif step.tool == "run_root_cause_analysis":
             target = result.get("target")
             delta = result.get("delta")

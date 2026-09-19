@@ -142,6 +142,62 @@ class ExplainModelArgs(BaseModel):
     feature: str | None = None
 
 
+class MonitorModelHealthArgs(BaseModel):
+    current_dataset_id: str
+    policy: dict[str, Any] | None = None
+
+
+class ModelStageArgs(BaseModel):
+    target_stage: Literal["draft", "staging", "production", "retired"]
+    note: str = Field(default="", max_length=2000)
+
+
+class RetrainingCheckArgs(BaseModel):
+    create_request: bool = False
+
+
+class FairnessAuditArgs(BaseModel):
+    protected_columns: list[str] = Field(min_length=1, max_length=3)
+    positive_label: str | int | float | bool | None = None
+    mode: Literal["separate", "intersectional", "both"] = "both"
+    min_group_size: int = Field(default=20, ge=2, le=100000)
+
+
+class ModelRiskArgs(BaseModel):
+    protected_columns: list[str] | None = Field(default=None, max_length=3)
+    positive_label: str | int | float | bool | None = None
+    mode: Literal["separate", "intersectional", "both"] = "both"
+    min_group_size: int = Field(default=20, ge=2, le=100000)
+
+
+class ResponsibleAIGateArgs(FairnessAuditArgs):
+    policy: dict[str, Any] = Field(default_factory=dict)
+
+
+class FeatureMaterializeArgs(BaseModel):
+    feature_set_id: str
+    source_dataset_id: str | None = None
+
+
+class DeploymentScoreArgs(BaseModel):
+    endpoint_key: str
+    rows: list[dict[str, Any]] = Field(min_length=1, max_length=5000)
+    request_id: str | None = None
+
+
+class BatchScoreArgs(BaseModel):
+    dataset_id: str
+    prediction_column: str = Field(
+        default="prediction",
+        min_length=1,
+        max_length=120,
+    )
+
+
+class DeploymentRollbackArgs(BaseModel):
+    deployment_id: str
+
+
 class ReprojectLayerArgs(BaseModel):
     layer_id: str
     target_crs: str
@@ -207,6 +263,17 @@ TOOL_CONTRACTS: dict[str, type[BaseModel]] = {
     "create_visualization": CreateVisualizationArgs,
     "run_automl": AutoMLArgs,
     "explain_model": ExplainModelArgs,
+    "monitor_model_health": MonitorModelHealthArgs,
+    "transition_model_stage": ModelStageArgs,
+    "check_model_retraining": RetrainingCheckArgs,
+    "request_model_retraining": RetrainingCheckArgs,
+    "evaluate_model_fairness": FairnessAuditArgs,
+    "assess_model_risk": ModelRiskArgs,
+    "responsible_ai_publication_gate": ResponsibleAIGateArgs,
+    "materialize_feature_set": FeatureMaterializeArgs,
+    "score_model_deployment": DeploymentScoreArgs,
+    "batch_score_model": BatchScoreArgs,
+    "rollback_model_deployment": DeploymentRollbackArgs,
     "gis_reproject": ReprojectLayerArgs,
     "gis_spatial_join": SpatialJoinArgs,
     "gis_buffer": BufferLayerArgs,

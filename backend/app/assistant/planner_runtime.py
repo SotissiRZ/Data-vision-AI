@@ -128,6 +128,46 @@ class DeterministicPlanner:
             ]
 
 
+        if name == "fairness_analysis":
+            if not context.activeModelId:
+                return []
+            protected = intent.entities.get("protected_columns")
+            selected = context.selectedEntity
+            if not protected and selected and selected.type in {"column", "variable"} and selected.id:
+                protected = [selected.id]
+            if not isinstance(protected, list) or not protected:
+                return []
+            return [
+                AgentPlanStep(
+                    tool="evaluate_model_fairness",
+                    label="Auditer les performances par groupe",
+                    args={
+                        "protected_columns": protected[:3],
+                        "positive_label": intent.entities.get("positive_label"),
+                        "mode": intent.entities.get("mode", "both"),
+                        "min_group_size": intent.entities.get("min_group_size", 20),
+                    },
+                )
+            ]
+
+        if name == "model_risk":
+            if not context.activeModelId:
+                return []
+            protected = intent.entities.get("protected_columns")
+            selected = context.selectedEntity
+            if not protected and selected and selected.type in {"column", "variable"} and selected.id:
+                protected = [selected.id]
+            return [
+                AgentPlanStep(
+                    tool="assess_model_risk",
+                    label="Évaluer le risque de gouvernance du modèle",
+                    args={
+                        "protected_columns": protected[:3] if isinstance(protected, list) else None,
+                        "positive_label": intent.entities.get("positive_label"),
+                    },
+                )
+            ]
+
         if name == "root_cause_analysis":
             target = intent.entities.get("target")
             comparison = (
@@ -172,6 +212,52 @@ class DeterministicPlanner:
                     },
                 )
             ]
+        if name == "model_registry":
+            if not context.activeModelId:
+                return []
+            requested_stage = intent.entities.get("target_stage")
+            if requested_stage in {"draft", "staging", "production", "retired"}:
+                return [
+                    AgentPlanStep(
+                        tool="transition_model_stage",
+                        label=f"Passer le modèle en {requested_stage}",
+                        args={
+                            "target_stage": requested_stage,
+                            "note": intent.entities.get("note", ""),
+                        },
+                    )
+                ]
+            return [
+                AgentPlanStep(
+                    tool="get_model_registry_status",
+                    label="Lire le statut MLOps du modèle",
+                    args={},
+                )
+            ]
+
+        if name == "monitor_model":
+            if not context.activeModelId or not context.activeDatasetId:
+                return []
+            return [
+                AgentPlanStep(
+                    tool="monitor_model_health",
+                    label="Surveiller la santé du modèle",
+                    args={"current_dataset_id": context.activeDatasetId},
+                )
+            ]
+
+        if name == "retraining_check":
+            if not context.activeModelId:
+                return []
+            return [
+                AgentPlanStep(
+                    tool="check_model_retraining",
+                    label="Évaluer la nécessité d'un réentraînement",
+                    args={"create_request": False},
+                )
+            ]
+
+
         if name == "explain_model":
             if not context.activeModelId:
                 return []

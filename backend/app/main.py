@@ -20,7 +20,7 @@ from app.services.tenant_access import (
 )
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="2.22.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.26.1", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -253,7 +253,7 @@ async def assistant_tenant_access(request: Request, call_next):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": settings.app_name, "version": "2.22.0"}
+    return {"status": "ok", "product": settings.app_name, "version": "2.26.1"}
 
 
 @app.get("/api/v1/capabilities")
@@ -308,11 +308,30 @@ def capabilities():
             "governed_plugin_registry", "mcp_http_plugins", "http_json_plugins",
             "dynamic_json_schema_tools", "tenant_scoped_plugin_tools", "plugin_secret_vault_references",
             "plugin_ssrf_guard", "plugin_execution_audit", "plugin_response_size_limits",
+            "responsible_ai_group_performance", "explicit_group_fairness_audits",
+            "intersectional_group_audits", "classification_parity_metrics",
+            "regression_group_error_metrics", "model_risk_assessment",
+            "population_representation_drift", "group_performance_drift",
+            "responsible_ai_publication_gate", "responsible_ai_model_card_snapshot",
+            "model_certification_responsible_ai_guard",
+            "persistent_model_registry", "model_registry_versioning",
+            "model_lifecycle_draft_staging_production_retired",
+            "champion_challenger_governance", "model_artifact_sha256_integrity",
+            "model_monitoring_runs", "scheduled_model_monitoring",
+            "feature_drift_monitoring", "performance_degradation_detection",
+            "retraining_policies", "traceable_retraining_requests",
+            "production_certification_gate",
+            "persistent_feature_store", "feature_set_schema_hashing",
+            "immutable_feature_materializations", "training_serving_feature_contract",
+            "internal_model_serving", "shadow_model_serving",
+            "deterministic_canary_routing", "governed_model_deployment_rollback",
+            "serving_request_telemetry", "batch_model_scoring",
         ],
         "partial": [
-            "scheduled_proactive_scans", "shap", "fairness", "nlq", "running_job_preemptive_cancellation",
+            "scheduled_proactive_scans", "shap", "nlq", "running_job_preemptive_cancellation",
             "model_artifact_policy_snapshot", "database_native_rls", "provider_token_cost_instrumentation", "external_kms_key_management",
             "assistant_gis_execution", "assistant_pptx_export", "assistant_shap_provider",
+            "external_cloud_model_serving",
         ],
         "planned": [
             "multi_agent", "r_workspace", "kubernetes_enterprise", "scim_provisioning",

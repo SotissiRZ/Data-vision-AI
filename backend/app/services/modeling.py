@@ -616,9 +616,10 @@ def _model_card(
         "known_limitations": [
             "Les contrôles de leakage sont heuristiques et ne remplacent pas la connaissance métier.",
             "Les métriques peuvent varier si la distribution future diffère des données d'entraînement.",
-            "Fairness avancée reste prévue dans une version ultérieure; la calibration binaire est disponible dans les diagnostics XAI.",
+            "Les métriques de performance par groupe dépendent des variables d’audit explicitement sélectionnées et de leur effectif.",
         ],
-        "fairness": {"status": "planned"},
+        "fairness": {"status": "not_evaluated", "selection_policy": "explicit_group_columns_only"},
+        "responsible_ai": {"status": "not_evaluated", "publication_thresholds": "organization_defined"},
         "explainability": {"permutation_importance": bool(importance), "local_perturbation": True, "diagnostics": True, "partial_dependence": True, "counterfactual_search": True, "shap": "optional_runtime"},
     }
 

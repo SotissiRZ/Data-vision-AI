@@ -1,3 +1,4 @@
+from typing import Any
 import time
 from fastapi import APIRouter, File, HTTPException, UploadFile, Request
 from fastapi.responses import FileResponse
@@ -35,6 +36,32 @@ from app.services.semantic_layer import (
 from app.services.trust_center import trust_center
 from app.services.decision_lab import model_what_if, sensitivity_curve, optimize_scenarios
 from app.services.root_cause import root_cause_analysis
+from app.services.feature_store import (
+    create_feature_set, get_feature_set, list_feature_sets,
+    materialize_feature_set, model_feature_contract,
+    set_feature_set_status,
+)
+from app.services.model_serving import (
+    batch_score_dataset, create_deployment, deployment_metrics,
+    get_deployment, list_deployments, rollback_deployment,
+    score_deployment, update_deployment,
+)
+from app.services.job_service import submit_job
+from app.services.model_registry import (
+    LOCAL_ACTOR, LOCAL_WORKSPACE, check_retraining, get_registry_entry,
+    get_retraining_policy, list_monitoring_runs, list_registry_entries,
+    list_retraining_requests, monitor_model, register_model, registry_summary,
+    save_retraining_policy, transition_model, get_monitor_schedule,
+    list_monitor_schedules, save_monitor_schedule,
+)
+from app.services.auth_service import has_permission
+from app.services.responsible_ai import (
+    fairness_report,
+    model_risk_assessment,
+    population_drift,
+    responsible_ai_gate,
+    persist_responsible_ai_summary,
+)
 from app.services.tenant_access import access_summary, current_access_context
 from app.services.data_reliability import publication_gate
 from app.services.operational_intelligence import record_telemetry
@@ -45,6 +72,28 @@ from app.services.proactive_intelligence import (
 )
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
+
+
+def _registry_identity(permission: str | None = None) -> tuple[str, str]:
+    access = current_access_context()
+    if access is None:
+        return LOCAL_ACTOR, LOCAL_WORKSPACE
+    if permission and not has_permission(access.user_id, access.workspace_id, permission):
+        raise PermissionError(f"Permission requise: {permission}")
+    return str(access.user_id), str(access.workspace_id)
+
+
+def _registry_error(exc: Exception):
+    if isinstance(exc, PermissionError):
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    if isinstance(exc, KeyError):
+        raise HTTPException(status_code=404, detail=str(exc).strip("'")) from exc
+    if isinstance(exc, FileNotFoundError):
+        raise HTTPException(status_code=404, detail="Modèle ou dataset introuvable") from exc
+    if isinstance(exc, ValueError):
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    raise HTTPException(status_code=422, detail=f"Opération MLOps impossible: {exc}") from exc
+
 
 
 class TrainRequest(BaseModel):
@@ -193,6 +242,127 @@ class CounterfactualRequest(BaseModel):
     max_results: int = Field(default=5, ge=1, le=10)
 
 
+class FairnessRequest(BaseModel):
+    protected_columns: list[str] = Field(min_length=1, max_length=3)
+    positive_label: str | int | float | bool | None = None
+    mode: str = Field(default="both", pattern="^(separate|intersectional|both)$")
+    min_group_size: int = Field(default=20, ge=2, le=100000)
+    persist_summary: bool = False
+
+
+class ResponsibleAIGateRequest(FairnessRequest):
+    policy: dict[str, Any] = {}
+
+
+class ResponsibleAIRiskRequest(BaseModel):
+    protected_columns: list[str] = Field(default_factory=list, max_length=3)
+    positive_label: str | int | float | bool | None = None
+    mode: str = Field(default="both", pattern="^(separate|intersectional|both)$")
+    min_group_size: int = Field(default=20, ge=2, le=100000)
+    persist_summary: bool = False
+
+
+class PopulationDriftRequest(FairnessRequest):
+    current_dataset_id: str
+
+
+
+
+class ModelRegistryRegisterRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=240)
+    notes: str = Field(default="", max_length=2000)
+
+
+class ModelStageTransitionRequest(BaseModel):
+    target_stage: str = Field(pattern="^(draft|staging|production|retired)$")
+    note: str = Field(default="", max_length=2000)
+
+
+class ModelMonitorRequest(BaseModel):
+    current_dataset_id: str
+    policy: dict[str, Any] | None = None
+
+
+class MonitorScheduleRequest(BaseModel):
+    current_dataset_id: str
+    enabled: bool = True
+    interval_minutes: int = Field(default=1440, ge=15, le=43200)
+    policy: dict[str, Any] | None = None
+
+
+class RetrainingPolicyRequest(BaseModel):
+    enabled: bool = False
+    min_rows: int = Field(default=100, ge=10, le=10000000)
+    metric_degradation_threshold: float = Field(default=0.15, ge=0.0, le=10.0)
+    feature_drift_threshold: float = Field(default=0.35, ge=0.0, le=10.0)
+    cooldown_hours: int = Field(default=168, ge=0, le=8760)
+    auto_create_request: bool = True
+
+
+class RetrainingCheckRequest(BaseModel):
+    create_request: bool = True
+
+
+
+
+class FeatureSetCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=240)
+    source_dataset_id: str
+    features: list[str] = Field(min_length=1, max_length=500)
+    entity_keys: list[str] = Field(default_factory=list, max_length=20)
+    event_time_column: str | None = None
+    description: str = Field(default="", max_length=2000)
+
+
+class FeatureSetStatusRequest(BaseModel):
+    status: str = Field(pattern="^(draft|active|archived)$")
+
+
+class FeatureMaterializeRequest(BaseModel):
+    source_dataset_id: str | None = None
+
+
+class DeploymentCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=240)
+    endpoint_key: str = Field(min_length=1, max_length=120)
+    primary_model_id: str
+    strategy: str = Field(
+        default="champion",
+        pattern="^(champion|shadow|canary)$",
+    )
+    secondary_model_id: str | None = None
+    traffic_percent: float = Field(default=0.0, ge=0.0, le=100.0)
+    status: str = Field(default="active", pattern="^(active|inactive)$")
+
+
+class DeploymentUpdateRequest(BaseModel):
+    primary_model_id: str | None = None
+    strategy: str | None = Field(
+        default=None,
+        pattern="^(champion|shadow|canary)$",
+    )
+    secondary_model_id: str | None = None
+    traffic_percent: float | None = Field(default=None, ge=0.0, le=100.0)
+    status: str | None = Field(
+        default=None,
+        pattern="^(active|inactive)$",
+    )
+    reason: str = Field(default="deployment_updated", max_length=1000)
+
+
+class ServingPredictRequest(BaseModel):
+    rows: list[dict] = Field(min_length=1, max_length=5000)
+    request_id: str | None = Field(default=None, max_length=200)
+
+
+class BatchScoreRequest(BaseModel):
+    dataset_id: str
+    prediction_column: str = Field(
+        default="prediction",
+        min_length=1,
+        max_length=120,
+    )
+    background: bool = False
 
 
 class NLQRequest(BaseModel):
@@ -485,7 +655,13 @@ def dataset_train(dataset_id: str, request: TrainRequest):
     try:
         meta = get_meta(dataset_id)
         result = train_model(load_dataframe(dataset_id), request.target, request.task, request.algorithm, _dataset_payload(meta))
-        return result.__dict__
+        actor_id, workspace_id = _registry_identity("model:run")
+        registry = register_model(actor_id, workspace_id, result.model_id)
+        payload = dict(result.__dict__)
+        payload["registry"] = registry
+        return payload
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
     except ValueError as exc:
@@ -498,11 +674,16 @@ def dataset_train(dataset_id: str, request: TrainRequest):
 def dataset_automl(dataset_id: str, request: AutoMLRequest):
     try:
         meta = get_meta(dataset_id)
-        return automl_train(
+        result = automl_train(
             load_dataframe(dataset_id), target=request.target, task=request.task,
             primary_metric=request.primary_metric, cv_folds=request.cv_folds, tune=request.tune,
             max_candidates=request.max_candidates, dataset_context=_dataset_payload(meta),
         )
+        actor_id, workspace_id = _registry_identity("model:run")
+        result["registry"] = register_model(actor_id, workspace_id, result["model_id"])
+        return result
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
     except ValueError as exc:
@@ -540,6 +721,412 @@ def dataset_model_benchmark(
             status_code=422,
             detail=f"Benchmark impossible: {exc}",
         ) from exc
+
+
+
+
+
+@router.get("/feature-store")
+def feature_store_list(status: str | None = None):
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        rows = list_feature_sets(workspace_id, status=status)
+        return {"feature_sets": rows, "count": len(rows)}
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.post("/feature-store")
+def feature_store_create(request: FeatureSetCreateRequest):
+    try:
+        actor_id, workspace_id = _registry_identity("dataset:write")
+        return create_feature_set(
+            actor_id,
+            workspace_id,
+            name=request.name,
+            source_dataset_id=request.source_dataset_id,
+            features=request.features,
+            entity_keys=request.entity_keys,
+            event_time_column=request.event_time_column,
+            description=request.description,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/feature-store/{feature_set_id}")
+def feature_store_detail(feature_set_id: str):
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        return get_feature_set(workspace_id, feature_set_id)
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.put("/feature-store/{feature_set_id}/status")
+def feature_store_status(
+    feature_set_id: str,
+    request: FeatureSetStatusRequest,
+):
+    try:
+        actor_id, workspace_id = _registry_identity("publish:write")
+        return set_feature_set_status(
+            actor_id,
+            workspace_id,
+            feature_set_id,
+            request.status,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.post("/feature-store/{feature_set_id}/materialize")
+def feature_store_materialize(
+    feature_set_id: str,
+    request: FeatureMaterializeRequest,
+):
+    try:
+        actor_id, workspace_id = _registry_identity("dataset:write")
+        return materialize_feature_set(
+            actor_id,
+            workspace_id,
+            feature_set_id,
+            source_dataset_id=request.source_dataset_id,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/models/{model_id}/feature-contract")
+def model_serving_feature_contract(model_id: str):
+    try:
+        _registry_identity("dataset:read")
+        return model_feature_contract(model_id)
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/serving/deployments")
+def serving_deployments():
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        rows = list_deployments(workspace_id)
+        return {"deployments": rows, "count": len(rows)}
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.post("/serving/deployments")
+def serving_deployment_create(request: DeploymentCreateRequest):
+    try:
+        actor_id, workspace_id = _registry_identity("publish:write")
+        return create_deployment(
+            actor_id,
+            workspace_id,
+            name=request.name,
+            endpoint_key=request.endpoint_key,
+            primary_model_id=request.primary_model_id,
+            strategy=request.strategy,
+            secondary_model_id=request.secondary_model_id,
+            traffic_percent=request.traffic_percent,
+            status=request.status,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/serving/deployments/{deployment_id}")
+def serving_deployment_detail(deployment_id: str):
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        return get_deployment(workspace_id, deployment_id)
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.put("/serving/deployments/{deployment_id}")
+def serving_deployment_update(
+    deployment_id: str,
+    request: DeploymentUpdateRequest,
+):
+    try:
+        actor_id, workspace_id = _registry_identity("publish:write")
+        return update_deployment(
+            actor_id,
+            workspace_id,
+            deployment_id,
+            primary_model_id=request.primary_model_id,
+            strategy=request.strategy,
+            secondary_model_id=request.secondary_model_id,
+            traffic_percent=request.traffic_percent,
+            status=request.status,
+            reason=request.reason,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.post("/serving/deployments/{deployment_id}/rollback")
+def serving_deployment_rollback(deployment_id: str):
+    try:
+        actor_id, workspace_id = _registry_identity("publish:write")
+        return rollback_deployment(
+            actor_id,
+            workspace_id,
+            deployment_id,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/serving/deployments/{deployment_id}/metrics")
+def serving_deployment_metrics(
+    deployment_id: str,
+    limit: int = 500,
+):
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        return deployment_metrics(
+            workspace_id,
+            deployment_id,
+            limit=limit,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.post("/serving/{endpoint_key}/predict")
+def serving_predict(
+    endpoint_key: str,
+    request: ServingPredictRequest,
+):
+    try:
+        _actor_id, workspace_id = _registry_identity("model:run")
+        return score_deployment(
+            workspace_id,
+            endpoint_key,
+            request.rows,
+            request_id=request.request_id,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.post("/models/{model_id}/batch-score")
+def model_batch_score(
+    model_id: str,
+    request: BatchScoreRequest,
+):
+    try:
+        actor_id, workspace_id = _registry_identity("model:run")
+        access = current_access_context()
+        if request.background and access is not None:
+            return submit_job(
+                user_id=access.user_id,
+                organization_id=access.organization_id,
+                workspace_id=access.workspace_id,
+                job_type="batch_scoring",
+                dataset_id=request.dataset_id,
+                payload={
+                    "model_id": model_id,
+                    "prediction_column": request.prediction_column,
+                },
+            )
+        return batch_score_dataset(
+            actor_id,
+            workspace_id,
+            model_id=model_id,
+            dataset_id=request.dataset_id,
+            prediction_column=request.prediction_column,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/models/registry/summary")
+def model_registry_summary():
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        return registry_summary(workspace_id)
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/models/registry/entries")
+def model_registry_entries(
+    dataset_id: str | None = None,
+    stage: str | None = None,
+    model_key: str | None = None,
+):
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        rows = list_registry_entries(
+            workspace_id,
+            dataset_id=dataset_id,
+            stage=stage,
+            model_key=model_key,
+        )
+        return {"models": rows, "count": len(rows)}
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.post("/models/{model_id}/registry/register")
+def model_registry_register(model_id: str, request: ModelRegistryRegisterRequest):
+    try:
+        actor_id, workspace_id = _registry_identity("model:run")
+        return register_model(
+            actor_id,
+            workspace_id,
+            model_id,
+            name=request.name,
+            notes=request.notes,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/models/{model_id}/registry")
+def model_registry_detail(model_id: str):
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        return get_registry_entry(workspace_id, model_id)
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.post("/models/{model_id}/registry/transition")
+def model_registry_transition(model_id: str, request: ModelStageTransitionRequest):
+    try:
+        actor_id, workspace_id = _registry_identity("publish:write")
+        return transition_model(
+            actor_id,
+            workspace_id,
+            model_id,
+            target_stage=request.target_stage,
+            note=request.note,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.post("/models/{model_id}/monitor")
+def model_monitoring_run(model_id: str, request: ModelMonitorRequest):
+    try:
+        actor_id, workspace_id = _registry_identity("model:run")
+        return monitor_model(
+            actor_id,
+            workspace_id,
+            model_id,
+            current_dataset_id=request.current_dataset_id,
+            policy=request.policy,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/models/{model_id}/monitoring")
+def model_monitoring_history(model_id: str, limit: int = 100):
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        rows = list_monitoring_runs(workspace_id, model_id, limit=limit)
+        return {"runs": rows, "count": len(rows)}
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/models/registry/schedules")
+def model_monitor_schedules():
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        rows = list_monitor_schedules(workspace_id)
+        return {"schedules": rows, "count": len(rows)}
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/models/{model_id}/monitor-schedule")
+def model_monitor_schedule_get(model_id: str):
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        return get_monitor_schedule(workspace_id, model_id) or {
+            "model_id": model_id,
+            "enabled": False,
+            "interval_minutes": 1440,
+            "current_dataset_id": "",
+            "policy": {},
+        }
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.put("/models/{model_id}/monitor-schedule")
+def model_monitor_schedule_put(model_id: str, request: MonitorScheduleRequest):
+    try:
+        actor_id, workspace_id = _registry_identity("publish:write")
+        return save_monitor_schedule(
+            actor_id,
+            workspace_id,
+            model_id,
+            current_dataset_id=request.current_dataset_id,
+            enabled=request.enabled,
+            interval_minutes=request.interval_minutes,
+            policy=request.policy,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/models/{model_id}/retraining-policy")
+def model_retraining_policy_get(model_id: str):
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        return get_retraining_policy(workspace_id, model_id)
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.put("/models/{model_id}/retraining-policy")
+def model_retraining_policy_put(model_id: str, request: RetrainingPolicyRequest):
+    try:
+        actor_id, workspace_id = _registry_identity("publish:write")
+        return save_retraining_policy(
+            actor_id,
+            workspace_id,
+            model_id,
+            enabled=request.enabled,
+            min_rows=request.min_rows,
+            metric_degradation_threshold=request.metric_degradation_threshold,
+            feature_drift_threshold=request.feature_drift_threshold,
+            cooldown_hours=request.cooldown_hours,
+            auto_create_request=request.auto_create_request,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.post("/models/{model_id}/retraining/check")
+def model_retraining_check(model_id: str, request: RetrainingCheckRequest):
+    try:
+        actor_id, workspace_id = _registry_identity("model:run")
+        return check_retraining(
+            actor_id,
+            workspace_id,
+            model_id,
+            create_request=request.create_request,
+        )
+    except Exception as exc:
+        _registry_error(exc)
+
+
+@router.get("/models/{model_id}/retraining/requests")
+def model_retraining_requests(model_id: str):
+    try:
+        _actor_id, workspace_id = _registry_identity("dataset:read")
+        rows = list_retraining_requests(workspace_id, model_id)
+        return {"requests": rows, "count": len(rows)}
+    except Exception as exc:
+        _registry_error(exc)
 
 
 @router.get("/models/engines")
@@ -701,6 +1288,128 @@ def model_xai_counterfactuals(
             status_code=400,
             detail=str(exc),
         ) from exc
+
+
+
+
+@router.post("/models/{model_id}/responsible-ai/fairness")
+def model_responsible_ai_fairness(model_id: str, request: FairnessRequest):
+    try:
+        card = get_model_card(model_id)
+        dataset_id = card.get("dataset", {}).get("id")
+        if not dataset_id:
+            raise ValueError("La Model Card ne référence aucun dataset")
+        report = fairness_report(
+            model_id,
+            load_dataframe(dataset_id),
+            protected_columns=request.protected_columns,
+            positive_label=request.positive_label,
+            mode=request.mode,
+            min_group_size=request.min_group_size,
+        )
+        if request.persist_summary:
+            risk = model_risk_assessment(model_id, fairness=report)
+            persist_responsible_ai_summary(
+                model_id, fairness=report, risk=risk
+            )
+        return report
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Modèle ou dataset de référence introuvable",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/models/{model_id}/responsible-ai/gate")
+def model_responsible_ai_gate(model_id: str, request: ResponsibleAIGateRequest):
+    try:
+        card = get_model_card(model_id)
+        dataset_id = card.get("dataset", {}).get("id")
+        if not dataset_id:
+            raise ValueError("La Model Card ne référence aucun dataset")
+        gate = responsible_ai_gate(
+            model_id,
+            load_dataframe(dataset_id),
+            protected_columns=request.protected_columns,
+            positive_label=request.positive_label,
+            mode=request.mode,
+            min_group_size=request.min_group_size,
+            policy=request.policy,
+        )
+        risk = model_risk_assessment(model_id, fairness=gate["fairness"])
+        gate["risk"] = risk
+        if request.persist_summary:
+            persist_responsible_ai_summary(
+                model_id,
+                fairness=gate["fairness"],
+                gate=gate,
+                risk=risk,
+            )
+        return gate
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Modèle ou dataset de référence introuvable",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/models/{model_id}/responsible-ai/risk")
+def model_responsible_ai_risk(model_id: str, request: ResponsibleAIRiskRequest):
+    try:
+        fairness = None
+        if request.protected_columns:
+            card = get_model_card(model_id)
+            dataset_id = card.get("dataset", {}).get("id")
+            if not dataset_id:
+                raise ValueError("La Model Card ne référence aucun dataset")
+            fairness = fairness_report(
+                model_id,
+                load_dataframe(dataset_id),
+                protected_columns=request.protected_columns,
+                positive_label=request.positive_label,
+                mode=request.mode,
+                min_group_size=request.min_group_size,
+            )
+        risk = model_risk_assessment(model_id, fairness=fairness)
+        if request.persist_summary:
+            persist_responsible_ai_summary(
+                model_id, fairness=fairness, risk=risk
+            )
+        return {"risk": risk, "fairness": fairness}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Modèle introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/models/{model_id}/responsible-ai/drift")
+def model_responsible_ai_drift(model_id: str, request: PopulationDriftRequest):
+    try:
+        card = get_model_card(model_id)
+        reference_dataset_id = card.get("dataset", {}).get("id")
+        if not reference_dataset_id:
+            raise ValueError("La Model Card ne référence aucun dataset")
+        get_meta(request.current_dataset_id)
+        return population_drift(
+            model_id,
+            load_dataframe(reference_dataset_id),
+            load_dataframe(request.current_dataset_id),
+            protected_columns=request.protected_columns,
+            positive_label=request.positive_label,
+            mode=request.mode,
+            min_group_size=request.min_group_size,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Modèle ou dataset introuvable",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{dataset_id}/ai/capabilities")

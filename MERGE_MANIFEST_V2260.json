@@ -1,0 +1,17 @@
+{
+  "version": "2.26.0",
+  "base": "2.25.1 cumulative",
+  "features": [
+    "accessibility display menu in topbar",
+    "three reading modes: normal, comfortable, large",
+    "persistent UI zoom 90-140%",
+    "larger buttons and icons",
+    "improved mobile topbar responsiveness",
+    "assistant readability refinement"
+  ],
+  "validation": {
+    "backend_logic_changed": false,
+    "api_changed": false,
+    "frontend_updated": true
+  }
+}

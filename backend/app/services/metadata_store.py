@@ -185,6 +185,192 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS model_registry_entries (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        model_key TEXT NOT NULL,
+        version_no INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        stage TEXT NOT NULL DEFAULT 'draft',
+        role TEXT NOT NULL DEFAULT 'candidate',
+        artifact_sha256 TEXT NOT NULL,
+        card_sha256 TEXT NOT NULL,
+        registered_by TEXT NOT NULL,
+        registered_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        promoted_at TEXT,
+        retired_at TEXT,
+        notes TEXT,
+        UNIQUE(workspace_id, model_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS model_registry_events (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        registry_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        from_stage TEXT,
+        to_stage TEXT,
+        actor_id TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS model_monitoring_runs (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        registry_id TEXT,
+        reference_dataset_id TEXT NOT NULL,
+        current_dataset_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        rows_evaluated INTEGER NOT NULL DEFAULT 0,
+        performance_json TEXT NOT NULL,
+        drift_json TEXT NOT NULL,
+        policy_json TEXT NOT NULL,
+        degradation_json TEXT NOT NULL,
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS model_monitor_schedules (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        current_dataset_id TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        interval_minutes INTEGER NOT NULL DEFAULT 1440,
+        policy_json TEXT NOT NULL,
+        next_run_at TEXT,
+        last_enqueued_at TEXT,
+        created_by TEXT NOT NULL,
+        updated_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(workspace_id, model_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS model_retraining_policies (
+        workspace_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        enabled INTEGER NOT NULL DEFAULT 0,
+        min_rows INTEGER NOT NULL DEFAULT 100,
+        metric_degradation_threshold REAL NOT NULL DEFAULT 0.15,
+        feature_drift_threshold REAL NOT NULL DEFAULT 0.35,
+        cooldown_hours INTEGER NOT NULL DEFAULT 168,
+        auto_create_request INTEGER NOT NULL DEFAULT 1,
+        updated_by TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(workspace_id, model_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS model_retraining_requests (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        model_id TEXT NOT NULL,
+        registry_id TEXT,
+        source_monitoring_run_id TEXT,
+        status TEXT NOT NULL DEFAULT 'requested',
+        reasons_json TEXT NOT NULL,
+        requested_by TEXT NOT NULL,
+        requested_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+
+"""
+CREATE TABLE IF NOT EXISTS feature_sets (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    description TEXT,
+    source_dataset_id TEXT NOT NULL,
+    entity_keys_json TEXT NOT NULL,
+    event_time_column TEXT,
+    features_json TEXT NOT NULL,
+    schema_json TEXT NOT NULL,
+    schema_sha256 TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'draft',
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(workspace_id, name)
+)
+""",
+"""
+CREATE TABLE IF NOT EXISTS feature_materializations (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    feature_set_id TEXT NOT NULL,
+    source_dataset_id TEXT NOT NULL,
+    source_dataset_version INTEGER NOT NULL,
+    materialized_dataset_id TEXT NOT NULL,
+    row_count INTEGER NOT NULL,
+    schema_sha256 TEXT NOT NULL,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+)
+""",
+"""
+CREATE TABLE IF NOT EXISTS model_deployments (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    endpoint_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    model_key TEXT NOT NULL,
+    primary_model_id TEXT NOT NULL,
+    secondary_model_id TEXT,
+    strategy TEXT NOT NULL DEFAULT 'champion',
+    traffic_percent REAL NOT NULL DEFAULT 0,
+    status TEXT NOT NULL DEFAULT 'inactive',
+    feature_contract_json TEXT NOT NULL,
+    revision_no INTEGER NOT NULL DEFAULT 1,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_by TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE(workspace_id, endpoint_key)
+)
+""",
+"""
+CREATE TABLE IF NOT EXISTS model_deployment_revisions (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    deployment_id TEXT NOT NULL,
+    revision_no INTEGER NOT NULL,
+    config_json TEXT NOT NULL,
+    reason TEXT,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(deployment_id, revision_no)
+)
+""",
+"""
+CREATE TABLE IF NOT EXISTS model_serving_requests (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    deployment_id TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    model_id TEXT NOT NULL,
+    shadow_model_id TEXT,
+    strategy TEXT NOT NULL,
+    row_count INTEGER NOT NULL,
+    schema_valid INTEGER NOT NULL,
+    latency_ms REAL NOT NULL,
+    status TEXT NOT NULL,
+    request_sha256 TEXT NOT NULL,
+    summary_json TEXT NOT NULL,
+    created_at TEXT NOT NULL
+)
+""",
+    """
     CREATE TABLE IF NOT EXISTS data_connectors (
         id TEXT PRIMARY KEY,
         workspace_id TEXT NOT NULL,

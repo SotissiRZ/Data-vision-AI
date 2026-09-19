@@ -7,6 +7,7 @@ from app.services.job_service import QUEUE_KEY, run_job, submit_job, enqueue_due
 from app.services.metadata_store import init_metadata_store, fetch_one
 from app.services.connector_service import claim_due_schedules, get_source
 from app.services.governed_actions import process_due_runs
+from app.services.model_registry import LOCAL_ACTOR, LOCAL_WORKSPACE, claim_due_monitor_schedules
 
 
 def _enqueue_due_refreshes() -> None:
@@ -27,6 +28,36 @@ def _enqueue_due_refreshes() -> None:
             print(f"Refresh scheduler error for {schedule.get('source_id')}: {exc}", flush=True)
 
 
+
+def _enqueue_due_model_monitors() -> None:
+    for schedule in claim_due_monitor_schedules(limit=20):
+        try:
+            is_local = schedule["workspace_id"] == LOCAL_WORKSPACE
+            ws = None if is_local else fetch_one(
+                "SELECT organization_id FROM workspaces WHERE id=:id",
+                {"id": schedule["workspace_id"]},
+            )
+            submit_job(
+                user_id=LOCAL_ACTOR if is_local else schedule["created_by"],
+                organization_id=ws.get("organization_id") if ws else None,
+                workspace_id=None if is_local else schedule["workspace_id"],
+                job_type="model_monitor",
+                dataset_id=schedule["current_dataset_id"],
+                payload={
+                    "model_id": schedule["model_id"],
+                    "current_dataset_id": schedule["current_dataset_id"],
+                    "policy": schedule.get("policy") or {},
+                    "trigger": "scheduled",
+                    "schedule_id": schedule["id"],
+                },
+            )
+        except Exception as exc:
+            print(
+                f"Model monitor scheduler error for {schedule.get('model_id')}: {exc}",
+                flush=True,
+            )
+
+
 def main():
     init_metadata_store()
     try:
@@ -41,6 +72,7 @@ def main():
             now = time.monotonic()
             if now >= next_scheduler_check:
                 _enqueue_due_refreshes()
+                _enqueue_due_model_monitors()
                 enqueue_due_retries()
                 process_due_runs()
                 next_scheduler_check = now + 30.0

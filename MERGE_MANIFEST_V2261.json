@@ -1,0 +1,12 @@
+{
+  "version": "2.26.1",
+  "base": "2.26.0 cumulative",
+  "changes": [
+    "wider global search button in topbar",
+    "settings gear button added to navbar",
+    "settings button routes to governance area",
+    "responsive search width rules"
+  ],
+  "backend_changed": false,
+  "api_changed": false
+}

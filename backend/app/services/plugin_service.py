@@ -710,7 +710,7 @@ def _mcp_initialize(plugin: dict[str, Any]) -> str | None:
         params={
             "protocolVersion": protocol_version,
             "capabilities": {},
-            "clientInfo": {"name": "DataVision AI", "version": "2.22.0"},
+            "clientInfo": {"name": "DataVision AI", "version": "2.23.0"},
         },
         request_id=1,
     )

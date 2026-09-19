@@ -1,4 +1,4 @@
-# DataVision AI — v2.22.0
+# DataVision AI — v2.26.1
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
 
@@ -680,6 +680,433 @@ par défaut est configurable dans le manifest (`protocol_version`).
 Cette version ne revendique pas encore : marketplace public, signatures de
 packages, MCP stdio local, OAuth dynamique MCP, sampling MCP, resources/prompts
 MCP ni exécution de code plugin local.
+
+
+## Nouveau dans v2.23.0 — Responsible AI & Fairness
+
+La zone **Modéliser → Responsible AI** ajoute une couche de gouvernance des
+modèles qui reste distincte du moteur prédictif.
+
+### Sélection explicite des groupes
+
+DataVision ne tente pas d'inférer automatiquement qu'une colonne représente
+une caractéristique sensible. L'utilisateur choisit explicitement jusqu'à
+3 variables de groupe à auditer.
+
+Modes :
+
+- audit séparé de chaque variable ;
+- audit intersectionnel ;
+- les deux simultanément.
+
+L'évaluation utilise par défaut le **holdout final** sauvegardé avec le modèle.
+
+### Classification
+
+Lorsque la tâche est une classification, DataVision calcule par groupe :
+
+- accuracy ;
+- balanced accuracy ;
+- F1 pondéré ;
+- taux de sélection ;
+- taux de vrais positifs ;
+- taux de faux positifs ;
+- précision sur la classe positive ;
+- Brier score et calibration lorsque les probabilités sont disponibles.
+
+Les synthèses incluent notamment :
+
+- demographic parity difference ;
+- selection rate ratio ;
+- equal opportunity difference ;
+- false positive rate difference ;
+- equalized odds difference.
+
+Aucune de ces métriques n'est interprétée comme définition universelle de
+l'équité.
+
+### Régression
+
+Pour une régression, l'audit compare :
+
+- MAE ;
+- RMSE ;
+- erreur moyenne ;
+- R² ;
+- ratios et écarts d'erreur entre groupes.
+
+### Publication gate
+
+Les seuils de blocage sont fournis par l'organisation. DataVision n'impose pas
+un seuil de fairness par défaut.
+
+Exemples de politiques possibles :
+
+```json
+{
+  "max_demographic_parity_difference": 0.10,
+  "min_selection_rate_ratio": 0.80,
+  "max_equal_opportunity_difference": 0.10,
+  "block_on_protected_feature_usage": true
+}
+```
+
+Ces valeurs sont des **exemples de configuration**, pas des recommandations
+universelles du produit.
+
+Le résultat du gate peut être persisté dans la Model Card. Lorsqu'un modèle a
+un gate Responsible AI enregistré comme bloqué, le Review Center refuse sa
+certification tant que ce gate reste bloqué.
+
+### Model Risk Assessment
+
+DataVision agrège les signaux de gouvernance :
+
+- taille du jeu de test ;
+- garde-fous d'entraînement ;
+- utilisation d'une variable d'audit comme feature ;
+- groupes insuffisamment documentés ;
+- présence ou absence d'une revue de performance par groupe.
+
+Le niveau produit est un **risque de gouvernance du modèle**, jamais un jugement
+sur une personne ou un groupe.
+
+### Population drift
+
+Un modèle peut être comparé à un dataset actif plus récent :
+
+- dérive de représentation des groupes ;
+- variation des parts de population ;
+- nouvelle performance par groupe si la cible est disponible dans le dataset
+  courant.
+
+### Assistant
+
+Nouveaux tools gouvernés :
+
+- `evaluate_model_fairness` ;
+- `assess_model_risk` ;
+- `responsible_ai_publication_gate`.
+
+Le calcul reste déterministe. L'assistant ne choisit pas lui-même les variables
+sensibles à auditer.
+
+
+## Nouveau dans v2.24.0 — Model Registry & MLOps
+
+La zone **Modéliser → Model Registry** ajoute un cycle de vie persistant pour
+les modèles DataVision.
+
+### Lifecycle
+
+```text
+draft
+  ↓
+staging
+  ↓
+production
+  ↓
+retired
+```
+
+Un modèle en staging porte le rôle `challenger`. Un modèle promu en production
+devient le `champion` de sa famille de modèles. Lorsqu'un nouveau champion est
+promu, l'ancien champion est retiré automatiquement et l'événement est audité.
+
+Une famille de modèles est définie par :
+
+```text
+dataset root + target + task
+```
+
+Chaque nouvel artefact reçoit un numéro de version Registry indépendant de
+l'identifiant technique UUID du modèle.
+
+### Intégrité des artefacts
+
+Le Registry conserve :
+
+- SHA256 du fichier `.joblib` ;
+- SHA256 de la Model Card ;
+- version Registry ;
+- stage ;
+- rôle ;
+- horodatage des promotions/retraits ;
+- historique des transitions.
+
+Les enrichissements de gouvernance sont autorisés en draft/staging puis un
+nouveau snapshot est pris avant la transition. Un changement de l'artefact de
+production est ensuite détecté comme une violation d'intégrité.
+
+### Gate de production
+
+En Enterprise, une promotion `staging → production` exige :
+
+- une certification active du modèle ;
+- aucun Responsible AI Gate persisté comme bloqué.
+
+Le Model Registry ne contourne donc pas le Review Center ni Responsible AI.
+
+### Monitoring
+
+Un run de monitoring compare le dataset d'entraînement au dataset courant :
+
+```text
+Model Card
+   +
+reference dataset
+   +
+current dataset
+       ↓
+performance actuelle
+feature drift
+       ↓
+healthy / degraded
+```
+
+Pour les features numériques, DataVision mesure un déplacement standardisé.
+Pour les features catégorielles, il calcule la Total Variation Distance.
+
+Si la cible est disponible sur les données courantes, le moteur recalcule les
+métriques du modèle et mesure la dégradation relative de la métrique primaire.
+
+Les seuils de monitoring sont des paramètres opérationnels configurables et ne
+sont pas présentés comme des seuils universels de qualité scientifique.
+
+### Monitoring périodique
+
+Le worker peut exécuter des jobs `model_monitor` selon un intervalle configuré.
+
+Le scheduler :
+
+- fonctionne avec un lock conditionnel en metadata store ;
+- ne lance qu'un seul job pour une échéance donnée ;
+- reste tenant-aware en Enterprise ;
+- utilise le même moteur de monitoring que l'exécution manuelle.
+
+Le monitoring périodique ne peut être activé qu'en `staging` ou `production`.
+
+### Retraining Policy
+
+Une politique de réentraînement peut définir :
+
+- nombre minimum de lignes évaluées ;
+- seuil de dégradation relative de performance ;
+- seuil de feature drift ;
+- cooldown entre demandes ;
+- création automatique ou non d'une demande.
+
+Même lorsqu'une politique est déclenchée, DataVision **ne réentraîne pas
+silencieusement** le modèle. Il crée une `retraining_request` traçable qui peut
+ensuite être traitée par le workflow de modélisation et de revue.
+
+### Assistant
+
+Nouveaux tools gouvernés :
+
+- `get_model_registry_status` ;
+- `monitor_model_health` ;
+- `check_model_retraining` ;
+- `request_model_retraining` ;
+- `transition_model_stage`.
+
+Une transition de stage et une demande explicite de réentraînement sont soumises
+aux règles de confirmation et aux permissions DataVision.
+
+
+
+
+
+
+
+
+## Nouveau dans v2.26.1 — Topbar plus pratique
+
+- barre de recherche globale agrandie ;
+- libellé plus explicite : `Rechercher dans DataVision…` ;
+- raccourci `Ctrl K` conservé ;
+- nouveau bouton `⚙` de paramétrage dans la navbar ;
+- le bouton de paramétrage ouvre directement l'espace **Gouverner** ;
+- responsive conservé sur tablette et mobile.
+
+Aucune logique backend ou analytique n'est modifiée dans ce hotfix.
+
+## Nouveau dans v2.26.0 — Accessibilité d’affichage
+
+Cette version poursuit l’amélioration de l’expérience utilisateur avec un vrai
+**pilotage d’affichage** intégré dans la topbar.
+
+### Ajouts
+
+- sélecteur de mode de lecture : `Normal`, `Confort`, `Grand texte` ;
+- zoom UI persistant de `90%` à `140%` ;
+- mémorisation locale automatique ;
+- topbar, boutons, icônes et navigation légèrement agrandis ;
+- assistant flottant encore plus lisible ;
+- adaptation mobile renforcée pour la topbar et les réglages d’affichage.
+
+### Emplacement
+
+Le contrôle d’affichage se trouve dans la topbar, via le bouton :
+
+```text
+Aa 105%
+```
+
+### Notes techniques
+
+Le réglage s’applique côté frontend et ne modifie ni les datasets, ni les
+analyses, ni les endpoints API.
+
+## Nouveau dans v2.25.1 — Confort visuel & lisibilité
+
+Cette version est un **hotfix UI** centré sur la lisibilité, surtout dans
+l'espace **AI Analyst** et dans l'interface générale.
+
+Améliorations principales :
+- taille de police globale légèrement augmentée ;
+- topbar, navigation latérale et badges plus lisibles ;
+- titres, sous-titres et textes descriptifs agrandis ;
+- tableaux, panneaux et formulaires plus confortables ;
+- zone **Demande analytique**, sélecteurs et exemples AI Analyst agrandis ;
+- palette de commande plus lisible ;
+- fenêtre de l'assistant flottant légèrement plus grande avec textes agrandis ;
+- meilleur rendu responsive quand l'écran est plus étroit.
+
+Aucune logique métier, aucun endpoint API et aucun workflow MLOps n'ont été
+modifiés dans cette version.
+
+## Nouveau dans v2.25.0 — Feature Store & Serving
+
+### Feature Store persistant
+
+Le module **Modéliser → Feature Store & Serving** permet de créer des Feature
+Sets déclaratifs à partir d'un dataset gouverné.
+
+Chaque Feature Set conserve :
+- dataset source ;
+- entity keys ;
+- event time optionnel ;
+- features ;
+- types/familles de données ;
+- hash SHA256 du schéma ;
+- statut draft / active / archived.
+
+Une matérialisation crée un **snapshot immuable** DataVision et enregistre :
+- version du dataset source ;
+- dataset matérialisé ;
+- nombre de lignes ;
+- hash du contrat.
+
+Aucun code Python utilisateur n'est stocké ou exécuté par le Feature Store.
+
+### Training / Serving Consistency
+
+Chaque modèle expose désormais un Feature Contract calculé depuis son dataset
+d'entraînement :
+
+```text
+features requises
++ familles de types
++ schema_sha256
++ policy
+```
+
+Le serving refuse :
+- les features obligatoires absentes ;
+- les valeurs non convertibles vers un type numérique attendu ;
+- plus de 5 000 lignes dans une requête interactive.
+
+Les colonnes supplémentaires sont ignorées pour l'inférence mais signalées
+dans la réponse.
+
+### Serving interne DataVision
+
+Un modèle champion en production peut être exposé via un endpoint interne :
+
+```text
+POST /api/v1/datasets/serving/{endpoint_key}/predict
+```
+
+Backends v2.25 :
+
+```text
+datavision_internal
+datavision_internal_batch
+```
+
+La version ne prétend pas déployer automatiquement vers Kubernetes, Vertex AI,
+SageMaker ou un gateway cloud externe.
+
+### Champion / Shadow / Canary
+
+Trois stratégies sont disponibles :
+
+- `champion` : tout le trafic utilise le champion ;
+- `shadow` : le champion répond à l'utilisateur et le challenger est évalué
+  silencieusement pour calculer une comparaison ;
+- `canary` : une fraction configurée du trafic est routée vers le challenger.
+
+Le canary utilise un hash déterministe du `request_id`. Une même requête stable
+est donc routée vers le même modèle.
+
+### Confidentialité du serving
+
+Les logs de serving ne stockent pas les lignes d'entrée.
+
+Ils enregistrent uniquement :
+- request_id ;
+- modèle utilisé ;
+- stratégie ;
+- nombre de lignes ;
+- latence ;
+- hash SHA256 de la requête ;
+- résumé shadow ;
+- timestamp.
+
+### Rollback gouverné
+
+Chaque modification d'un deployment crée une révision.
+
+Un rollback :
+1. retrouve la révision précédente ;
+2. restaure le champion précédent via le Model Registry ;
+3. repasse par les gates de production ;
+4. retire le champion courant si nécessaire ;
+5. restaure le contrat de features ;
+6. écrit une nouvelle révision de deployment.
+
+Le rollback ne contourne donc ni certification, ni Responsible AI, ni intégrité
+de l'artefact.
+
+### Batch scoring
+
+Le batch scoring :
+- accepte un modèle staging ou production ;
+- vérifie les features ;
+- score le dataset gouverné ;
+- crée une **nouvelle version immuable** ;
+- ajoute la prédiction et, en classification, les probabilités par classe ;
+- conserve le modèle et le Feature Contract dans la provenance de la version.
+
+Le job `batch_scoring` est également supporté par le worker Enterprise.
+
+### Assistant
+
+Nouveaux tools gouvernés :
+
+```text
+list_feature_sets
+materialize_feature_set
+list_model_deployments
+score_model_deployment
+batch_score_model
+rollback_model_deployment
+```
+
+Les opérations de matérialisation, batch scoring et rollback exigent une
+confirmation humaine.
+
 
 ## Ports
 

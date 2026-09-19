@@ -941,3 +941,407 @@ export async function optimizeModelScenarios(
     'Optimisation des scénarios impossible',
   );
 }
+
+export async function runModelFairnessAudit(
+  modelId: string,
+  payload: {
+    protected_columns: string[];
+    positive_label?: string | number | boolean | null;
+    mode?: 'separate' | 'intersectional' | 'both';
+    min_group_size?: number;
+    persist_summary?: boolean;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/responsible-ai/fairness`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Audit Responsible AI impossible',
+  );
+}
+
+export async function runModelResponsibleAIGate(
+  modelId: string,
+  payload: {
+    protected_columns: string[];
+    positive_label?: string | number | boolean | null;
+    mode?: 'separate' | 'intersectional' | 'both';
+    min_group_size?: number;
+    persist_summary?: boolean;
+    policy?: Record<string, unknown>;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/responsible-ai/gate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Publication gate Responsible AI impossible',
+  );
+}
+
+export async function runModelResponsibleAIRisk(
+  modelId: string,
+  payload: {
+    protected_columns?: string[];
+    positive_label?: string | number | boolean | null;
+    mode?: 'separate' | 'intersectional' | 'both';
+    min_group_size?: number;
+    persist_summary?: boolean;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/responsible-ai/risk`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Évaluation du risque modèle impossible',
+  );
+}
+
+export async function runModelPopulationDrift(
+  modelId: string,
+  payload: {
+    current_dataset_id: string;
+    protected_columns: string[];
+    positive_label?: string | number | boolean | null;
+    mode?: 'separate' | 'intersectional' | 'both';
+    min_group_size?: number;
+    persist_summary?: boolean;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/responsible-ai/drift`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Monitoring de population impossible',
+  );
+}
+
+
+export async function getModelRegistrySummary() {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/registry/summary`),
+    'Résumé du Model Registry indisponible',
+  );
+}
+
+export async function getModelRegistryEntries(params?: {
+  dataset_id?: string;
+  stage?: string;
+  model_key?: string;
+}) {
+  const search = new URLSearchParams();
+  if (params?.dataset_id) search.set('dataset_id', params.dataset_id);
+  if (params?.stage) search.set('stage', params.stage);
+  if (params?.model_key) search.set('model_key', params.model_key);
+  const suffix = search.toString() ? `?${search.toString()}` : '';
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/registry/entries${suffix}`),
+    'Model Registry indisponible',
+  );
+}
+
+export async function registerModelInRegistry(
+  modelId: string,
+  payload: { name?: string | null; notes?: string },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/registry/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Enregistrement du modèle impossible',
+  );
+}
+
+export async function getModelRegistryDetail(modelId: string) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/registry`),
+    'Détail du Model Registry indisponible',
+  );
+}
+
+export async function transitionModelStage(
+  modelId: string,
+  payload: { target_stage: 'draft' | 'staging' | 'production' | 'retired'; note?: string },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/registry/transition`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Transition du modèle impossible',
+  );
+}
+
+export async function runModelMonitoring(
+  modelId: string,
+  payload: {
+    current_dataset_id: string;
+    policy?: Record<string, unknown> | null;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/monitor`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Monitoring du modèle impossible',
+  );
+}
+
+export async function getModelMonitoringHistory(modelId: string, limit = 100) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/monitoring?limit=${limit}`),
+    'Historique de monitoring indisponible',
+  );
+}
+
+export async function getModelRetrainingPolicy(modelId: string) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/retraining-policy`),
+    'Politique de réentraînement indisponible',
+  );
+}
+
+export async function saveModelRetrainingPolicy(
+  modelId: string,
+  payload: {
+    enabled: boolean;
+    min_rows: number;
+    metric_degradation_threshold: number;
+    feature_drift_threshold: number;
+    cooldown_hours: number;
+    auto_create_request: boolean;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/retraining-policy`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Enregistrement de la politique impossible',
+  );
+}
+
+export async function checkModelRetraining(
+  modelId: string,
+  createRequest = true,
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/retraining/check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ create_request: createRequest }),
+    }),
+    'Vérification du réentraînement impossible',
+  );
+}
+
+export async function getModelRetrainingRequests(modelId: string) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/retraining/requests`),
+    'Demandes de réentraînement indisponibles',
+  );
+}
+
+
+export async function getModelMonitorSchedule(modelId: string) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/monitor-schedule`),
+    'Planning de monitoring indisponible',
+  );
+}
+
+export async function saveModelMonitorSchedule(
+  modelId: string,
+  payload: {
+    current_dataset_id: string;
+    enabled: boolean;
+    interval_minutes: number;
+    policy?: Record<string, unknown> | null;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/monitor-schedule`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Enregistrement du planning de monitoring impossible',
+  );
+}
+
+
+export async function getFeatureSets(status?: string) {
+  const suffix = status ? `?status=${encodeURIComponent(status)}` : '';
+  return parse<any>(
+    await apiFetch(`${API}/datasets/feature-store${suffix}`),
+    'Feature Store indisponible',
+  );
+}
+
+export async function createFeatureSet(payload: {
+  name: string;
+  source_dataset_id: string;
+  features: string[];
+  entity_keys?: string[];
+  event_time_column?: string | null;
+  description?: string;
+}) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/feature-store`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Création du Feature Set impossible',
+  );
+}
+
+export async function setFeatureSetStatus(
+  featureSetId: string,
+  status: 'draft' | 'active' | 'archived',
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/feature-store/${encodeURIComponent(featureSetId)}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    }),
+    'Mise à jour du Feature Set impossible',
+  );
+}
+
+export async function materializeFeatureSet(
+  featureSetId: string,
+  sourceDatasetId?: string | null,
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/feature-store/${encodeURIComponent(featureSetId)}/materialize`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_dataset_id: sourceDatasetId ?? null }),
+    }),
+    'Matérialisation du Feature Set impossible',
+  );
+}
+
+export async function getModelFeatureContract(modelId: string) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/feature-contract`),
+    'Feature Contract du modèle indisponible',
+  );
+}
+
+export async function getModelDeployments() {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/serving/deployments`),
+    'Deployments indisponibles',
+  );
+}
+
+export async function createModelDeployment(payload: {
+  name: string;
+  endpoint_key: string;
+  primary_model_id: string;
+  strategy?: 'champion' | 'shadow' | 'canary';
+  secondary_model_id?: string | null;
+  traffic_percent?: number;
+  status?: 'active' | 'inactive';
+}) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/serving/deployments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Création du deployment impossible',
+  );
+}
+
+export async function updateModelDeployment(
+  deploymentId: string,
+  payload: {
+    primary_model_id?: string;
+    strategy?: 'champion' | 'shadow' | 'canary';
+    secondary_model_id?: string | null;
+    traffic_percent?: number;
+    status?: 'active' | 'inactive';
+    reason?: string;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/serving/deployments/${encodeURIComponent(deploymentId)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Mise à jour du deployment impossible',
+  );
+}
+
+export async function rollbackModelDeployment(deploymentId: string) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/serving/deployments/${encodeURIComponent(deploymentId)}/rollback`, {
+      method: 'POST',
+    }),
+    'Rollback du deployment impossible',
+  );
+}
+
+export async function getModelDeploymentMetrics(
+  deploymentId: string,
+  limit = 500,
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/serving/deployments/${encodeURIComponent(deploymentId)}/metrics?limit=${limit}`),
+    'Métriques de serving indisponibles',
+  );
+}
+
+export async function scoreModelDeployment(
+  endpointKey: string,
+  payload: {
+    rows: Record<string, unknown>[];
+    request_id?: string | null;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/serving/${encodeURIComponent(endpointKey)}/predict`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Scoring du deployment impossible',
+  );
+}
+
+export async function batchScoreModel(
+  modelId: string,
+  payload: {
+    dataset_id: string;
+    prediction_column?: string;
+    background?: boolean;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/batch-score`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Batch scoring impossible',
+  );
+}

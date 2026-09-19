@@ -29,6 +29,9 @@ class MLEngineBridge(Protocol):
     def inspect_data_leakage(self, *, context: AssistantContext, **kwargs: Any) -> Any: ...
     def run_automl(self, *, context: AssistantContext, **kwargs: Any) -> Any: ...
     def explain_model(self, *, context: AssistantContext, **kwargs: Any) -> Any: ...
+    def evaluate_model_fairness(self, *, context: AssistantContext, **kwargs: Any) -> Any: ...
+    def assess_model_risk(self, *, context: AssistantContext, **kwargs: Any) -> Any: ...
+    def responsible_ai_publication_gate(self, *, context: AssistantContext, **kwargs: Any) -> Any: ...
 
 
 class GISEngineBridge(Protocol):
@@ -89,6 +92,9 @@ def bind_registry_to_host(registry, bridges: DataVisionHostBridges) -> None:
         "inspect_data_leakage": (bridges.ml, "inspect_data_leakage"),
         "run_automl": (bridges.ml, "run_automl"),
         "explain_model": (bridges.ml, "explain_model"),
+        "evaluate_model_fairness": (bridges.ml, "evaluate_model_fairness"),
+        "assess_model_risk": (bridges.ml, "assess_model_risk"),
+        "responsible_ai_publication_gate": (bridges.ml, "responsible_ai_publication_gate"),
         "gis_reproject": (bridges.gis, "gis_reproject"),
         "gis_spatial_join": (bridges.gis, "gis_spatial_join"),
         "gis_buffer": (bridges.gis, "gis_buffer"),

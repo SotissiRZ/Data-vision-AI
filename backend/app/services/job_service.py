@@ -33,7 +33,7 @@ def queue_status() -> dict[str, Any]:
 
 
 def submit_job(*, user_id: str, organization_id: str | None, workspace_id: str | None, job_type: str, dataset_id: str | None, payload: dict[str, Any], max_retries: int = 2, retry_backoff_seconds: int = 15) -> dict[str, Any]:
-    if job_type not in {"automl", "ai_analysis", "forecast", "report", "proactive_scan", "connector_refresh", "action_delivery"}:
+    if job_type not in {"automl", "ai_analysis", "forecast", "report", "proactive_scan", "connector_refresh", "action_delivery", "model_monitor", "batch_scoring"}:
         raise ValueError("Type de job non supporté")
     max_retries = max(0, min(int(max_retries), 5))
     retry_backoff_seconds = max(1, min(int(retry_backoff_seconds), 3600))
@@ -169,6 +169,8 @@ def run_job(job_id: str) -> dict[str, Any]:
     from app.services.connector_service import refresh_source as connector_refresh
     from app.services.auth_service import has_permission
     from app.services.governed_actions import execute_action_run
+    from app.services.model_registry import monitor_model, register_model
+    from app.services.model_serving import batch_score_dataset
 
     job = get_job(job_id)
     if job["cancel_requested"] or job["status"] == "cancelled":
@@ -191,7 +193,7 @@ def run_job(job_id: str) -> dict[str, Any]:
                 if dataset_id:
                     authorize_dataset(dataset_id, "dataset:write", access_ctx)
             elif dataset_id:
-                required = "model:run" if job["job_type"] == "automl" else "analysis:run"
+                required = "model:run" if job["job_type"] in {"automl", "model_monitor", "batch_scoring"} else "analysis:run"
                 authorize_dataset(dataset_id, required, access_ctx)
         if job["job_type"] == "automl":
             if not dataset_id:
@@ -205,6 +207,11 @@ def run_job(job_id: str) -> dict[str, Any]:
                 "root_id": meta.get("root_id", meta["id"]), "operation": meta.get("operation"),
             }
             result = automl_train(df, dataset_context=context, **payload)
+            registry_ws = str(job.get("workspace_id") or "__local__")
+            registry_actor = str(job.get("user_id") or "__local_user__")
+            result["registry"] = register_model(
+                registry_actor, registry_ws, result["model_id"]
+            )
         elif job["job_type"] == "ai_analysis":
             if not dataset_id:
                 raise ValueError("dataset_id requis pour AI Analyst")
@@ -254,6 +261,37 @@ def run_job(job_id: str) -> dict[str, Any]:
                 raise ValueError("source_id requis pour le refresh connecteur")
             _update(job_id, progress=15)
             result = connector_refresh(job["workspace_id"], source_id, actor_id=job["user_id"], trigger=str(payload.get("trigger") or "manual"), job_id=job_id)
+        elif job["job_type"] == "model_monitor":
+            model_id = str(payload.get("model_id") or "")
+            current_dataset_id = str(payload.get("current_dataset_id") or dataset_id or "")
+            if not model_id or not current_dataset_id:
+                raise ValueError("model_id et current_dataset_id requis")
+            _update(job_id, progress=20)
+            registry_workspace = str(job.get("workspace_id") or "__local__")
+            registry_actor = str(job.get("user_id") or "__local_user__")
+            result = monitor_model(
+                registry_actor,
+                registry_workspace,
+                model_id,
+                current_dataset_id=current_dataset_id,
+                policy=payload.get("policy") or None,
+            )
+        elif job["job_type"] == "batch_scoring":
+            model_id = str(payload.get("model_id") or "")
+            if not dataset_id or not model_id:
+                raise ValueError(
+                    "dataset_id et model_id requis pour le batch scoring"
+                )
+            _update(job_id, progress=20)
+            result = batch_score_dataset(
+                str(job.get("user_id") or "__local_user__"),
+                str(job.get("workspace_id") or "__local__"),
+                model_id=model_id,
+                dataset_id=dataset_id,
+                prediction_column=str(
+                    payload.get("prediction_column") or "prediction"
+                ),
+            )
         elif job["job_type"] == "action_delivery":
             if not job.get("workspace_id"):
                 raise ValueError("workspace_id requis pour une action gouvernée")
