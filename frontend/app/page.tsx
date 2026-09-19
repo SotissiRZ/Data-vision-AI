@@ -7,14 +7,14 @@ import {
   predictModel, runAnova, runClustering, runPca, runRegression, transformDataset,
   trainModel, uploadDataset, getDatasetCatalog, combineDataset, getPipelines, savePipeline, runPipeline,
   runCorrelations, runStatisticalTest, getTestAdvice, getEngineInfo, runSql, recommendVisualizations, buildVisualization, runAutoML,
-  runForecast, runAnomalyDetection, getModelDiagnostics, explainModelPrediction, getAIAnalystCapabilities, runAIAnalysis,
+  runForecast, runAnomalyDetection, getModelDiagnostics, explainModelPrediction, getAIAnalystCapabilities, runAIAnalysis, startAIAnalysisRun, streamAIAnalysisRun, cancelAIAnalysisRun,
   runNaturalLanguageQuery, getAIHistory, getAIHistoryItem, getReports, createReport, downloadReport, getDashboard, saveVisualization, getSavedVisualizations,
   getModelEngines, runModelBenchmark, getModelXAICapabilities, runModelPDP, runModelSHAP, runModelCounterfactuals,
   getDashboards, getDashboardDefinition, saveDashboardDefinition, deleteDashboardDefinition, previewDashboard,
   getSemanticModel, saveSemanticModel, evaluateSemanticMetric, getMetricPulse, getSemanticTableCatalog, validateSemanticModel, querySemanticMetric, getTrustCenter, runModelWhatIf, runModelSensitivity, runRootCauseAnalysis, optimizeModelScenarios,
   getProactiveSummary, getProactiveWatches, autoConfigureProactiveWatches, scanProactiveSignals, getProactiveInbox, updateProactiveAlertStatus,
-  bootstrapEnterprise, loginEnterprise, getEnterpriseSession, getEnterpriseStatus, createEnterpriseWorkspace, getEnterpriseWorkspace, addWorkspaceMember, bindWorkspaceDataset, saveWorkspacePolicy, getAuditEvents, getEnterpriseJobs, submitEnterpriseJob, cancelEnterpriseJob, getGovernedPreview,
-  getEnterpriseAuthSessions, revokeEnterpriseAuthSession, logoutAllEnterpriseSessions, getPublicOIDCProviders, startEnterpriseOIDC, exchangeEnterpriseOIDC,
+  bootstrapEnterprise, loginEnterprise, getEnterpriseSession, getEnterprisePreferences, saveEnterprisePreferences, getEnterpriseStatus, createEnterpriseWorkspace, getEnterpriseWorkspace, addWorkspaceMember, bindWorkspaceDataset, saveWorkspacePolicy, getAuditEvents, getEnterpriseJobs, submitEnterpriseJob, cancelEnterpriseJob, getGovernedPreview,
+  getEnterpriseAuthSessions, revokeEnterpriseAuthSession, logoutAllEnterpriseSessions, getEnterpriseMFAStatus, beginEnterpriseWebAuthnRegistration, verifyEnterpriseWebAuthnRegistration, disableEnterpriseWebAuthnCredential, verifyEnterpriseWebAuthnLogin, getPublicOIDCProviders, startEnterpriseOIDC, exchangeEnterpriseOIDC,
   getWorkspaceOIDCProviders, createWorkspaceOIDCProvider, disableWorkspaceOIDCProvider, getWorkspaceSecrets, createWorkspaceSecret, rotateWorkspaceSecret, testWorkspaceSecret,
   getWorkspacePlugins, installWorkspacePlugin, updateWorkspacePlugin, deleteWorkspacePlugin, testWorkspacePlugin, syncWorkspacePlugin, getWorkspacePluginDetail,
   getReviewSummary, getReviews, getReviewDetail, createReview, assignReview, transitionReview, addReviewComment, resolveReviewComment, getCollaborationNotifications, markCollaborationNotificationRead, getCertifications, certifyReview, revokeCertification,
@@ -29,9 +29,10 @@ import { NotebookStudio } from '../components/NotebookStudio';
 import { ResponsibleAIView } from '../components/ResponsibleAIView';
 import { ModelRegistryView } from '../components/ModelRegistryView';
 import { FeatureServingView } from '../components/FeatureServingView';
+import { ComplianceCenter } from '../components/ComplianceCenter';
 
 type AnyObj = Record<string, any>;
-type View = 'identity' | 'actions' | 'operations' | 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'notebook' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'registry' | 'serving' | 'forecast' | 'anomaly' | 'xai' | 'responsible' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance' | 'ai-settings' | 'plugins';
+type View = 'identity' | 'actions' | 'operations' | 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'notebook' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'registry' | 'serving' | 'forecast' | 'anomaly' | 'xai' | 'responsible' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance' | 'ai-settings' | 'plugins' | 'compliance';
 type AreaKey = 'overview'|'data'|'analyze'|'model'|'decide'|'publish'|'collaborate'|'governance';
 type AccessibilityMode = 'normal' | 'comfortable' | 'large';
 
@@ -43,14 +44,48 @@ const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; vi
   {key:'decide',label:'Décider',icon:'✦',defaultView:'inbox',views:['inbox','ai','semantic','decision','actions','trust']},
   {key:'publish',label:'Publier',icon:'▧',defaultView:'dashboard',views:['dashboard','report']},
   {key:'collaborate',label:'Collaborer',icon:'◎',defaultView:'review',views:['review']},
-  {key:'governance',label:'Gouverner',icon:'⌾',defaultView:'reliability',views:['reliability','sources','operations','identity','plugins','ai-settings','governance']},
+  {key:'governance',label:'Gouverner',icon:'⌾',defaultView:'reliability',views:['reliability','sources','operations','identity','plugins','ai-settings','compliance','governance']},
 ];
 const viewLabels: Record<View,string> = {
   home:'Vue d’ensemble',data:'Aperçu des données',quality:'Qualité',prepare:'Préparation',stats:'Statistiques descriptives',
   visual:'Visualisation',tests:'Tests & corrélations',sql:'SQL',notebook:'Notebook',regression:'Régression',anova:'ANOVA',pca:'ACP',cluster:'Clustering',
-  model:'AutoML',registry:'Model Registry',serving:'Feature Store & Serving',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',responsible:'Responsible AI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',actions:'Actions & Automation',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',reliability:'Fiabilité & Lineage',sources:'Sources & Refresh',operations:'Observabilité & Eval',identity:'Identité & Secrets',plugins:'Plugins & MCP','ai-settings':'IA & Modèles',governance:'Gouvernance'
+  model:'AutoML',registry:'Model Registry',serving:'Feature Store & Serving',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',responsible:'Responsible AI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',actions:'Actions & Automation',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',reliability:'Fiabilité & Lineage',sources:'Sources & Refresh',operations:'Observabilité & Eval',identity:'Identité & Secrets',plugins:'Plugins & MCP','ai-settings':'IA & Modèles',compliance:'CDC & Acceptance',governance:'Gouvernance'
 };
-const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',notebook:'⌘',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',registry:'▣',serving:'⇆',forecast:'⌁',anomaly:'⚠',xai:'◇',responsible:'⚖',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',actions:'⚡',trust:'✓',dashboard:'▦',report:'▧',review:'◎',reliability:'◫',sources:'↻',operations:'◉',identity:'◈',plugins:'⌘','ai-settings':'✦',governance:'⌾'};
+const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',notebook:'⌘',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',registry:'▣',serving:'⇆',forecast:'⌁',anomaly:'⚠',xai:'◇',responsible:'⚖',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',actions:'⚡',trust:'✓',dashboard:'▦',report:'▧',review:'◎',reliability:'◫',sources:'↻',operations:'◉',identity:'◈',plugins:'⌘','ai-settings':'✦',compliance:'✓',governance:'⌾'};
+
+
+function b64urlToBytes(value:string):ArrayBuffer {
+  const normalized=value.replace(/-/g,'+').replace(/_/g,'/');
+  const padded=normalized+'='.repeat((4-normalized.length%4)%4);
+  const raw=atob(padded); const bytes=new Uint8Array(raw.length);
+  for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+  return bytes.buffer;
+}
+function bytesToB64url(value:ArrayBuffer):string {
+  const bytes=new Uint8Array(value); let raw='';
+  for(const b of bytes)raw+=String.fromCharCode(b);
+  return btoa(raw).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+}
+function publicKeyOptionsFromJSON(input:AnyObj):PublicKeyCredentialCreationOptions|PublicKeyCredentialRequestOptions {
+  const out:any={...input,challenge:b64urlToBytes(String(input.challenge))};
+  if(input.user?.id)out.user={...input.user,id:b64urlToBytes(String(input.user.id))};
+  if(Array.isArray(input.excludeCredentials))out.excludeCredentials=input.excludeCredentials.map((x:AnyObj)=>({...x,id:b64urlToBytes(String(x.id))}));
+  if(Array.isArray(input.allowCredentials))out.allowCredentials=input.allowCredentials.map((x:AnyObj)=>({...x,id:b64urlToBytes(String(x.id))}));
+  return out;
+}
+function publicKeyCredentialToJSON(credential:Credential):AnyObj {
+  const c:any=credential as any; const response:any=c.response; const out:any={
+    id:c.id, rawId:bytesToB64url(c.rawId), type:c.type,
+    response:{clientDataJSON:bytesToB64url(response.clientDataJSON)},
+  };
+  if(response.attestationObject)out.response.attestationObject=bytesToB64url(response.attestationObject);
+  if(response.authenticatorData)out.response.authenticatorData=bytesToB64url(response.authenticatorData);
+  if(response.signature)out.response.signature=bytesToB64url(response.signature);
+  if(response.userHandle)out.response.userHandle=bytesToB64url(response.userHandle);
+  if(typeof response.getTransports==='function')out.response.transports=response.getTransports();
+  if(typeof c.getClientExtensionResults==='function')out.clientExtensionResults=c.getClientExtensionResults();
+  return out;
+}
 function areaForView(view:View){ return areaConfig.find(a=>a.views.includes(view)) ?? areaConfig[0]; }
 
 function formatNumber(value: unknown, digits = 3) {
@@ -104,6 +139,9 @@ export default function Home() {
   const [uiMode,setUiMode]=useState<AccessibilityMode>('comfortable');
   const [uiZoom,setUiZoom]=useState(105);
   const [displayToolsOpen,setDisplayToolsOpen]=useState(false);
+  const displayToolsRef=useRef<HTMLDivElement|null>(null);
+  const preferencesHydratedRef=useRef(false);
+  const preferencesSaveTimerRef=useRef<ReturnType<typeof setTimeout>|null>(null);
   const previousSecurityScope=useRef('local');
 
   async function activateDataset(id: string, nextView?: View) {
@@ -142,7 +180,8 @@ export default function Home() {
     setTarget([...next.profile.columns].reverse().find((c:AnyObj)=>!isLikelyIdentifier(c, next.profile.rows))?.name ?? next.profile.columns[next.profile.columns.length - 1]?.name ?? '');
   }
 
-  useEffect(()=>{ const handler=(e:KeyboardEvent)=>{ if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'){e.preventDefault();setPaletteOpen(v=>!v);} if(e.key==='Escape')setPaletteOpen(false); }; window.addEventListener('keydown',handler); return()=>window.removeEventListener('keydown',handler); },[]);
+  useEffect(()=>{ const handler=(e:KeyboardEvent)=>{ const modifier=e.ctrlKey||e.metaKey; if(modifier&&e.key.toLowerCase()==='k'){e.preventDefault();setPaletteOpen(v=>!v);return;} if(modifier&&(e.key==='+'||e.key==='=')){e.preventDefault();setUiZoom(v=>Math.min(140,v+5));return;} if(modifier&&e.key==='-'){e.preventDefault();setUiZoom(v=>Math.max(90,v-5));return;} if(modifier&&e.key==='0'){e.preventDefault();setUiZoom(100);return;} if(e.key==='Escape'){setPaletteOpen(false);setDisplayToolsOpen(false);} }; window.addEventListener('keydown',handler); return()=>window.removeEventListener('keydown',handler); },[]);
+  useEffect(()=>{ if(!displayToolsOpen)return; const handlePointer=(e:PointerEvent)=>{if(displayToolsRef.current&&!displayToolsRef.current.contains(e.target as Node))setDisplayToolsOpen(false);}; window.addEventListener('pointerdown',handlePointer); return()=>window.removeEventListener('pointerdown',handlePointer); },[displayToolsOpen]);
 
 useEffect(()=>{
   if(typeof window==='undefined') return;
@@ -150,16 +189,29 @@ useEffect(()=>{
   const storedZoom = Number(localStorage.getItem('dv_ui_zoom') || '105');
   if(storedMode==='normal' || storedMode==='comfortable' || storedMode==='large') setUiMode(storedMode);
   if(Number.isFinite(storedZoom) && storedZoom>=90 && storedZoom<=140) setUiZoom(storedZoom);
+  preferencesHydratedRef.current = true;
 },[]);
 useEffect(()=>{
   if(typeof window==='undefined') return;
   const root = document.documentElement;
+  const zoom = uiZoom/100;
   root.dataset.dvMode = uiMode;
-  root.style.setProperty('--dv-user-zoom', String(uiZoom/100));
+  root.style.setProperty('--dv-user-zoom', String(zoom));
+  document.body.style.setProperty('zoom', String(zoom));
   localStorage.setItem('dv_accessibility_mode', uiMode);
   localStorage.setItem('dv_ui_zoom', String(uiZoom));
 },[uiMode,uiZoom]);
-  useEffect(()=>{ const refresh=()=>{ if(typeof window==='undefined')return; const t=localStorage.getItem('dv_enterprise_token')||''; if(!t){setEnterpriseBadge(null);return;} getEnterpriseSession(t).then(s=>{const preferred=localStorage.getItem('dv_enterprise_workspace')||s.workspaces?.[0]?.id||''; const ws=s.workspaces?.find((x:AnyObj)=>x.id===preferred)??s.workspaces?.[0]??null; setEnterpriseBadge({user:s.user,workspace:ws});}).catch(()=>setEnterpriseBadge(null)); }; refresh(); window.addEventListener('datavision-enterprise-session',refresh); return()=>window.removeEventListener('datavision-enterprise-session',refresh); },[]);
+useEffect(()=>{
+  if(typeof window==='undefined' || !enterpriseBadge || !preferencesHydratedRef.current) return;
+  const token=localStorage.getItem('dv_enterprise_token')||'';
+  if(!token) return;
+  if(preferencesSaveTimerRef.current) clearTimeout(preferencesSaveTimerRef.current);
+  preferencesSaveTimerRef.current=setTimeout(()=>{
+    saveEnterprisePreferences(token,{accessibility_mode:uiMode,ui_zoom:uiZoom}).catch(()=>{});
+  },500);
+  return()=>{if(preferencesSaveTimerRef.current) clearTimeout(preferencesSaveTimerRef.current);};
+},[uiMode,uiZoom,enterpriseBadge?.user?.id]);
+  useEffect(()=>{ const refresh=()=>{ if(typeof window==='undefined')return; const t=localStorage.getItem('dv_enterprise_token')||''; if(!t){setEnterpriseBadge(null);return;} Promise.all([getEnterpriseSession(t),getEnterprisePreferences(t).catch(()=>({preferences:{}}))]).then(([s,prefs])=>{const preferred=localStorage.getItem('dv_enterprise_workspace')||s.workspaces?.[0]?.id||''; const ws=s.workspaces?.find((x:AnyObj)=>x.id===preferred)??s.workspaces?.[0]??null; const mode=prefs?.preferences?.accessibility_mode; const zoom=Number(prefs?.preferences?.ui_zoom); if(mode==='normal'||mode==='comfortable'||mode==='large')setUiMode(mode); if(Number.isFinite(zoom)&&zoom>=90&&zoom<=140)setUiZoom(zoom); preferencesHydratedRef.current=true; setEnterpriseBadge({user:s.user,workspace:ws});}).catch(()=>setEnterpriseBadge(null)); }; refresh(); window.addEventListener('datavision-enterprise-session',refresh); return()=>window.removeEventListener('datavision-enterprise-session',refresh); },[]);
   useEffect(()=>{ if(typeof window==='undefined')return; const url=new URL(window.location.href); const code=url.searchParams.get('code'); const state=url.searchParams.get('state'); const provider=sessionStorage.getItem('dv_oidc_provider')||''; if(!code||!state||!provider)return; const redirectUri=window.location.origin; exchangeEnterpriseOIDC({provider_id:provider,code,state,redirect_uri:redirectUri}).then(body=>{localStorage.setItem('dv_enterprise_token',body.access_token);if(body.refresh_token)localStorage.setItem('dv_enterprise_refresh',body.refresh_token);if(body.workspace_id)localStorage.setItem('dv_enterprise_workspace',body.workspace_id);sessionStorage.removeItem('dv_oidc_provider');window.history.replaceState({},document.title,window.location.pathname);window.dispatchEvent(new Event('datavision-enterprise-session'));setView('identity');}).catch((e:unknown)=>{sessionStorage.removeItem('dv_oidc_provider');setError(e instanceof Error?e.message:String(e));window.history.replaceState({},document.title,window.location.pathname);}); },[]);
   useEffect(()=>{ const scope=enterpriseBadge?.workspace?.id?`workspace:${enterpriseBadge.workspace.id}`:'local'; if(previousSecurityScope.current!==scope){ setResult(null); setModel(null); setPrediction(null); setColumnAnalysis(null); setTrustSummary(null); previousSecurityScope.current=scope; } },[enterpriseBadge?.workspace?.id]);
   useEffect(()=>{ if(!result){setTrustSummary(null);return;} let cancelled=false; getTrustCenter(result.dataset.id).then(x=>{if(!cancelled)setTrustSummary(x)}).catch(()=>{if(!cancelled)setTrustSummary(null)}); return()=>{cancelled=true}; },[result?.dataset?.id]);
@@ -202,6 +254,8 @@ useEffect(()=>{
         automlRunning,
         predicting,
         datasetName: result?.dataset?.name,
+        datasetVersion: result?.dataset?.version,
+        datasetCreatedAt: result?.dataset?.created_at,
         rowCount: result?.profile?.rows,
         columnCount: result?.profile?.columns_count,
         duplicateCount: result?.profile?.duplicates,
@@ -226,6 +280,7 @@ useEffect(()=>{
             name: column.name,
             dtype: column.dtype,
           })) ?? [],
+        temporalCoverage: result?.profile?.temporal ?? { detected: false, primary: null, columns: [] },
         accessibilityMode: uiMode,
         uiZoom,
       },
@@ -243,9 +298,11 @@ useEffect(()=>{
     automlRunning,
     predicting,
     result?.dataset?.name,
+    result?.dataset?.created_at,
     result?.profile?.rows,
     result?.profile?.columns_count,
     result?.profile?.duplicates,
+    result?.profile?.temporal,
     result?.quality?.score,
     result?.quality?.issues_count,
     enterpriseBadge?.workspace?.id,
@@ -329,13 +386,18 @@ useEffect(()=>{
 const activeArea=areaForView(view);
 const paletteItems=Object.entries(viewLabels).map(([key,label])=>({key:key as View,label,area:areaForView(key as View).label,icon:viewIcons[key as View]??'•'}));
 const setZoomWithinBounds = (next:number) => setUiZoom(Math.max(90, Math.min(140, next)));
+const setReadingMode = (mode:AccessibilityMode) => {
+  const preset = mode==='normal' ? 100 : mode==='comfortable' ? 110 : 125;
+  setUiMode(mode);
+  setUiZoom(preset);
+};
 return <main className="app-shell professional-shell">
     <header className="topbar pro-topbar">
       <div className="brand-mini"><div className="brand-mark">DV</div><div><b>DataVision AI</b><span>Intelligence analytique vérifiable</span></div></div>
       <div className="top-context">
         {result?<><span className="top-dataset" title={result.dataset.name}><b>{result.dataset.name}</b><small>v{result.dataset.version??1}</small></span>{result.access?.governed&&<button className="governed-chip" onClick={()=>setView('governance')} title={`${result.access.policy_count??0} politique(s) active(s)`}>◈ Accès gouverné · {result.access.role}</button>}<span className="top-quality">Qualité <b>{result.quality.score}/100</b></span>{trustSummary&&<button className="trust-pill" onClick={()=>setView('trust')}>Trust {trustSummary.overall_score}/100 · {trustSummary.grade}</button>}</>:<span className="top-empty">Aucun dataset actif</span>}
       </div>
-      <div className="top-actions"><span className="runtime-dot"/>{enterpriseBadge?<button className="enterprise-pill" onClick={()=>setView('governance')}><b>{enterpriseBadge.workspace?.name??'Enterprise'}</b><small>{enterpriseBadge.user?.display_name??enterpriseBadge.user?.email}</small></button>:<span>Local</span>}<div className="display-tools"><button className="display-trigger" aria-label="Régler l'affichage" onClick={()=>setDisplayToolsOpen(v=>!v)}><span>Aa</span><b>{uiZoom}%</b></button>{displayToolsOpen&&<div className="display-popover"><div className="display-popover-head"><div><b>Affichage</b><small>Lecture confortable et mémorisée</small></div><button className="display-close" onClick={()=>setDisplayToolsOpen(false)}>×</button></div><div className="display-mode-group"><span>Mode de lecture</span><div className="segmented-control"><button className={uiMode==='normal'?'active':''} onClick={()=>setUiMode('normal')}>Normal</button><button className={uiMode==='comfortable'?'active':''} onClick={()=>setUiMode('comfortable')}>Confort</button><button className={uiMode==='large'?'active':''} onClick={()=>setUiMode('large')}>Grand texte</button></div></div><div className="display-zoom-row"><span>Zoom UI</span><div><button onClick={()=>setZoomWithinBounds(uiZoom-5)}>−</button><strong>{uiZoom}%</strong><button onClick={()=>setZoomWithinBounds(uiZoom+5)}>+</button><button className="ghost" onClick={()=>setZoomWithinBounds(100)}>100%</button></div></div><small className="display-footnote">Réglage enregistré sur cet appareil pour toute l’interface DataVision.</small></div>}</div><button className="command-trigger command-trigger-wide" onClick={()=>setPaletteOpen(true)}><span>⌕</span><span className="command-trigger-label">Rechercher dans DataVision…</span><kbd>Ctrl K</kbd></button><button className="settings-nav-button" aria-label="Ouvrir les paramètres" title="Paramètres" onClick={()=>setView('governance')}>⚙</button><button className="avatar" onClick={()=>enterpriseBadge&&setView('governance')}>{enterpriseBadge?String(enterpriseBadge.user?.display_name??'DV').slice(0,2).toUpperCase():'DV'}</button></div>
+      <div className="top-actions"><span className="runtime-dot"/>{enterpriseBadge?<button className="enterprise-pill" onClick={()=>setView('governance')}><b>{enterpriseBadge.workspace?.name??'Enterprise'}</b><small>{enterpriseBadge.user?.display_name??enterpriseBadge.user?.email}</small></button>:<span>Local</span>}<div className="display-tools" ref={displayToolsRef}><button className="display-trigger" aria-label="Régler l'affichage" onClick={()=>setDisplayToolsOpen(v=>!v)}><span>Aa</span><b>{uiZoom}%</b></button>{displayToolsOpen&&<div className="display-popover"><div className="display-popover-head"><div><b>Affichage</b><small>Lecture confortable et mémorisée</small></div><button className="display-close" onClick={()=>setDisplayToolsOpen(false)}>×</button></div><div className="display-mode-group"><span>Mode de lecture</span><div className="segmented-control"><button className={uiMode==='normal'?'active':''} onClick={()=>setReadingMode('normal')}>Normal</button><button className={uiMode==='comfortable'?'active':''} onClick={()=>setReadingMode('comfortable')}>Confort</button><button className={uiMode==='large'?'active':''} onClick={()=>setReadingMode('large')}>Grand texte</button></div></div><div className="display-zoom-row"><span>Zoom UI</span><div><button onClick={()=>setZoomWithinBounds(uiZoom-5)}>−</button><strong>{uiZoom}%</strong><button onClick={()=>setZoomWithinBounds(uiZoom+5)}>+</button><button className="ghost" onClick={()=>setZoomWithinBounds(100)}>100%</button></div></div><small className="display-footnote">Le mode choisi agit sur toute l’interface. Réglage mémorisé localement et synchronisé avec votre profil Enterprise.</small></div>}</div><button className="command-trigger command-trigger-wide" onClick={()=>setPaletteOpen(true)}><span>⌕</span><span className="command-trigger-label">Rechercher dans DataVision…</span><kbd>Ctrl K</kbd></button><button className="settings-nav-button" aria-label="Ouvrir les paramètres" title="Paramètres" onClick={()=>setView('governance')}>⚙</button><button className="avatar" onClick={()=>enterpriseBadge&&setView('governance')}>{enterpriseBadge?String(enterpriseBadge.user?.display_name??'DV').slice(0,2).toUpperCase():'DV'}</button></div>
     </header>
     <div className="app-grid pro-grid">
       <aside className="sidebar pro-sidebar">
@@ -382,6 +444,7 @@ return <main className="app-shell professional-shell">
         {view==='identity'&&<IdentitySecurityCenter setError={setError} setView={setView}/>}
         {view==='plugins'&&<PluginCenter setError={setError} setView={setView}/>}
         {view==='ai-settings'&&<AIProviderControlCenter setError={setError}/>} 
+        {view==='compliance'&&<ComplianceCenter setError={setError}/>}
         {view==='governance'&&<GovernanceCenter result={result} setError={setError}/>}  
       </section>
     </div>
@@ -1347,18 +1410,57 @@ function AIAnalystView({ result, setError, initialQuestion='' }: { result: AnyOb
   const [out,setOut]=useState<AnyObj|null>(null);
   const [capabilities,setCapabilities]=useState<AnyObj|null>(null);
   const [history,setHistory]=useState<AnyObj[]>([]);
+  const [runId,setRunId]=useState('');
+  const [progress,setProgress]=useState(0);
+  const [stage,setStage]=useState('Prêt');
+  const [currentTool,setCurrentTool]=useState('');
+  const [cacheHit,setCacheHit]=useState(false);
+  const [useCache,setUseCache]=useState(true);
+  const streamAbort=useRef<AbortController|null>(null);
+
   useEffect(()=>{if(initialQuestion)setQuestion(initialQuestion);},[initialQuestion]);
   useEffect(()=>{if(!result)return; getAIAnalystCapabilities(result.dataset.id).then(setCapabilities).catch(()=>{}); getAIHistory(result.dataset.id).then(x=>setHistory(x.analyses??[])).catch(()=>{});},[result?.dataset?.id]);
+  useEffect(()=>()=>{streamAbort.current?.abort();},[]);
   if(!result) return <EmptyState title="AI Analyst" text="Chargez un dataset pour lancer une analyse orchestrée en langage naturel."/>;
   const columns=result.profile.columns ?? [];
+
+  async function refreshHistory(){
+    try{const x=await getAIHistory(result!.dataset.id);setHistory(x.analyses??[]);}catch{}
+  }
+
   async function run(){
     if(!question.trim()) return;
-    setBusy(true); setError('');
+    streamAbort.current?.abort();
+    const controller=new AbortController();
+    streamAbort.current=controller;
+    setBusy(true); setError(''); setOut(null); setProgress(2); setStage('Initialisation'); setCurrentTool(''); setCacheHit(false);
     try{
-      const analysis=await runAIAnalysis(result!.dataset.id,{question:question.trim(),target:target||null,date_column:dateColumn||null,horizon,mode}); setOut(analysis); getAIHistory(result!.dataset.id).then(x=>setHistory(x.analyses??[])).catch(()=>{});
-    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
-    finally{setBusy(false);}
+      const started=await startAIAnalysisRun(result!.dataset.id,{question:question.trim(),target:target||null,date_column:dateColumn||null,horizon,mode,use_cache:useCache});
+      const run=started.run;
+      setRunId(run.id);setProgress(Number(run.progress)||0);setStage(run.stage||'Analyse en cours');setCacheHit(Boolean(run.cached));
+      if(run.status==='completed'&&run.result){
+        setOut(run.result);setProgress(100);setStage(run.cached?'Résultat instantané depuis le cache':'Analyse terminée');setBusy(false);await refreshHistory();return;
+      }
+      await streamAIAnalysisRun(result!.dataset.id,run.id,(event)=>{
+        setProgress(Number(event.progress)||0);setStage(event.stage||'Analyse en cours');setCurrentTool(event.current_tool||'');setCacheHit(Boolean(event.cached));
+        if(event.status==='completed'&&event.result){setOut(event.result);setBusy(false);void refreshHistory();}
+        if(event.status==='failed'){setBusy(false);setError(event.error||'AI Analyst a échoué.');}
+        if(event.status==='cancelled'){setBusy(false);setStage('Analyse annulée');}
+      },controller.signal);
+    }catch(e:unknown){
+      if(e instanceof DOMException&&e.name==='AbortError')return;
+      setError(e instanceof Error?e.message:String(e));setBusy(false);
+    }finally{
+      if(streamAbort.current===controller)streamAbort.current=null;
+    }
   }
+
+  async function stop(){
+    if(!runId)return;
+    try{await cancelAIAnalysisRun(result!.dataset.id,runId);setStage('Annulation demandée…');}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{streamAbort.current?.abort();streamAbort.current=null;setBusy(false);}
+  }
+
   const examples=[
     'Analyse ce dataset et identifie les principaux problèmes, relations et anomalies.',
     "Quel est le chiffre d'affaires par catégorie et comment évolue-t-il par mois ?",
@@ -1369,7 +1471,7 @@ function AIAnalystView({ result, setError, initialQuestion='' }: { result: AnyOb
     'Prévois la variable cible sur les 12 prochaines périodes.'
   ];
   return <div className="page ai-analyst-page">
-    <div className="page-title"><div><span className="eyebrow">AI ANALYST · SEMANTIC-FIRST ORCHESTRATION</span><h1>AI Analyst</h1><p>Décrivez votre objectif en langage naturel. Les questions métier passent d’abord par la couche sémantique gouvernée ; les analyses statistiques, ML et temporelles restent exécutées par leurs moteurs spécialisés.</p></div><span className="module-state implemented">orchestration vérifiable</span></div>
+    <div className="page-title"><div><span className="eyebrow">AI ANALYST · STREAMING · CACHE · CANCELLATION</span><h1>AI Analyst</h1><p>Décrivez votre objectif en langage naturel. Les analyses sont exécutées par les moteurs déterministes avec progression en temps réel, déduplication des requêtes identiques et cache vérifiable.</p></div><span className="module-state implemented">orchestration accélérée</span></div>
     <div className="ai-layout">
       <section className="ai-console">
         <div className="ai-console-head"><div><b>Demande analytique</b><span>Les nombres proviennent des outils exécutables, jamais d’un LLM.</span></div><span className="ai-engine-chip">{capabilities?.engine ?? 'deterministic_orchestrator'}</span></div>
@@ -1380,13 +1482,15 @@ function AIAnalystView({ result, setError, initialQuestion='' }: { result: AnyOb
           <label>Date (optionnel)<select value={dateColumn} onChange={e=>setDateColumn(e.target.value)}><option value="">Détection automatique</option>{columns.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label>
           <label>Horizon<input type="number" min={1} max={365} value={horizon} onChange={e=>setHorizon(Number(e.target.value))}/></label>
         </div>
-        <div className="ai-run-row"><RunButton busy={busy} label="Exécuter l’analyse" busyLabel="Orchestration…" onClick={run}/><small>Dataset : {result.dataset.name} · version {result.dataset.version ?? 1}</small></div>
+        <label className="ai-cache-toggle"><input type="checkbox" checked={useCache} onChange={e=>setUseCache(e.target.checked)}/><span>Réutiliser un résultat identique si le dataset, la couche sémantique et les paramètres n’ont pas changé</span></label>
+        <div className="ai-run-row"><RunButton busy={busy} label="Exécuter l’analyse" busyLabel="Analyse en cours…" onClick={run}/>{busy&&<button className="ai-stop-btn" onClick={()=>void stop()}>■ Arrêter</button>}<small>Dataset : {result.dataset.name} · version {result.dataset.version ?? 1}</small></div>
+        {(busy||progress>0)&&<div className="ai-live-progress"><div className="ai-progress-head"><div><b>{stage}</b>{currentTool&&<small>{currentTool}</small>}</div><div>{cacheHit&&<span className="ai-cache-hit">CACHE</span>}<strong>{Math.min(100,Math.max(0,progress))}%</strong></div></div><div className="ai-progress-track"><i style={{width:`${Math.min(100,Math.max(0,progress))}%`}}/></div><small>{runId?`run ${runId.slice(0,8)}… · `:''}annulation coopérative entre les étapes de calcul</small></div>}
       </section>
       <aside className="ai-examples"><b>Exemples</b>{examples.map(x=><button key={x} onClick={()=>setQuestion(x)}>{x}</button>)}</aside>
     </div>
     {history.length>0&&<Panel title="Historique AI Analyst" action={<span className="quiet">{history.length} sessions</span>}><div className="analysis-history">{history.slice(0,8).map((h:AnyObj)=><button key={h.session_id} onClick={async()=>{try{setOut(await getAIHistoryItem(result!.dataset.id,h.session_id));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}}><div><b>{h.question}</b><small>{h.intent} · {h.critic_status} · v{h.dataset_version}</small></div><span>{h.executed_at?new Date(h.executed_at).toLocaleString('fr-FR'):''}</span></button>)}</div></Panel>}
     {out&&<>
-      <Panel title="Réponse synthétique" action={<span className="ai-intent">intention : {out.intent}</span>}><div className="ai-answer">{out.answer}</div></Panel>
+      <Panel title="Réponse synthétique" action={<div className="ai-answer-meta">{out.runtime?.cache_hit&&<span className="ai-cache-hit">CACHE</span>}{out.runtime?.elapsed_ms!=null&&<span>{formatNumber(out.runtime.elapsed_ms,0)} ms</span>}<span className="ai-intent">intention : {out.intent}</span></div>}><div className="ai-answer">{out.answer}</div></Panel>
       <div className="two-col">
         <Panel title="Plan exécuté"><div className="ai-plan">{out.plan.map((p:AnyObj,i:number)=>{const exec=out.executions.find((e:AnyObj)=>e.tool===p.tool);return <div key={`${p.tool}-${i}`}><span>{String(p.step).padStart(2,'0')}</span><div><b>{p.action}</b><small>{p.tool} · {exec?.status ?? 'planned'}{exec?.duration_ms!=null?` · ${exec.duration_ms} ms`:''}</small></div><i className={exec?.status==='ok'?'ok':'bad'}>{exec?.status==='ok'?'✓':'!'}</i></div>})}</div></Panel>
         <Panel title="Critic / Validation"><div className={`critic-status ${out.critic.status}`}>{out.critic.status==='passed'?'VALIDÉ':'À VÉRIFIER'}</div><div className="critic-checks">{out.critic.checks.map((c:AnyObj)=><div key={c.check}><b>{c.passed?'✓':'!'}</b><span>{c.detail}</span></div>)}</div></Panel>
@@ -2087,6 +2191,7 @@ function IdentitySecurityCenter({ setError, setView }: { setError:(s:string)=>vo
   const [rotateTarget,setRotateTarget]=useState('');
   const [rotateValue,setRotateValue]=useState('');
   const [message,setMessage]=useState('');
+  const [mfa,setMfa]=useState<AnyObj|null>(null);
 
   async function refresh(nextToken=token,nextWs=workspaceId){
     if(!nextToken)return;
@@ -2094,7 +2199,7 @@ function IdentitySecurityCenter({ setError, setView }: { setError:(s:string)=>vo
     const stored=typeof window!=='undefined'?localStorage.getItem('dv_enterprise_workspace')||'':'';
     const ws=nextWs||stored||s.workspaces?.[0]?.id||''; setWorkspaceId(ws);
     if(typeof window!=='undefined'&&ws)localStorage.setItem('dv_enterprise_workspace',ws);
-    const auth=await getEnterpriseAuthSessions(nextToken); setSessions(auth.sessions??[]);
+    const [auth,mfaStatus]=await Promise.all([getEnterpriseAuthSessions(nextToken),getEnterpriseMFAStatus(nextToken)]); setSessions(auth.sessions??[]); setMfa(mfaStatus);
     if(ws){
       const role=s.workspaces?.find((x:AnyObj)=>x.id===ws)?.role;
       if(['owner','admin'].includes(role)){
@@ -2112,13 +2217,29 @@ function IdentitySecurityCenter({ setError, setView }: { setError:(s:string)=>vo
   async function revokeSessionNow(id:string){try{await revokeEnterpriseAuthSession(token,id);await refresh();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
   async function closeOtherSessions(){try{const r=await logoutAllEnterpriseSessions(token);setMessage(`${r.revoked??0} autres sessions révoquées.`);await refresh();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
 
-  if(!token||!session)return <div className="page identity-page"><div className="page-title"><div><span className="eyebrow">IDENTITY & SECRET MANAGEMENT · V2.12</span><h1>Identité & Secrets</h1><p>SSO, sessions révocables et coffre de secrets versionné nécessitent une session Enterprise.</p></div></div><div className="collab-auth-empty"><span>◈</span><div><h3>Session Enterprise requise</h3><p>Connectez-vous ou initialisez l’organisation depuis Gouvernance.</p></div><button className="primary-btn" onClick={()=>setView('governance')}>Ouvrir Gouvernance</button></div></div>;
+async function enrollPasskey(){
+  if(!token||typeof navigator==='undefined'||!navigator.credentials){setError('WebAuthn n’est pas disponible dans ce navigateur.');return;}
+  setBusy(true);setMessage('');
+  try{
+    const options=await beginEnterpriseWebAuthnRegistration(token);
+    const credential=await navigator.credentials.create({publicKey:publicKeyOptionsFromJSON(options.publicKey) as PublicKeyCredentialCreationOptions});
+    if(!credential)throw new Error('Création de passkey annulée.');
+    const status=await verifyEnterpriseWebAuthnRegistration(token,{challenge_id:options.challenge_id,credential:publicKeyCredentialToJSON(credential),label:'Passkey DataVision'});
+    setMfa(status);setMessage('Passkey WebAuthn enregistrée.');
+  }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+}
+async function disablePasskey(id:string){
+  try{const status=await disableEnterpriseWebAuthnCredential(token,id);setMfa(status);setMessage('Passkey désactivée.');}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+}
+
+  if(!token||!session)return <div className="page identity-page"><div className="page-title"><div><span className="eyebrow">IDENTITY · MFA · SECRET MANAGEMENT · V2.31</span><h1>Identité & Secrets</h1><p>SSO, sessions révocables et coffre de secrets versionné nécessitent une session Enterprise.</p></div></div><div className="collab-auth-empty"><span>◈</span><div><h3>Session Enterprise requise</h3><p>Connectez-vous ou initialisez l’organisation depuis Gouvernance.</p></div><button className="primary-btn" onClick={()=>setView('governance')}>Ouvrir Gouvernance</button></div></div>;
   const workspaces=session.workspaces??[]; const active=workspaces.find((x:AnyObj)=>x.id===workspaceId)??workspaces[0]; const canManage=['owner','admin'].includes(active?.role);
   return <div className="page identity-page">
-    <div className="page-title"><div><span className="eyebrow">IDENTITY & SECRET MANAGEMENT · V2.12</span><h1>Identité & Secrets</h1><p>Sessions persistantes, SSO OIDC Authorization Code + PKCE, provisioning JIT et coffre de secrets à rotation contrôlée.</p></div><span className="module-state implemented">Security v2.12</span></div>
+    <div className="page-title"><div><span className="eyebrow">IDENTITY · MFA · SECRET MANAGEMENT · V2.31</span><h1>Identité & Secrets</h1><p>Sessions persistantes, SSO OIDC Authorization Code + PKCE, provisioning JIT et coffre de secrets à rotation contrôlée.</p></div><span className="module-state implemented">Security v2.31</span></div>
     <div className="identity-toolbar"><label>Workspace<select value={workspaceId} onChange={e=>changeWorkspace(e.target.value)}>{workspaces.map((w:AnyObj)=><option key={w.id} value={w.id}>{w.name} · {w.role}</option>)}</select></label><button className="secondary-btn" onClick={()=>refresh()} disabled={busy}>↻ Actualiser</button></div>
-    <div className="identity-scorecards"><Stat label="SSO actifs" value={providers.filter(x=>x.enabled).length} detail="OIDC / PKCE"/><Stat label="Sessions actives" value={sessions.filter(x=>x.active).length} detail="Révocables côté serveur"/><Stat label="Secrets" value={secrets.length} detail="Valeurs jamais relues dans l’UI"/><Stat label="Rôle" value={active?.role??'—'} detail={canManage?'Administration identité':'Lecture limitée'}/></div>
+    <div className="identity-scorecards"><Stat label="MFA / Passkeys" value={mfa?.credential_count??0} detail={mfa?.enrolled?'WebAuthn actif':'Non configuré'}/><Stat label="SSO actifs" value={providers.filter(x=>x.enabled).length} detail="OIDC / PKCE"/><Stat label="Sessions actives" value={sessions.filter(x=>x.active).length} detail="Révocables côté serveur"/><Stat label="Secrets" value={secrets.length} detail="Valeurs jamais relues dans l’UI"/><Stat label="Rôle" value={active?.role??'—'} detail={canManage?'Administration identité':'Lecture limitée'}/></div>
     {message&&<div className="success-box">✓ {message}</div>}
+    <Panel title="Authentification multifacteur" action={<span className="quiet">WebAuthn · passkeys · user verification</span>}><div className="mfa-security-card"><div><b>{mfa?.enrolled?'MFA actif':'Ajouter une passkey'}</b><p>Utilisez Windows Hello, Touch ID, une clé de sécurité ou une passkey synchronisée. Le mot de passe seul ne suffit plus après enrôlement.</p><small>RP ID : {mfa?.rp_id??'—'} · politique : {mfa?.policy??'optional'}</small></div><button className="primary-btn" disabled={busy||!mfa?.webauthn_enabled} onClick={enrollPasskey}>+ Enregistrer une passkey</button></div><div className="passkey-list">{(mfa?.credentials??[]).map((x:AnyObj)=><article key={x.id}><div><b>{x.label||'Passkey'}</b><small>{x.credential_id_preview}… · créée {x.created_at?new Date(x.created_at).toLocaleString('fr-FR'):'—'}</small></div><span className={`status-chip ${x.active?'ok':'muted'}`}>{x.active?'ACTIVE':'OFF'}</span>{x.active&&<button className="danger-link" onClick={()=>disablePasskey(x.id)}>Désactiver</button>}</article>)}</div></Panel>
     <div className="two-col identity-grid">
       <Panel title="Sessions & sécurité du compte" action={<button className="secondary-btn" onClick={closeOtherSessions}>Fermer les autres sessions</button>}><div className="session-list">{sessions.map((x:AnyObj)=><article key={x.id}><span className={`session-state ${x.active?'active':'revoked'}`}/><div><b>{x.provider==='local'?'Mot de passe':x.provider}</b><small>{x.device_label||'Session DataVision'} · créée {x.created_at?new Date(x.created_at).toLocaleString('fr-FR'):'—'}</small><span>Dernière activité : {x.last_seen_at?new Date(x.last_seen_at).toLocaleString('fr-FR'):'—'}</span></div><div><span className={`status-chip ${x.active?'ok':'muted'}`}>{x.active?'ACTIVE':'REVOKED'}</span>{x.active&&<button className="danger-link" onClick={()=>revokeSessionNow(x.id)}>Révoquer</button>}</div></article>)}</div><div className="identity-note"><b>Rotation automatique</b><span>Les access tokens sont courts et les refresh tokens sont rotatifs. Un refresh déjà utilisé ne peut pas être rejoué.</span></div></Panel>
       <Panel title="Fournisseurs SSO" action={canManage?<span className="quiet">RS256 · PKCE S256 · JIT</span>:undefined}><div className="oidc-provider-list">{providers.map((p:AnyObj)=><article key={p.id}><div className="idp-logo">SSO</div><div><b>{p.name}</b><small>{p.issuer}</small><span>Rôle JIT : {p.default_role} · domaines {(p.allowed_domains??[]).join(', ')||'tous'}</span></div><span className={`status-chip ${p.enabled?'ok':'muted'}`}>{p.enabled?'ACTIVE':'OFF'}</span>{canManage&&p.enabled&&<button className="danger-link" onClick={async()=>{try{await disableWorkspaceOIDCProvider(token,workspaceId,p.id);await refresh();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}}>Désactiver</button>}</article>)}{!providers.length&&<div className="quiet-empty">Aucun fournisseur OIDC configuré pour ce workspace.</div>}</div></Panel>
@@ -2366,7 +2487,13 @@ function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(
   async function authenticate(mode:'bootstrap'|'login'){
     setBusy(true);setError('');
     try{
-      const r=mode==='bootstrap'?await bootstrapEnterprise({email,password,display_name:displayName,organization_name:orgName}):await loginEnterprise({email,password});
+      let r=mode==='bootstrap'?await bootstrapEnterprise({email,password,display_name:displayName,organization_name:orgName}):await loginEnterprise({email,password});
+      if(r.mfa_required){
+        if(typeof navigator==='undefined'||!navigator.credentials)throw new Error('MFA WebAuthn requis mais indisponible dans ce navigateur.');
+        const credential=await navigator.credentials.get({publicKey:publicKeyOptionsFromJSON(r.publicKey) as PublicKeyCredentialRequestOptions});
+        if(!credential)throw new Error('Validation MFA annulée.');
+        r=await verifyEnterpriseWebAuthnLogin({challenge_id:r.challenge_id,credential:publicKeyCredentialToJSON(credential)});
+      }
       setToken(r.access_token); if(typeof window!=='undefined'){localStorage.setItem('dv_enterprise_token',r.access_token);if(r.refresh_token)localStorage.setItem('dv_enterprise_refresh',r.refresh_token);} await loadSession(r.access_token);
     }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
   }
