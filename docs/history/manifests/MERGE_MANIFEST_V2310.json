@@ -1,0 +1,23 @@
+{
+  "version": "2.31.0",
+  "base": "2.30.0 cumulative",
+  "focus": "Security P0 closure",
+  "features": [
+    "WebAuthn/passkey enrollment and MFA login",
+    "single-use expiring MFA challenges",
+    "ClamAV upload scanning before persistence",
+    "fail-closed required antivirus mode",
+    "AES-256-GCM versioned secret envelope encryption",
+    "legacy Fernet decryption compatibility",
+    "production readiness gates for antivirus and dedicated KMS key"
+  ],
+  "validation": {
+    "backend_full": "272 passed",
+    "targeted_security": "8 passed",
+    "typescript": "OK",
+    "cdc_evidence": "0 missing",
+    "compose_yaml": "OK",
+    "docker_compose_runtime": "not run in this environment",
+    "webauthn_browser_e2e": "not run in this environment"
+  }
+}

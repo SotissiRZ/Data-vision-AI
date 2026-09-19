@@ -1,37 +1,13 @@
-# Environment / secrets
 .env
-.env.local
-*.env.*.local
-
-# Python
+*.pyc
 __pycache__/
-*.py[cod]
-*.egg-info/
 .pytest_cache/
-.venv/
-venv/
-
-# Node / Next.js
-node_modules/
-.next/
-out/
-npm-debug.log*
-
-# Application data (runtime-generated, not source)
-data/uploads/*
-!data/uploads/.gitkeep
-data/models/*
-!data/models/.gitkeep
-data/reports/*
-!data/reports/.gitkeep
-data/analyses/*
-!data/analyses/.gitkeep
-
-# Claude Code local state
-.claude/scheduled_tasks.lock
-
-# OS / editor
+backend/.pytest_cache/
+frontend/node_modules/
+frontend/.next/
+frontend/playwright-report/
+frontend/test-results/
+dist/
+data/
 .DS_Store
 Thumbs.db
-.vscode/
-.idea/

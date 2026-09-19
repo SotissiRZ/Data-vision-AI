@@ -182,6 +182,26 @@ export default function Home() {
 
   useEffect(()=>{ const handler=(e:KeyboardEvent)=>{ const modifier=e.ctrlKey||e.metaKey; if(modifier&&e.key.toLowerCase()==='k'){e.preventDefault();setPaletteOpen(v=>!v);return;} if(modifier&&(e.key==='+'||e.key==='=')){e.preventDefault();setUiZoom(v=>Math.min(140,v+5));return;} if(modifier&&e.key==='-'){e.preventDefault();setUiZoom(v=>Math.max(90,v-5));return;} if(modifier&&e.key==='0'){e.preventDefault();setUiZoom(100);return;} if(e.key==='Escape'){setPaletteOpen(false);setDisplayToolsOpen(false);} }; window.addEventListener('keydown',handler); return()=>window.removeEventListener('keydown',handler); },[]);
   useEffect(()=>{ if(!displayToolsOpen)return; const handlePointer=(e:PointerEvent)=>{if(displayToolsRef.current&&!displayToolsRef.current.contains(e.target as Node))setDisplayToolsOpen(false);}; window.addEventListener('pointerdown',handlePointer); return()=>window.removeEventListener('pointerdown',handlePointer); },[displayToolsOpen]);
+  useEffect(()=>{
+    const handleAssistantNavigate=(event:Event)=>{
+      const detail=(event as CustomEvent<{view?:string;datasetId?:string;modelId?:string}>).detail;
+      if(!detail?.view || !(detail.view in viewLabels)) return;
+      void (async()=>{
+        const nextView=detail.view as View;
+        if(detail.datasetId && detail.datasetId!==result?.dataset?.id){
+          const loaded=await activateDataset(detail.datasetId,nextView);
+          if(!loaded) return;
+        } else {
+          setView(nextView);
+        }
+        if(detail.modelId){
+          setModel(prev=>prev?.model_id===detail.modelId?prev:{...(prev??{}),model_id:detail.modelId});
+        }
+      })();
+    };
+    window.addEventListener('datavision:assistant-navigate',handleAssistantNavigate as EventListener);
+    return()=>window.removeEventListener('datavision:assistant-navigate',handleAssistantNavigate as EventListener);
+  },[result?.dataset?.id]);
 
 useEffect(()=>{
   if(typeof window==='undefined') return;

@@ -1,0 +1,12 @@
+{
+  "version": "2.31.3",
+  "base": "2.31.2 cumulative",
+  "fix": "assistant active-dataset context grounding",
+  "changes": [
+    "temporal dataset profiling",
+    "dataset_context deterministic intent",
+    "context-aware factual responder",
+    "frontend context enrichment",
+    "human-readable assistant context line"
+  ]
+}

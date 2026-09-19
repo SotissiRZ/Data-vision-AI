@@ -16,7 +16,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 
 app = FastAPI(
     title="DataVision Notebook Sandbox",
-    version="2.18.0",
+    version="2.29.0",
     docs_url=None,
     redoc_url=None,
 )
@@ -350,14 +350,29 @@ def _execute(
         }
 
 
-@app.get("/health")
-def health():
+def _health_payload() -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "datavision-notebook-sandbox",
+        "version": "2.29.0",
         "languages": ["python", "r"],
         "network_policy": "internal-only",
     }
+
+
+@app.get("/health/live")
+def health_live():
+    return _health_payload()
+
+
+@app.get("/health/ready")
+def health_ready():
+    return _health_payload()
+
+
+@app.get("/health")
+def health():
+    return _health_payload()
 
 
 @app.post("/execute")

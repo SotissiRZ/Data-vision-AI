@@ -29,6 +29,58 @@ RULES: tuple[IntentRule, ...] = (
     ),
 
 IntentRule(
+    "project_memory",
+    (
+        r"\bm[eé]moire\s+(?:du|de ce)\s+projet\b",
+        r"\bhistorique\s+(?:analytique|des analyses|des mod[eè]les|des graphiques)\b",
+        r"\bqu['’]est[- ]ce\s+que\s+tu\s+te\s+rappelles\b",
+        r"\bquelles?\s+(?:sont\s+)?(?:mes|les)\s+analyses\s+pr[eé]c[eé]dentes\b",
+        r"\bliste\s+(?:mes|les)\s+(?:analyses|mod[eè]les|graphiques|rapports)\s+pr[eé]c[eé]dents\b",
+        r"\bretrouve\b.*\b(?:session\s+pr[eé]c[eé]dente|analyse\s+d['’]avant|mod[eè]le\s+d['’]avant)\b",
+    ),
+    0.999,
+),
+
+IntentRule(
+    "artifact_context",
+    (
+        r"\b(?:ce|le|du)\s+r[eé]sultat\b",
+        r"\br[eé]sultat\s+pr[eé]c[eé]dent\b",
+        r"\b(?:ce|le)\s+graphique\b",
+        r"\b(?:ce|le)\s+mod[eè]le\b",
+        r"\b(?:ce|le)\s+rapport\b",
+        r"\bcompare\b.*\bpr[eé]c[eé]dent\b",
+        r"\bexplique\b.*\b(?:r[eé]sultat|graphique|mod[eè]le)\b",
+        r"\brefais\b.*\bgraphique\b",
+        r"\butilise\b.*\bmod[eè]le\b",
+        r"\b(?:premier|premi[eè]re|deuxi[eè]me|second|seconde|troisi[eè]me|dernier|derni[eè]re|pr[eé]c[eé]dent)\s+(?:graphique|mod[eè]le|rapport|analyse|r[eé]sultat)\b",
+        r"\b(?:graphique|mod[eè]le|rapport|analyse|r[eé]sultat)\s+(?:#?\d+|premier|deuxi[eè]me|troisi[eè]me|dernier|pr[eé]c[eé]dent)\b",
+        r"\breprends?\b.*\b(?:analyse|r[eé]sultat|graphique|mod[eè]le|rapport)\b",
+        r"\b(?:relance|relancer|r[eé]ex[eé]cute|r[eé]ex[eé]cuter|rejoue|rejouer)\b.*\b(?:analyse|artefact|r[eé]sultat|graphique|mod[eè]le|rapport)\b",
+        r"\b(?:r[eé]utilise|utilise)\b.*\b(?:analyse|artefact|r[eé]sultat|graphique|mod[eè]le|rapport)\b.*\bdataset\s+actif\b",
+        r"\bcompar(?:e|er|aison)\b.*\b(?:mod[eè]les?|graphiques?|rapports?|analyses?|r[eé]sultats?)\b",
+        r"project-memory:[0-9a-fA-F-]{8,}",
+    ),
+    0.997,
+),
+IntentRule(
+    "dataset_context",
+    (
+        r"\b[àa]\s+quelle\s+p[eé]riode\s+remonte\b",
+        r"\bquelle\s+p[eé]riode\b.*\b(?:dataset|donn[eé]es)\b",
+        r"\b(?:p[eé]riode|plage|couverture)\s+(?:temporelle|de\s+dates?)\b",
+        r"\bdate\s+(?:la\s+plus\s+)?(?:ancienne|r[eé]cente)\b",
+        r"\bdepuis\s+quand\b.*(?:dataset|donn[eé]es)?",
+        r"\bjusqu['’]?[àa]\s+quand\b.*(?:dataset|donn[eé]es)?",
+        r"\bcombien\s+de\s+(?:lignes|colonnes|variables)\b",
+        r"\bquelles?\s+(?:sont\s+)?(?:les\s+)?(?:colonnes|variables)\b",
+        r"\b(?:quel|quelle)\s+(?:est\s+)?(?:le\s+)?dataset\s+actif\b",
+        r"\b(?:nom|version)\s+(?:du|de\s+ce|de\s+mon)\s+dataset\b",
+        r"\b(?:ce|le|mon)\s+dataset\s+(?:date|remonte)\b",
+    ),
+    0.995,
+),
+IntentRule(
     "dataset_assessment",
     (
         r"\bcomment\s+(?:tu\s+)?trouv(?:e|es)[- ]?(?:tu)?\s+(?:le|ce|mon)?\s*dataset\b",

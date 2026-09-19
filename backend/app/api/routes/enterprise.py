@@ -43,6 +43,13 @@ from app.services.plugin_service import (
     sync_plugin, test_plugin, update_plugin,
 )
 from app.assistant.plugin_runtime import refresh_runtime_plugins
+from app.services.user_preferences import get_user_preferences, save_user_preferences
+from app.services.mfa_service import (
+    begin_password_login, begin_registration, finish_registration,
+    finish_password_login, mfa_status, disable_credential,
+)
+from app.services.secret_crypto import kms_status
+from app.services.upload_security import antivirus_status
 from app.services.identity_service import (
     create_oidc_provider, list_oidc_providers, list_public_oidc_providers, delete_oidc_provider, oidc_start, oidc_exchange,
     create_secret, list_secrets, rotate_secret, test_secret,
@@ -120,6 +127,27 @@ class BootstrapRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     password: str = Field(min_length=1, max_length=200)
+
+
+
+class WebAuthnRegistrationVerifyRequest(BaseModel):
+    challenge_id: str
+    credential: dict[str, Any]
+    label: str = Field(default="Passkey", max_length=160)
+
+
+class WebAuthnLoginVerifyRequest(BaseModel):
+    challenge_id: str
+    credential: dict[str, Any]
+
+
+class UserPreferencesRequest(BaseModel):
+    accessibility_mode: str | None = Field(
+        default=None,
+        pattern="^(normal|comfortable|large)$",
+    )
+    ui_zoom: int | None = Field(default=None, ge=90, le=140)
+    compact_navigation: bool | None = None
 
 
 class RefreshTokenRequest(BaseModel):
@@ -386,8 +414,15 @@ def auth_bootstrap(req: BootstrapRequest):
 @router.post("/auth/login")
 def auth_login(req: LoginRequest):
     try:
-        out = login(req.email, req.password)
-        record_event("auth.login", user_id=out["user"]["id"], resource_type="user", resource_id=out["user"]["id"], payload={"email": req.email})
+        out = begin_password_login(req.email, req.password)
+        user = out.get("user") or {}
+        record_event(
+            "auth.login_mfa_challenge" if out.get("mfa_required") else "auth.login",
+            user_id=user.get("id"),
+            resource_type="user",
+            resource_id=user.get("id"),
+            payload={"email": req.email, "mfa_required": bool(out.get("mfa_required"))},
+        )
         return out
     except Exception as exc:
         _handle(exc)
@@ -397,6 +432,103 @@ def auth_login(req: LoginRequest):
 def auth_me(user=Depends(current_user)):
     try:
         return session_payload(user["id"])
+    except Exception as exc:
+        _handle(exc)
+
+
+
+@router.get("/auth/mfa/status")
+def auth_mfa_status(user=Depends(current_user)):
+    try:
+        return mfa_status(user["id"])
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/auth/mfa/webauthn/register/options")
+def auth_mfa_register_options(user=Depends(current_user)):
+    try:
+        return begin_registration(user["id"])
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/auth/mfa/webauthn/register/verify")
+def auth_mfa_register_verify(
+    req: WebAuthnRegistrationVerifyRequest,
+    user=Depends(current_user),
+):
+    try:
+        out = finish_registration(
+            user["id"],
+            req.challenge_id,
+            req.credential,
+            label=req.label,
+        )
+        record_event(
+            "auth.mfa_enrolled",
+            user_id=user["id"],
+            resource_type="user",
+            resource_id=user["id"],
+            payload={"method": "webauthn"},
+        )
+        return out
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/auth/mfa/webauthn/{credential_id}")
+def auth_mfa_disable(credential_id: str, user=Depends(current_user)):
+    try:
+        out = disable_credential(user["id"], credential_id)
+        record_event(
+            "auth.mfa_credential_disabled",
+            user_id=user["id"],
+            resource_type="user",
+            resource_id=user["id"],
+            payload={"credential_id": credential_id},
+        )
+        return out
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/auth/mfa/webauthn/login/verify")
+def auth_mfa_login_verify(req: WebAuthnLoginVerifyRequest):
+    try:
+        out = finish_password_login(req.challenge_id, req.credential)
+        record_event(
+            "auth.mfa_login",
+            user_id=out["user"]["id"],
+            resource_type="user",
+            resource_id=out["user"]["id"],
+            payload={"method": "webauthn"},
+        )
+        return out
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/auth/preferences")
+def auth_preferences(user=Depends(current_user)):
+    try:
+        return get_user_preferences(user["id"])
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.put("/auth/preferences")
+def auth_preferences_save(
+    req: UserPreferencesRequest,
+    user=Depends(current_user),
+):
+    try:
+        payload = {
+            key: value
+            for key, value in req.model_dump().items()
+            if value is not None
+        }
+        return save_user_preferences(user["id"], payload)
     except Exception as exc:
         _handle(exc)
 
@@ -469,9 +601,17 @@ def enterprise_status():
     try:
         return {
             "metadata": metadata_backend(),
-            "auth": "persistent_sessions_with_refresh_rotation",
+            "auth": "persistent_sessions_refresh_rotation_and_webauthn_mfa",
             "oidc": "authorization_code_pkce_rs256_jit_v2.12",
-            "secret_vault": "versioned_local_env_vault_kv2",
+            "webauthn": mfa_status("__status_probe__") if False else {
+                "enabled": get_settings().webauthn_enabled,
+                "rp_id": get_settings().webauthn_rp_id,
+                "origin": get_settings().webauthn_origin,
+                "policy": get_settings().mfa_policy,
+            },
+            "secret_vault": "versioned_local_env_vault_kv2_aesgcm_envelope",
+            "kms": kms_status(),
+            "upload_antivirus": antivirus_status(),
             "rbac": "implemented_for_enterprise_resources",
             "row_column_policies": "policy_metadata_and_preview_ready",
             "async_jobs": "redis_worker",

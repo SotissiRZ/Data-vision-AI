@@ -5,6 +5,7 @@ import time
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy import text as sql_text
 
 from app.api.routes.datasets import router as datasets_router
 from app.api.routes.enterprise import router as enterprise_router
@@ -12,6 +13,10 @@ from app.api.routes.notebooks import router as notebooks_router
 from app.assistant.router import router as assistant_router
 from app.core.config import get_settings
 from app.services.auth_service import has_permission
+from app.services.metadata_store import get_engine
+from app.services.job_service import queue_status
+from app.services.notebook_sandbox import sandbox_health, NotebookSandboxUnavailable
+from app.services.cdc_compliance import get_cdc_report, production_acceptance
 from app.services.tenant_access import (
     authorize_dataset,
     build_access_context,
@@ -20,7 +25,10 @@ from app.services.tenant_access import (
 )
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="2.26.1", docs_url="/docs", redoc_url="/redoc")
+from app.services.upload_security import antivirus_status
+from app.services.secret_crypto import kms_status
+
+app = FastAPI(title=settings.app_name, version="2.39.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -251,9 +259,102 @@ async def assistant_tenant_access(request: Request, call_next):
             reset_access_context(token)
 
 
+@app.get("/health/live")
+def health_live():
+    return {
+        "status": "alive",
+        "product": settings.app_name,
+        "version": "2.39.0",
+    }
+
+
+@app.get("/health/ready")
+def health_ready():
+    components: dict[str, dict] = {}
+
+    database_ok = False
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            conn.execute(sql_text("SELECT 1"))
+        database_ok = True
+        components["metadata"] = {"ready": True}
+    except Exception as exc:
+        components["metadata"] = {
+            "ready": False,
+            "error": type(exc).__name__,
+        }
+
+    queue = queue_status()
+    redis_ok = bool(queue.get("available"))
+    components["redis"] = {
+        "ready": redis_ok,
+        "queue_depth": queue.get("queue_depth"),
+    }
+
+    try:
+        sandbox = sandbox_health()
+        components["sandbox"] = {
+            "ready": sandbox.get("status") == "ok",
+            "optional": True,
+        }
+    except NotebookSandboxUnavailable:
+        components["sandbox"] = {
+            "ready": False,
+            "optional": True,
+        }
+
+    av = antivirus_status()
+    components["antivirus"] = {
+        "ready": bool(av.get("available")) if av.get("required") else True,
+        "available": bool(av.get("available")),
+        "required": bool(av.get("required")),
+        "mode": av.get("mode"),
+    }
+    kms = kms_status()
+    kms_required = settings.app_env == "production"
+    components["kms"] = {
+        "ready": bool(kms.get("production_ready")) if kms_required else True,
+        "required": kms_required,
+        "dedicated_key": bool(kms.get("dedicated_key")),
+        "key_id": kms.get("key_id"),
+    }
+
+    ready = (
+        database_ok
+        and redis_ok
+        and (not av.get("required") or bool(av.get("available")))
+        and (not kms_required or bool(kms.get("production_ready")))
+    )
+    payload = {
+        "status": "ready" if ready else "not_ready",
+        "ready": ready,
+        "product": settings.app_name,
+        "version": "2.39.0",
+        "components": components,
+    }
+    if ready:
+        return payload
+    return JSONResponse(status_code=503, content=payload)
+
+
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": settings.app_name, "version": "2.26.1"}
+    return {
+        "status": "ok",
+        "product": settings.app_name,
+        "version": "2.39.0",
+    }
+
+
+@app.get("/api/v1/system/cdc-compliance")
+def cdc_compliance():
+    return get_cdc_report()
+
+
+@app.get("/api/v1/system/production-acceptance")
+def production_acceptance_status():
+    return production_acceptance()
 
 
 @app.get("/api/v1/capabilities")
@@ -276,7 +377,7 @@ def capabilities():
             "xai_diagnostics", "confusion_matrix", "roc_pr_curves", "binary_calibration", "local_perturbation_explanations",
             "shap_global_local", "partial_dependence", "counterfactual_search",
             "root_cause_decomposition", "distribution_shift_analysis", "decision_scenario_optimization",
-            "ai_analyst_orchestrator", "natural_language_intent_routing", "analytic_tool_registry", "critic_validation", "analysis_provenance",
+            "ai_analyst_orchestrator", "natural_language_intent_routing", "analytic_tool_registry", "critic_validation", "analysis_provenance", "ai_analysis_streaming_progress", "ai_analysis_result_cache", "ai_analysis_inflight_deduplication", "ai_analysis_cooperative_cancellation",
             "analytical_dashboard", "deterministic_insight_feed", "saved_visualizations", "report_visualization_assets",
             "dashboard_builder", "dashboard_global_filters", "dashboard_cross_filtering", "dashboard_persistence",
             "local_authentication", "organizations", "enterprise_workspaces", "workspace_rbac", "member_provisioning",
@@ -322,10 +423,16 @@ def capabilities():
             "retraining_policies", "traceable_retraining_requests",
             "production_certification_gate",
             "persistent_feature_store", "feature_set_schema_hashing",
+            "server_synchronized_ui_preferences", "keyboard_ui_zoom",
+            "coalesced_proactive_assistant_observation",
             "immutable_feature_materializations", "training_serving_feature_contract",
             "internal_model_serving", "shadow_model_serving",
             "deterministic_canary_routing", "governed_model_deployment_rollback",
             "serving_request_telemetry", "batch_model_scoring",
+            "production_health_live_ready", "docker_compose_healthchecks",
+            "github_actions_ci", "playwright_e2e", "dependency_security_scans",
+            "cyclonedx_sbom_release", "reproducible_release_packaging",
+            "cdc_compliance_matrix", "cdc_evidence_validation", "production_acceptance_center",
         ],
         "partial": [
             "scheduled_proactive_scans", "shap", "nlq", "running_job_preemptive_cancellation",
@@ -334,7 +441,11 @@ def capabilities():
             "external_cloud_model_serving",
         ],
         "planned": [
-            "multi_agent", "r_workspace", "kubernetes_enterprise", "scim_provisioning",
+            "advanced_multi_agent", "persistent_notebook_kernels",
+            "kubernetes_enterprise", "scim_provisioning",
+            "mfa_webauthn", "upload_antivirus",
+            "native_anthropic_gateway", "native_gemini_gateway",
+            "full_i18n", "wcag_external_audit",
         ],
     }
 

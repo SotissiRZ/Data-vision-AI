@@ -1,0 +1,11 @@
+{
+  "version": "2.31.2",
+  "base": "2.31.1 cumulative",
+  "fixes": [
+    "preflight detects wrong extracted project/version before Docker build",
+    "preflight asserts cryptography==46.0.5",
+    "rebuild script stops on native Docker non-zero exit codes",
+    "reset removes stale application images while preserving data volumes",
+    "prevents docker compose up after a failed build"
+  ]
+}

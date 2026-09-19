@@ -1,0 +1,32 @@
+{
+  "version": "2.27.0",
+  "base": "2.26.1 cumulative",
+  "focus": "UI preference sync, keyboard accessibility, smart popover and assistant proactive performance",
+  "validation": {
+    "backend_full_pytest": "247 passed in 30.65s",
+    "focused_v227_pytest": "6 passed in 0.20s",
+    "typescript_syntax": "OK (tsc --noCheck)",
+    "nextjs_build": "not run - node_modules unavailable in this environment",
+    "docker_compose": "not run in this environment",
+    "v2261_files_preserved": "300/300",
+    "missing_v2261_files": [],
+    "checks": {
+      "version": true,
+      "user_preferences_table": true,
+      "preferences_service": true,
+      "preferences_api": true,
+      "keyboard_zoom": true,
+      "smart_popover_close": true,
+      "profile_sync": true,
+      "assistant_coalescing": true,
+      "base_preserved": true
+    }
+  },
+  "features": [
+    "click-outside and Escape close for display popover",
+    "Ctrl/Cmd +, -, 0 UI zoom shortcuts",
+    "server-synchronized Enterprise display preferences",
+    "localStorage fallback for local mode",
+    "proactive assistant event coalescing and duplicate suppression"
+  ]
+}

@@ -25,6 +25,8 @@ CONFIRMATION_TOOLS = {
 def evaluate_action_policy(
     action: AssistantAction,
     context: AssistantContext,
+    *,
+    tool_metadata: dict | None = None,
 ) -> ActionCheckResponse:
     """
     Local safety gate.
@@ -36,6 +38,12 @@ def evaluate_action_policy(
         return ActionCheckResponse(
             decision="deny",
             reason="Cette action ne peut pas être effectuée par l'assistant.",
+        )
+
+    if bool((tool_metadata or {}).get("human_confirmation_required")):
+        return ActionCheckResponse(
+            decision="confirmation_required",
+            reason="Le Tool Registry impose une confirmation humaine pour cette action.",
         )
 
     if action.tool in CONFIRMATION_TOOLS:

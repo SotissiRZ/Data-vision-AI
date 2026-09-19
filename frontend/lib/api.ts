@@ -459,8 +459,33 @@ export async function loginEnterprise(payload: { email:string; password:string }
   return parse<any>(await apiFetch(`${API}/auth/login`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }), 'Connexion impossible');
 }
 
+
+
+export async function getEnterpriseMFAStatus(token:string) {
+  return parse<any>(await apiFetch(`${API}/auth/mfa/status`, { headers:enterpriseHeaders(token) }), 'Statut MFA indisponible');
+}
+export async function beginEnterpriseWebAuthnRegistration(token:string) {
+  return parse<any>(await apiFetch(`${API}/auth/mfa/webauthn/register/options`, { method:'POST', headers:enterpriseHeaders(token) }), 'Initialisation WebAuthn impossible');
+}
+export async function verifyEnterpriseWebAuthnRegistration(token:string, payload:{challenge_id:string;credential:Record<string,unknown>;label?:string}) {
+  return parse<any>(await apiFetch(`${API}/auth/mfa/webauthn/register/verify`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Enregistrement WebAuthn impossible');
+}
+export async function disableEnterpriseWebAuthnCredential(token:string, credential_id:string) {
+  return parse<any>(await apiFetch(`${API}/auth/mfa/webauthn/${credential_id}`, { method:'DELETE', headers:enterpriseHeaders(token) }), 'Désactivation WebAuthn impossible');
+}
+export async function verifyEnterpriseWebAuthnLogin(payload:{challenge_id:string;credential:Record<string,unknown>}) {
+  return parse<any>(await apiFetch(`${API}/auth/mfa/webauthn/login/verify`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }), 'Validation MFA impossible');
+}
 export async function getEnterpriseSession(token:string) {
   return parse<any>(await apiFetch(`${API}/auth/me`, { headers: enterpriseHeaders(token) }), 'Session Enterprise indisponible');
+}
+
+export async function getEnterprisePreferences(token:string) {
+  return parse<any>(await apiFetch(`${API}/auth/preferences`, { headers: enterpriseHeaders(token) }), 'Préférences utilisateur indisponibles');
+}
+
+export async function saveEnterprisePreferences(token:string, payload:{accessibility_mode?:'normal'|'comfortable'|'large';ui_zoom?:number;compact_navigation?:boolean}) {
+  return parse<any>(await apiFetch(`${API}/auth/preferences`, { method:'PUT', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Enregistrement des préférences impossible');
 }
 
 export async function getEnterpriseStatus() {
@@ -1343,5 +1368,116 @@ export async function batchScoreModel(
       body: JSON.stringify(payload),
     }),
     'Batch scoring impossible',
+  );
+}
+
+
+export type AIAnalysisRunEvent = {
+  id: string;
+  status: 'queued' | 'running' | 'cancel_requested' | 'completed' | 'failed' | 'cancelled';
+  progress: number;
+  stage?: string | null;
+  current_tool?: string | null;
+  cached?: boolean;
+  error?: string | null;
+  result?: any;
+};
+
+export async function startAIAnalysisRun(
+  id: string,
+  payload: {
+    question: string;
+    target?: string | null;
+    date_column?: string | null;
+    variables?: string[];
+    group?: string | null;
+    horizon?: number;
+    mode?: 'auto' | 'fast' | 'deep';
+    use_cache?: boolean;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/${encodeURIComponent(id)}/ai/analyze/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Démarrage AI Analyst impossible',
+  );
+}
+
+export async function getAIAnalysisRun(id: string, runId: string) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/${encodeURIComponent(id)}/ai/runs/${encodeURIComponent(runId)}`),
+    'Exécution AI Analyst introuvable',
+  );
+}
+
+export async function cancelAIAnalysisRun(id: string, runId: string) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/${encodeURIComponent(id)}/ai/runs/${encodeURIComponent(runId)}/cancel`, {
+      method: 'POST',
+    }),
+    'Annulation AI Analyst impossible',
+  );
+}
+
+export async function streamAIAnalysisRun(
+  id: string,
+  runId: string,
+  onEvent: (event: AIAnalysisRunEvent) => void,
+  signal?: AbortSignal,
+) {
+  const response = await apiFetch(
+    `${API}/datasets/${encodeURIComponent(id)}/ai/runs/${encodeURIComponent(runId)}/events`,
+    { headers: { Accept: 'text/event-stream' }, signal },
+  );
+  if (!response.ok) {
+    let detail = 'Flux AI Analyst indisponible';
+    try {
+      const body = await response.json();
+      detail = body.detail ?? detail;
+    } catch {}
+    throw new Error(detail);
+  }
+  if (!response.body) throw new Error('Flux AI Analyst vide');
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let boundary = buffer.indexOf('\n\n');
+    while (boundary >= 0) {
+      const packet = buffer.slice(0, boundary);
+      buffer = buffer.slice(boundary + 2);
+      const lines = packet.split('\n');
+      const eventName = (lines.find(line => line.startsWith('event:'))?.slice(6).trim()) || 'message';
+      const data = lines
+        .filter(line => line.startsWith('data:'))
+        .map(line => line.slice(5).trim())
+        .join('\n');
+      if (data && eventName === 'analysis') {
+        onEvent(JSON.parse(data) as AIAnalysisRunEvent);
+      }
+      boundary = buffer.indexOf('\n\n');
+    }
+  }
+}
+
+
+export async function getCdcCompliance() {
+  return parse<any>(
+    await apiFetch(`${API}/system/cdc-compliance`),
+    'Matrice CDC indisponible',
+  );
+}
+
+export async function getProductionAcceptance() {
+  return parse<any>(
+    await apiFetch(`${API}/system/production-acceptance`),
+    'Statut d’acceptation indisponible',
   );
 }

@@ -358,8 +358,8 @@ html{font-size:16px}body{font-size:16px;line-height:1.5}
 /* v2.26.0 — accessibility display controls */
 html{--dv-font-scale:1;--dv-space-scale:1;--dv-icon-scale:1;--dv-user-zoom:1}
 html[data-dv-mode="normal"]{--dv-font-scale:1;--dv-space-scale:1;--dv-icon-scale:1}
-html[data-dv-mode="comfortable"]{--dv-font-scale:1.08;--dv-space-scale:1.06;--dv-icon-scale:1.06}
-html[data-dv-mode="large"]{--dv-font-scale:1.18;--dv-space-scale:1.12;--dv-icon-scale:1.12}
+html[data-dv-mode="comfortable"]{--dv-font-scale:1;--dv-space-scale:1;--dv-icon-scale:1}
+html[data-dv-mode="large"]{--dv-font-scale:1;--dv-space-scale:1;--dv-icon-scale:1}
 body{zoom:var(--dv-user-zoom,1)}
 .pro-topbar{min-height:calc(64px * var(--dv-space-scale));height:auto;gap:14px;flex-wrap:wrap;padding:10px 20px}
 .pro-topbar .brand-mark{width:calc(38px * var(--dv-icon-scale));height:calc(38px * var(--dv-icon-scale));font-size:calc(13px * var(--dv-font-scale))}
@@ -395,3 +395,17 @@ body{zoom:var(--dv-user-zoom,1)}
 @media(max-width:1180px){.command-trigger-wide{width:clamp(220px,32vw,340px)}}
 @media(max-width:900px){.command-trigger-wide{width:min(320px,42vw)}.settings-nav-button{width:38px;height:38px}}
 @media(max-width:640px){.command-trigger-wide{width:auto;min-width:0;flex:1}.command-trigger-wide .command-trigger-label{font-size:calc(10px * var(--dv-font-scale))}.settings-nav-button{flex:0 0 38px}}
+
+/* v2.28.0 — AI Analyst streaming performance UX */
+.ai-cache-toggle{display:flex;align-items:flex-start;gap:8px;margin:12px 0 2px;color:#58717c;font-size:12px;line-height:1.45}.ai-cache-toggle input{margin-top:2px;accent-color:#1ab7a5}.ai-stop-btn{border:1px solid #dfb4b4;background:#fff7f7;color:#9d4545;border-radius:6px;padding:10px 13px;font-size:12px;font-weight:800;cursor:pointer}.ai-stop-btn:hover{background:#fff0f0}.ai-live-progress{margin-top:12px;border:1px solid #d7e4ea;background:#f9fcfd;border-radius:8px;padding:11px 12px}.ai-progress-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.ai-progress-head>div:first-child{display:grid;gap:2px}.ai-progress-head b{font-size:12px;color:#35515e}.ai-progress-head small{font-size:10px;color:#76909b}.ai-progress-head>div:last-child{display:flex;gap:8px;align-items:center}.ai-progress-head strong{font-size:12px;color:#285f73}.ai-progress-track{height:7px;background:#e7eef1;border-radius:999px;overflow:hidden;margin:9px 0 6px}.ai-progress-track i{display:block;height:100%;background:linear-gradient(90deg,#16baa7,#4e9fba);border-radius:999px;transition:width .22s ease}.ai-live-progress>small{font-size:9px;color:#87969d}.ai-cache-hit{display:inline-flex;align-items:center;border:1px solid #b9e8d3;background:#eaf9f2;color:#2c7457;border-radius:999px;padding:3px 7px;font-size:8px;font-weight:900;letter-spacing:.04em}.ai-answer-meta{display:flex;align-items:center;gap:7px;flex-wrap:wrap}.ai-answer-meta>span:not(.ai-cache-hit):not(.ai-intent){font-size:9px;color:#78909a}@media(max-width:760px){.ai-run-row{align-items:flex-start;flex-wrap:wrap}.ai-stop-btn{min-height:42px}.ai-progress-head{flex-direction:column}.ai-progress-head>div:last-child{align-self:flex-end}}
+
+
+/* v2.28.1 — whole-interface zoom hotfix */
+body{zoom:var(--dv-user-zoom,1)!important}
+.pro-content,.content,.page,.home-view,.panel,.table-scroll,.ai-layout,.ai-console,.ai-examples{font-size:inherit}
+.display-footnote::after{content:" Le contenu principal, les panneaux et les tableaux suivent le même zoom."}
+@media(max-width:900px){body{zoom:var(--dv-user-zoom,1)!important}}
+
+
+/* v2.31 — MFA / passkeys */
+.mfa-security-card{display:flex;align-items:center;justify-content:space-between;gap:16px;border:1px solid #d7e5ea;background:#f8fbfc;border-radius:10px;padding:14px;margin-bottom:12px}.mfa-security-card b{font-size:14px;color:#294957}.mfa-security-card p{margin:4px 0;color:#667b85;font-size:12px;line-height:1.5}.mfa-security-card small{font-size:10px;color:#82929b}.passkey-list{display:grid;gap:7px}.passkey-list article{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:10px;border:1px solid #e0e8eb;border-radius:8px;padding:10px}.passkey-list article b{font-size:12px}.passkey-list article small{display:block;font-size:10px;color:#7b8c95;margin-top:3px}@media(max-width:720px){.mfa-security-card{align-items:flex-start;flex-direction:column}.passkey-list article{grid-template-columns:1fr auto}.passkey-list article .danger-link{grid-column:1/-1}}

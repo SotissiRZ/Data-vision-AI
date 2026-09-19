@@ -29,6 +29,23 @@ class Settings(BaseSettings):
     notebook_memory_mb: int = 768
     notebook_max_code_chars: int = 100000
 
+    # v2.31 security hardening
+    webauthn_enabled: bool = True
+    webauthn_rp_id: str = "localhost"
+    webauthn_rp_name: str = "DataVision AI"
+    webauthn_origin: str = "http://localhost:3005"
+    mfa_policy: str = "optional"  # optional | required_admin | required_all
+    mfa_challenge_minutes: int = 5
+
+    antivirus_mode: str = "disabled"  # disabled | preferred | required
+    clamav_host: str = "clamav"
+    clamav_port: int = 3310
+    clamav_timeout_seconds: int = 8
+
+    secret_kms_key: str = ""
+    secret_kms_key_id: str = "primary"
+    secret_kms_previous_keys: str = "{}"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

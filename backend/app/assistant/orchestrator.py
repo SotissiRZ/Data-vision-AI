@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from datetime import datetime, timezone
 
 from .action_runs import ActionLifecycleManager
@@ -26,6 +27,16 @@ from .reference_resolver import resolve_references
 from .tools import AssistantToolRegistry
 from .executor import HostAuthorization
 from .turn_runs import AgentTurnRunStore
+from .artifact_memory import remember_run_artifacts, compact_artifacts
+from .project_memory import (
+    get_entry as get_project_memory_entry,
+    get_policy as get_project_memory_policy,
+    save_artifacts as save_project_artifacts,
+    search_entries as search_project_memory,
+    scope_for_context as project_memory_scope_for_context,
+    should_recall as should_recall_project_memory,
+    to_session_artifact as project_entry_to_artifact,
+)
 
 
 @dataclass
@@ -45,6 +56,122 @@ class AgentOrchestrator:
             request.session_id,
             context.workspaceId,
         )
+
+        # v2.32 Context Engine: synchronize the compact session memory with
+        # the authoritative UI context before resolving pronouns/follow-ups.
+        sync_context = getattr(self.memory, "sync_context", None)
+        if callable(sync_context):
+            memory_item = sync_context(request.session_id, context)
+
+        # v2.38 Semantic Memory Actions: an explicit project-memory:<id> token
+        # is resolved exactly before semantic recall. This is used by governed UI
+        # action buttons and never grants permissions by itself.
+        try:
+            explicit_memory = re.search(r"project-memory:([0-9a-fA-F-]{8,})", request.message)
+            if explicit_memory:
+                scope_id, _workspace_id, _user_id = project_memory_scope_for_context(context)
+                entry = get_project_memory_entry(scope_id, explicit_memory.group(1))
+                if entry is not None:
+                    artifact = project_entry_to_artifact(entry)
+                    existing = memory_item.facts.get("recent_artifacts")
+                    existing = existing if isinstance(existing, list) else []
+                    merged = [artifact]
+                    seen = {str(artifact.get("id") or "")}
+                    for item in existing:
+                        if not isinstance(item, dict):
+                            continue
+                        item_id = str(item.get("id") or "")
+                        if not item_id or item_id in seen:
+                            continue
+                        seen.add(item_id)
+                        merged.append(item)
+                        if len(merged) >= 12:
+                            break
+                    self.memory.remember_fact(request.session_id, "recent_artifacts", merged)
+                    self.memory.remember_fact(
+                        request.session_id,
+                        "last_project_recall",
+                        [{
+                            "id": entry.get("id"),
+                            "artifact_id": entry.get("artifact_id"),
+                            "kind": entry.get("kind"),
+                            "title": entry.get("title"),
+                            "dataset_id": entry.get("dataset_id"),
+                            "reference_source": "explicit_project_memory_id",
+                        }],
+                    )
+                    memory_item = self.memory.get_or_create(request.session_id, context.workspaceId)
+        except Exception:
+            # Exact recall remains optional; normal intent handling stays available.
+            pass
+
+        # v2.36 Project Memory: recall compact deterministic artifacts from a
+        # previous assistant session only when the user's wording justifies it.
+        # The recall is scope-isolated and never imports raw chat transcripts.
+        try:
+            session_artifacts = compact_artifacts(memory_item, limit=12)
+            scope_id, _workspace_id, _user_id = project_memory_scope_for_context(context)
+            project_policy = get_project_memory_policy(scope_id)
+            if (
+                project_policy.get("enabled")
+                and project_policy.get("auto_recall")
+                and should_recall_project_memory(
+                    request.message,
+                    has_session_artifacts=bool(session_artifacts),
+                )
+            ):
+                recalled_entries = search_project_memory(
+                    scope_id,
+                    request.message,
+                    dataset_id=context.activeDatasetId,
+                    limit=8,
+                )
+                if context.activeDatasetId:
+                    recalled_entries = [
+                        entry for entry in recalled_entries
+                        if str(entry.get("dataset_id") or "") == str(context.activeDatasetId)
+                    ]
+                recalled_artifacts = [project_entry_to_artifact(entry) for entry in recalled_entries[:6]]
+                if recalled_artifacts:
+                    existing = memory_item.facts.get("recent_artifacts")
+                    existing = existing if isinstance(existing, list) else []
+                    merged = []
+                    seen = set()
+                    for artifact in [*existing, *recalled_artifacts]:
+                        if not isinstance(artifact, dict):
+                            continue
+                        artifact_id = str(artifact.get("id") or "")
+                        if not artifact_id or artifact_id in seen:
+                            continue
+                        seen.add(artifact_id)
+                        merged.append(artifact)
+                        if len(merged) >= 12:
+                            break
+                    self.memory.remember_fact(request.session_id, "recent_artifacts", merged)
+                    self.memory.remember_fact(
+                        request.session_id,
+                        "last_project_recall",
+                        [
+                            {
+                                "id": entry.get("id"),
+                                "artifact_id": entry.get("artifact_id"),
+                                "kind": entry.get("kind"),
+                                "title": entry.get("title"),
+                                "summary": entry.get("summary"),
+                                "dataset_id": entry.get("dataset_id"),
+                                "pinned": entry.get("pinned"),
+                                "created_at": entry.get("created_at"),
+                                "search_score": entry.get("search_score"),
+                                "match_reasons": entry.get("match_reasons"),
+                            }
+                            for entry in recalled_entries[:6]
+                        ],
+                    )
+                    memory_item = self.memory.get_or_create(request.session_id, context.workspaceId)
+        except Exception:
+            # Project memory is a convenience layer; assistant execution must
+            # remain available when metadata storage is temporarily unavailable.
+            pass
 
         # The selected object is always the strongest grounding signal.
         if (
@@ -68,6 +195,25 @@ class AgentOrchestrator:
         )
         intent = reference.intent
         context = reference.context
+
+        if reference.inherited:
+            try:
+                self.memory.remember_fact(
+                    request.session_id,
+                    "last_reference_resolution",
+                    {
+                        "intent": intent.name,
+                        "artifact_id": intent.entities.get("artifact_id"),
+                        "artifact_ids": intent.entities.get("artifact_ids"),
+                        "model_id": intent.entities.get("model_id") or context.activeModelId,
+                        "target_stage": intent.entities.get("target_stage"),
+                        "create_request": intent.entities.get("create_request"),
+                        "reference_source": intent.entities.get("reference_source"),
+                        "reference_reason": intent.entities.get("reference_reason"),
+                    },
+                )
+            except Exception:
+                pass
 
         if reference.clarification:
             response = AgentTurnResponse(
@@ -148,6 +294,7 @@ class AgentOrchestrator:
                     entities=intent.entities,
                     result_summary=grounded,
                 )
+                response.metadata.update(self._memory_metadata(request.session_id))
                 return response
 
         if conversational is not None:
@@ -157,6 +304,7 @@ class AgentOrchestrator:
                 entities=intent.entities,
                 result_summary=conversational.message,
             )
+            conversational.metadata.update(self._memory_metadata(request.session_id))
             return conversational
 
         if intent.name == "unknown":
@@ -179,6 +327,7 @@ class AgentOrchestrator:
                 entities=intent.entities,
                 result_summary=response.message,
             )
+            response.metadata.update(self._memory_metadata(request.session_id))
             return response
 
         plan = self.planner.plan(
@@ -214,6 +363,7 @@ class AgentOrchestrator:
                     label=source.label,
                     reason=source.reason,
                     args=source.args,
+                    risk=validation.risk,
                     status=(
                         "ready"
                         if validation.status == "ready"
@@ -457,6 +607,15 @@ class AgentOrchestrator:
                 "last_results",
                 compact_results(run),
             )
+            remembered = remember_run_artifacts(self.memory, run.session_id, run)
+            try:
+                created_for_run = [
+                    artifact for artifact in remembered
+                    if str(artifact.get("turn_run_id") or "") == str(run.id)
+                ]
+                save_project_artifacts(run.context, run.session_id, created_for_run)
+            except Exception:
+                pass
             self.memory.remember_turn(
                 run.session_id,
                 intent=run.intent.name,
@@ -485,6 +644,20 @@ class AgentOrchestrator:
         self.turn_store.save(run)
         return self._response_from_run(run)
 
+
+    def _memory_metadata(self, session_id: str) -> dict:
+        try:
+            item = self.memory.get_or_create(session_id)
+            return {
+                "recent_artifacts": compact_artifacts(item, limit=8),
+                "last_intent": item.last_intent,
+                "recent_columns": item.recent_columns[:5],
+                "last_reference_resolution": item.facts.get("last_reference_resolution"),
+                "project_memory_recall": item.facts.get("last_project_recall") or [],
+                "project_memory_scope": f"workspace:{item.workspace_id}" if item.workspace_id else "local:default",
+            }
+        except Exception:
+            return {"recent_artifacts": []}
     def _response_from_run(self, run: AgentTurnRun) -> AgentTurnResponse:
         pending = [
             step.action_run_id
@@ -513,6 +686,7 @@ class AgentOrchestrator:
             pending_action_run_ids=pending,
             metadata={
                 "turn_run_id": run.id,
+                **self._memory_metadata(run.session_id),
                 "planner": self.planner.__class__.__name__,
                 "critic": self.critic.__class__.__name__,
                 "current_step_index": run.current_step_index,

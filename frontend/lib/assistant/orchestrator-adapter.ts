@@ -27,9 +27,9 @@ function sessionId(): string {
 }
 
 function riskFromStep(step: AgentTurnResponse["steps"][number]) {
-  // The backend remains authoritative. This risk is only for frontend display.
-  if (step.status === "waiting_confirmation") return "destructive" as const;
-  return "read" as const;
+  // The backend remains authoritative. This value only mirrors the validated
+  // Tool Registry risk so the UI can explain what the user is confirming.
+  return step.risk ?? (step.status === "waiting_confirmation" ? "reversible" : "read");
 }
 
 function turnToChatResponse(turn: AgentTurnResponse): AssistantChatResponse {
@@ -169,6 +169,91 @@ export function createOrchestratorAssistantAdapter(options: {
       });
 
       return turnToChatResponse(resumed);
+    },
+
+    async rejectAction(action, context) {
+      const continuation = action.continuation;
+      if (!continuation) {
+        throw new Error(
+          "Cette action ne contient pas de contexte de reprise orchestrateur.",
+        );
+      }
+
+      const rejected: ActionRun = await confirmAssistantAction({
+        apiBaseUrl: base,
+        runId: continuation.actionRunId,
+        confirmed: false,
+      });
+
+      if (rejected.status !== "cancelled") {
+        throw new Error(
+          `Le refus n'a pas été enregistré (${rejected.status}).`,
+        );
+      }
+
+      const resumed = await continueAssistantTurn({
+        apiBaseUrl: base,
+        turnRunId: continuation.turnRunId,
+        confirmedActionRunId: continuation.actionRunId,
+      });
+
+      return turnToChatResponse(resumed);
+    },
+
+    async getProjectMemory(query) {
+      const suffix = query?.trim() ? `?query=${encodeURIComponent(query.trim())}` : "";
+      const response = await fetch(`${base}/ai/assistant/memory${suffix}`, {
+        credentials: "include",
+        headers: assistantAuthHeaders(),
+      });
+      return jsonOrThrow(response);
+    },
+
+    async updateProjectMemoryPolicy(updates) {
+      const response = await fetch(`${base}/ai/assistant/memory/policy`, {
+        method: "PUT",
+        credentials: "include",
+        headers: assistantAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify(updates),
+      });
+      return jsonOrThrow(response);
+    },
+
+    async pinProjectMemory(entryId, pinned) {
+      const response = await fetch(`${base}/ai/assistant/memory/${encodeURIComponent(entryId)}/pin`, {
+        method: "POST",
+        credentials: "include",
+        headers: assistantAuthHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ pinned }),
+      });
+      return jsonOrThrow(response);
+    },
+
+    async duplicateProjectMemory(entryId) {
+      const response = await fetch(`${base}/ai/assistant/memory/${encodeURIComponent(entryId)}/duplicate`, {
+        method: "POST",
+        credentials: "include",
+        headers: assistantAuthHeaders(),
+      });
+      return jsonOrThrow(response);
+    },
+
+    async forgetProjectMemory(entryId) {
+      const response = await fetch(`${base}/ai/assistant/memory/${encodeURIComponent(entryId)}`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: assistantAuthHeaders(),
+      });
+      await jsonOrThrow(response);
+    },
+
+    async clearProjectMemory() {
+      const response = await fetch(`${base}/ai/assistant/memory`, {
+        method: "DELETE",
+        credentials: "include",
+        headers: assistantAuthHeaders(),
+      });
+      return jsonOrThrow(response);
     },
   };
 }

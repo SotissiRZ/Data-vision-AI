@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: cp .env.example .env
+      - run: docker compose config -q
+      - run: docker compose build api web sandbox
+      - working-directory: frontend
+        run: npm install
+      - working-directory: frontend
+        run: npm run typecheck && npm run build
+      - run: python scripts/release.py --output dist
+      - run: python scripts/verify_release.py dist/datavision-ai-v$(cat VERSION)-complet.zip --sha-file dist/datavision-ai-v$(cat VERSION)-complet.zip.sha256
+      - run: pip install cyclonedx-bom
+      - run: cyclonedx-py requirements backend/requirements.txt -o dist/backend.cdx.json
+      - working-directory: frontend
+        run: npx --yes @cyclonedx/cyclonedx-npm --output-file ../dist/frontend.cdx.json
+      - uses: anchore/sbom-action@v0
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/source.spdx.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: datavision-release
+          path: dist/*
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${GITHUB_REF_NAME}" dist/* --generate-notes --verify-tag

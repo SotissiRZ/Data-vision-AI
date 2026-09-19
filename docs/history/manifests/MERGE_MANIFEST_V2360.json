@@ -1,0 +1,20 @@
+{
+  "version": "2.36.0",
+  "base": "2.35.0 cumulative",
+  "feature": "Context Engine v6 / Project Memory",
+  "changes": [
+    "governed project-memory metadata tables",
+    "compact artifact persistence across assistant sessions",
+    "deterministic recall and search",
+    "retention, pin, forget and policy controls",
+    "workspace-authoritative scope in Enterprise",
+    "assistant UI project-memory controls"
+  ],
+  "validation": {
+    "backend_tests": "254 passed",
+    "targeted_v236_tests": "9 passed",
+    "typescript_syntax": "ok",
+    "docker_build": "not run",
+    "next_build": "not run"
+  }
+}

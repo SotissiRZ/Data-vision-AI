@@ -1,0 +1,19 @@
+{
+  "version": "2.38.0",
+  "base": "2.37.0 cumulative",
+  "feature": "Semantic Memory Actions",
+  "changes": [
+    "exact project-memory:<id> recall before semantic matching",
+    "governed replay_artifact intent through normal planner and Tool Registry",
+    "schema validation before replay on the active dataset",
+    "allow-listed replay tools only",
+    "project-memory recipe duplication with audit event",
+    "UI actions: Open, Replay, Active dataset, Duplicate",
+    "host navigation to the relevant DataVision module"
+  ],
+  "security": {
+    "raw_rows_persisted": false,
+    "direct_memory_execution": false,
+    "tool_registry_bypassed": false
+  }
+}

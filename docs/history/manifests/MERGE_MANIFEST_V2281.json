@@ -1,0 +1,17 @@
+{
+  "version": "2.28.1",
+  "base": "2.28.0 cumulative",
+  "focus": "Whole-interface accessibility zoom hotfix",
+  "changes": [
+    "reading modes now set global zoom presets",
+    "body receives direct zoom style for fixed-pixel components",
+    "main content follows Normal/Comfort/Large modes",
+    "removed topbar-specific double scaling"
+  ],
+  "presets": {
+    "normal": 100,
+    "comfortable": 110,
+    "large": 125
+  },
+  "backend_logic_changed": false
+}

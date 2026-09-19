@@ -1,7 +1,24 @@
 {
   "name": "datavision-web",
   "private": true,
-  "scripts": {"dev": "next dev", "build": "next build", "start": "next start"},
-  "dependencies": {"next": "15.5.2", "react": "19.1.1", "react-dom": "19.1.1"},
-  "devDependencies": {"typescript": "5.9.2", "@types/node": "24.3.0", "@types/react": "19.1.10", "@types/react-dom": "19.1.7"}
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "playwright test --grep @smoke"
+  },
+  "dependencies": {
+    "next": "15.5.2",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "typescript": "5.9.2",
+    "@types/node": "24.3.0",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "@playwright/test": "1.55.0"
+  }
 }

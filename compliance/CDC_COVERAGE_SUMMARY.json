@@ -1,0 +1,9 @@
+{
+  "coverage_percent": 84.7,
+  "counts": {
+    "implemented": 52,
+    "partial": 23,
+    "missing": 0
+  },
+  "missing_evidence": []
+}

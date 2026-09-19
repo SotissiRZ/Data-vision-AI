@@ -1,0 +1,21 @@
+{
+  "version": "2.31.1",
+  "base": "2.31.0 cumulative",
+  "issue_from_user_log": "pip ResolutionImpossible: Snowflake Connector 4.7.4 requires cryptography>=46.0.5 while v2.31.0 pinned 46.0.4",
+  "fixes": {
+    "cryptography_pin": "46.0.5",
+    "compose_project_name": "datavision",
+    "orphan_cleanup": "reset-docker.ps1 + down --remove-orphans",
+    "data_volumes_preserved": true
+  },
+  "validation": {
+    "python_ast": "OK",
+    "targeted_tests": "3 passed",
+    "compose_yaml": "OK",
+    "sbom_json": "OK",
+    "pip_online_resolver": "not run: execution environment has no DNS/network access",
+    "full_backend_note": "suite reached 100% progress but pytest process hung during teardown in this environment; no new backend logic changed",
+    "v2310_files_preserved": "351/351",
+    "missing_v2310_files": []
+  }
+}

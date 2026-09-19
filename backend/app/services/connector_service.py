@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import base64
-import hashlib
 import json
 import re
 import uuid
@@ -9,11 +7,11 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pandas as pd
-from cryptography.fernet import Fernet, InvalidToken
 from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.services.metadata_store import execute, fetch_all, fetch_one, json_dumps, json_loads, utcnow
+from app.services.secret_crypto import encrypt_secret, decrypt_secret
 from app.services.connector_backends import (
     CONNECTOR_SPECS,
     connector_catalog,
@@ -28,30 +26,6 @@ from app.services.connector_backends import (
 SUPPORTED_CONNECTORS = set(CONNECTOR_SPECS)
 SUPPORTED_REFRESH_MODES = {"full", "incremental"}
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*$")
-
-
-def _fernet() -> Fernet:
-    # Stable application-level envelope key derived from AUTH_SECRET. The secret must be
-    # rotated through a controlled migration if credentials already exist.
-    settings = get_settings()
-    material = settings.connector_secret_key or settings.auth_secret
-    raw = hashlib.sha256(material.encode("utf-8")).digest()
-    return Fernet(base64.urlsafe_b64encode(raw))
-
-
-def encrypt_secret(value: str) -> str:
-    if not value:
-        return ""
-    return _fernet().encrypt(value.encode("utf-8")).decode("ascii")
-
-
-def decrypt_secret(value: str | None) -> str:
-    if not value:
-        return ""
-    try:
-        return _fernet().decrypt(value.encode("ascii")).decode("utf-8")
-    except InvalidToken as exc:
-        raise RuntimeError("Impossible de déchiffrer les credentials. Vérifiez AUTH_SECRET.") from exc
 
 
 def _safe_error(exc: Exception, password: str = "") -> str:

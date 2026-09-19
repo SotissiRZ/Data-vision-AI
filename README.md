@@ -1,6 +1,22 @@
-# DataVision AI — v2.26.1
+# DataVision AI — v2.39.0
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
+
+
+## Nouveau dans v2.39.0 — Repository Cleanup & Professional Structure
+
+La racine du dépôt est désormais limitée aux fichiers opérationnels réellement
+utiles au lancement, au build, à la sécurité et à la documentation principale.
+
+- `MERGE_MANIFEST_V*.json` → `docs/history/manifests/` ;
+- `MIGRATION_FROM_V212.md` → `docs/history/migrations/` ;
+- ajout de `docs/PROJECT_STRUCTURE.md` ;
+- ajout de `.gitignore` et `.editorconfig` ;
+- ajout de `scripts/repository_hygiene.py` ;
+- contrôle d'hygiène exécuté par le préflight Windows et la CI.
+
+Aucun moteur analytique, endpoint métier, composant de sécurité ou mécanisme du
+Context Engine n'est supprimé par cette réorganisation.
 
 
 ## Nouveau dans v2.15.3 — Assistant agentique cumulatif v2.13 → v2.15
@@ -920,6 +936,53 @@ aux règles de confirmation et aux permissions DataVision.
 
 
 
+
+
+## Nouveau dans v2.27.0 — Préférences synchronisées & assistant plus réactif
+
+### Affichage intelligent
+
+Le panneau `Aa` se ferme maintenant :
+- au clic en dehors du panneau ;
+- avec la touche `Esc`.
+
+Raccourcis d'affichage :
+
+```text
+Ctrl/Cmd + +   augmenter le zoom UI
+Ctrl/Cmd + -   réduire le zoom UI
+Ctrl/Cmd + 0   revenir à 100 %
+```
+
+Le zoom reste borné entre 90 % et 140 %.
+
+### Préférences utilisateur Enterprise
+
+Lorsqu'un utilisateur est connecté, les préférences suivantes sont synchronisées
+avec son profil DataVision :
+
+```text
+accessibility_mode
+ui_zoom
+compact_navigation (réservé pour extension UI)
+```
+
+Le navigateur conserve toujours un fallback `localStorage` pour le mode local
+et pour garantir une expérience fluide hors connexion Enterprise.
+
+### Assistant plus réactif
+
+Les événements proactifs non critiques sont maintenant coalescés sur une courte
+fenêtre et les observations identiques répétées sont dédupliquées.
+
+Objectif : éviter plusieurs appels réseau successifs lorsque l'interface émet
+une rafale d'événements équivalents.
+
+Les événements `critical` restent envoyés immédiatement.
+
+Cette optimisation ne modifie ni le Tool Registry, ni les autorisations, ni les
+moteurs analytiques.
+
 ## Nouveau dans v2.26.1 — Topbar plus pratique
 
 - barre de recherche globale agrandie ;
@@ -930,6 +993,324 @@ aux règles de confirmation et aux permissions DataVision.
 - responsive conservé sur tablette et mobile.
 
 Aucune logique backend ou analytique n'est modifiée dans ce hotfix.
+
+
+
+
+
+
+
+
+
+
+
+## Nouveau dans v2.31.0 — Security P0 Closure
+
+### MFA / WebAuthn
+
+DataVision prend désormais en charge les passkeys WebAuthn pour les comptes Enterprise :
+
+```text
+mot de passe
+   ↓
+challenge WebAuthn
+   ↓
+Windows Hello / Touch ID / clé FIDO2 / passkey
+   ↓
+session DataVision
+```
+
+Après enrôlement d’une passkey, un login par mot de passe exige la seconde étape WebAuthn.
+Les challenges sont à usage unique, expirent rapidement et la vérification impose la présence utilisateur.
+
+### Antivirus des uploads
+
+Chaque upload passe par `upload_security.scan_upload()` avant persistance.
+
+Modes :
+- `disabled` — développement uniquement ;
+- `preferred` — scan si ClamAV est disponible ;
+- `required` — fail-closed, recommandé et attendu en production.
+
+Le Docker Compose inclut maintenant un service ClamAV. La signature EICAR de validation est toujours rejetée, même si ClamAV est indisponible.
+
+### Chiffrement des secrets
+
+Les nouveaux secrets utilisent une enveloppe versionnée :
+
+```text
+AES-256-GCM
++ key_id
++ nonce aléatoire
++ AAD DataVision
+```
+
+Format : `dvkms1:<key_id>:<nonce>:<ciphertext>`.
+
+Les anciens secrets Fernet restent lisibles pour permettre les upgrades sans perte de credentials. En production, `SECRET_KMS_KEY` dédié est exigé par le readiness check. `SECRET_KMS_PREVIOUS_KEYS` permet de conserver les anciennes clés pendant une rotation.
+
+### Readiness production
+
+`/health/ready` vérifie maintenant aussi :
+- disponibilité de ClamAV si le mode antivirus est `required` ;
+- présence d’une clé KMS dédiée lorsque `APP_ENV=production`.
+
+
+## Nouveau dans v2.30.0 — CDC Compliance & Production Acceptance
+
+DataVision possède maintenant une matrice de conformité auditable du CDC 1.0.
+
+Le référentiel se trouve dans :
+
+```text
+compliance/CDC_COVERAGE_MATRIX.json
+docs/CDC_COVERAGE_MATRIX.md
+```
+
+Chaque section du CDC contient :
+- statut `implemented`, `partial` ou `missing` ;
+- priorité P0/P1/P2 ;
+- preuves dans le dépôt ;
+- tests associés quand ils existent ;
+- gap explicite quand la couverture n'est pas totale.
+
+### Score v2.30
+
+```text
+Sections CDC       : 75
+Implémentées       : 52
+Partielles         : 23
+Manquantes         : 0
+Couverture pondérée: 84,7 %
+```
+
+Méthode de calcul :
+
+```text
+implemented = 1 point
+partial     = 0,5 point
+missing     = 0 point
+```
+
+Le score n'est pas une certification externe et ne remplace ni les tests
+production, ni un audit sécurité, ni l'acceptation utilisateur.
+
+### MVP
+
+Les 16 éléments du MVP obligatoire disposent désormais d'un gate spécifique.
+Le gate MVP passe dans v2.30, indépendamment du fait que certaines exigences
+V1/V2 plus larges restent partielles.
+
+### Production Acceptance
+
+Deux endpoints sont disponibles :
+
+```text
+GET /api/v1/system/cdc-compliance
+GET /api/v1/system/production-acceptance
+```
+
+Le statut global v2.30 reste `conditional`, notamment à cause de :
+- MFA/WebAuthn absent ;
+- antivirus d'upload non intégré ;
+- validation CI/GitHub réelle à observer sur le dépôt cible ;
+- tests de charge/SLO à exécuter sur l'infrastructure cible ;
+- validation utilisateur finale encore nécessaire.
+
+Le nouvel écran **Gouverner → CDC & Acceptance** expose le score, les gates,
+les gaps prioritaires et les preuves de chaque section.
+
+### Gate CI
+
+Le workflow CI exécute maintenant :
+
+```text
+python scripts/cdc_audit.py --check
+```
+
+Une preuve référencée dans la matrice qui disparaît provoque donc un échec CI.
+
+## Nouveau dans v2.29.0 — Production Hardening & CI/CD
+
+Cette version ferme le principal écart de validation production du CDC sans
+modifier les moteurs analytiques.
+
+### GitHub Actions
+
+Trois workflows sont inclus :
+
+- `CI` : tests backend, typecheck/build frontend, validation Compose et smoke E2E ;
+- `Security` : `pip-audit`, `npm audit` et scan filesystem Trivy/SARIF ;
+- `Release` : build Docker, build frontend, archive reproductible, SHA256 et SBOM.
+
+### E2E Playwright
+
+Le frontend intègre maintenant Playwright avec des smoke tests vérifiant :
+
+- chargement du shell DataVision ;
+- présence de la recherche globale ;
+- accès à AI Analyst ;
+- disponibilité des contrôles d'affichage.
+
+### Healthchecks
+
+L'API expose désormais :
+
+```text
+/health/live
+/health/ready
+```
+
+`/health/ready` distingue les dépendances obligatoires :
+
+- metadata database ;
+- Redis ;
+
+et le sandbox notebook comme dépendance optionnelle signalée séparément.
+
+Le web et le sandbox possèdent également des endpoints/healthchecks dédiés.
+Docker Compose attend maintenant des services réellement sains avant de
+démarrer leurs dépendants.
+
+### Release reproductible
+
+`scripts/release.py` produit une archive ZIP déterministe :
+
+- ordre de fichiers stable ;
+- timestamps ZIP fixes ;
+- manifest SHA256 par fichier ;
+- SHA256 de l'archive ;
+- exclusion de `.env`, `data`, `node_modules`, `.next` et caches.
+
+`scripts/verify_release.py` contrôle l'intégrité du ZIP et son SHA256.
+
+### SBOM
+
+Le repository contient un snapshot CycloneDX des dépendances directes :
+
+```text
+sbom/direct-dependencies.cdx.json
+```
+
+Le workflow Release génère en plus :
+
+- backend CycloneDX ;
+- frontend CycloneDX ;
+- source SPDX JSON.
+
+### Sécurité
+
+`SECURITY.md` définit la baseline de promotion production. Les secrets ne sont
+jamais inclus dans l'archive reproductible.
+
+### Limite de validation locale
+
+Dans l'environnement de génération de cette version, Docker n'était pas
+disponible. La syntaxe Compose est donc fournie et testée par contrat, mais
+`docker compose config/build` devra être exécuté par GitHub Actions ou sur la
+machine de déploiement avant promotion.
+
+## Nouveau dans v2.28.1 — Zoom réellement global
+
+Correctif du contrôle **Aa / Affichage** : les modes de lecture ne se limitent
+plus à la topbar. Ils appliquent maintenant un zoom réel à **toute
+l’interface**, notamment :
+
+- contenu principal ;
+- AI Analyst ;
+- panneaux ;
+- tableaux ;
+- formulaires ;
+- graphiques et cartes de métriques ;
+- Model Registry ;
+- Decision Lab ;
+- Feature Store & Serving ;
+- barre latérale et topbar.
+
+Préréglages :
+
+```text
+Normal       100 %
+Confort      110 %
+Grand texte  125 %
+```
+
+Les boutons `+` et `−` continuent ensuite à ajuster le zoom entre 90 % et
+140 %.
+
+## Nouveau dans v2.28.0 — AI Analyst Performance & Streaming
+
+Cette version améliore directement la réactivité de **AI Analyst**.
+
+### Exécution non bloquante
+
+Le lancement d'une analyse crée maintenant une exécution persistée :
+
+```text
+queued
+  ↓
+running
+  ↓
+completed / failed / cancelled
+```
+
+L'interface n'attend plus une réponse HTTP monolithique pour connaître l'état
+de l'analyse.
+
+### Progression SSE
+
+Le frontend reçoit un flux `text/event-stream` contenant :
+
+- progression en pourcentage ;
+- étape en cours ;
+- outil actuellement exécuté ;
+- statut final ;
+- résultat final lorsqu'il est disponible.
+
+La barre de progression est donc alimentée par le runtime analytique réel.
+
+### Cache vérifiable
+
+Une requête identique peut réutiliser un résultat déjà calculé si les éléments
+suivants sont inchangés :
+
+- dataset et version ;
+- révision de la couche sémantique ;
+- question ;
+- cible/date/groupe/variables ;
+- horizon ;
+- mode rapide/auto/approfondi ;
+- version du moteur AI Analyst.
+
+Le résultat indique explicitement `cache_hit=true`. Aucun faux recalcul n'est
+présenté à l'utilisateur.
+
+### Déduplication
+
+Deux demandes identiques lancées simultanément dans le même contexte
+utilisateur/workspace partagent la même exécution en cours au lieu de lancer
+deux calculs identiques.
+
+### Annulation
+
+Le bouton **Arrêter** demande une annulation coopérative.
+
+L'annulation est vérifiée entre les étapes/outils analytiques. Un calcul
+scientifique déjà engagé à l'intérieur d'une librairie ne prétend pas être
+préempté instantanément.
+
+### Persistance
+
+Nouvelles tables de métadonnées :
+
+```text
+ai_analysis_runs
+ai_analysis_cache
+```
+
+Le cache est automatiquement invalidé lorsqu'une nouvelle version de dataset,
+une nouvelle révision sémantique ou une nouvelle version du runtime est
+utilisée.
 
 ## Nouveau dans v2.26.0 — Accessibilité d’affichage
 
@@ -1541,3 +1922,263 @@ Les documents principaux sont dans `docs/` :
 - un contrat critique ne peut pas être contourné par un export Enterprise ;
 - aucune fonctionnalité fictive présentée comme implémentée ;
 - décisions humaines documentées avant certification des actifs analytiques.
+
+
+## Correctif v2.31.2 — build Docker
+
+Ce correctif résout un conflit réel du resolver `pip` observé pendant le build Docker :
+
+```text
+snowflake-connector-python 4.7.4 requires cryptography>=46.0.5
+DataVision v2.31.0 pinned cryptography==46.0.4
+```
+
+La dépendance est désormais :
+
+```text
+cryptography==46.0.5
+```
+
+Le projet Docker utilise aussi explicitement `name: datavision` afin de garder un nom de projet Compose stable, et les scripts Windows utilisent `docker compose down --remove-orphans` avant le redémarrage.
+
+Si des conteneurs d'un build interrompu existent encore, exécuter :
+
+```powershell
+.\reset-docker.ps1
+docker compose build --no-cache api worker web
+docker compose up -d
+docker compose ps
+```
+
+Le script de reset conserve les volumes de données PostgreSQL, Redis et ClamAV.
+
+## v2.31.2 — Build Windows auto-vérifié
+
+Pour éviter de construire accidentellement une ancienne copie du projet, exécutez :
+
+```powershell
+Get-Content .\VERSION
+Select-String -Path .\backend\requirements.txt -Pattern '^cryptography'
+.\rebuild-windows.ps1
+```
+
+Les deux premières commandes doivent afficher respectivement `2.31.2` et `cryptography==46.0.5`.
+Le script `rebuild-windows.ps1` arrête immédiatement le processus si le build Docker échoue et ne lance jamais `docker compose up` avec une ancienne image.
+
+
+
+## Nouveau dans v2.32.0 — Context Engine v2
+
+Cette version rend le contexte de l’assistant plus durable, plus visible et plus sûr.
+
+- mémoire conversationnelle compacte persistée dans les métadonnées ;
+- aucun transcript brut de conversation n’est stocké par ce mécanisme ;
+- synchronisation explicite avec le dataset, la version, le modèle, la vue et la variable active ;
+- purge automatique des références de colonnes lors d’un changement de dataset ;
+- relances elliptiques comprises : `et sa période ?`, `et ses colonnes ?`, `et sa version ?` ;
+- `compare avec Profit` peut réutiliser la variable précédemment focalisée ;
+- panneau **Contexte actif** visible dans l’assistant flottant ;
+- affichage vérifiable du dataset, de la vue, de la version, des dimensions, de la qualité et de la période détectée.
+
+La logique reste fail-safe : si une référence ne peut pas être déterminée de manière fiable, DataVision demande une clarification au lieu d’inventer.
+
+## Nouveau dans v2.31.3 — Assistant réellement conscient du dataset actif
+
+Cette version corrige le cas où l’assistant affichait bien un dataset dans son contexte mais répondait comme s’il ne savait pas l’exploiter.
+
+- nouvelle intention déterministe `dataset_context` ;
+- détection de la couverture temporelle du dataset lors du profilage ;
+- injection du nom, de la version, du schéma et de la couverture temporelle dans `AssistantContext.uiState` ;
+- réponses instantanées, sans LLM, aux questions factuelles sur le dataset actif ;
+- ligne de contexte de l’assistant plus lisible (nom du dataset et variable sélectionnée au lieu de l’UUID seul).
+
+Exemples désormais compris directement :
+
+```text
+À quelle période remonte ce dataset ?
+Combien de lignes contient-il ?
+Quelles sont ses colonnes ?
+Quel dataset est actif ?
+Quelle est sa version ?
+```
+
+
+## Nouveau dans v2.33.0 — Context Engine v3
+
+Le contexte conversationnel ne se limite plus au dataset et à la variable active.
+DataVision mémorise maintenant des **artefacts analytiques compacts** issus des
+outils déterministes : résultats statistiques, graphiques, modèles, rapports,
+explications et scénarios de décision.
+
+Exemples de relances désormais résolues :
+
+- `explique ce résultat` ;
+- `compare ce résultat au précédent` ;
+- `refais ce graphique avec Profit` ;
+- `utilise ce modèle pour prédire` ;
+- `explique ce modèle`.
+
+La mémoire stocke uniquement des références, paramètres sûrs, métriques et
+résumés compacts — jamais un dump illimité des résultats bruts.
+
+
+## Nouveau dans v2.34.0 — Context Engine v4 & Actions gouvernées
+
+La v2.34 transforme les références conversationnelles en **actions gouvernées**
+sans contourner le Tool Registry, les permissions DataVision ni les confirmations
+humaines.
+
+### Actions contextuelles sur un modèle récent
+
+L'assistant peut maintenant résoudre le modèle mémorisé dans des demandes comme :
+
+```text
+mets ce modèle en production
+quel est le statut de ce modèle ?
+surveille ce modèle et vérifie le drift
+faut-il réentraîner ce modèle ?
+réentraîne ce modèle
+audite l'équité de ce modèle sur Gender
+évalue le risque de ce modèle
+```
+
+La référence est résolue vers le `model_id` réellement mémorisé. Le moteur ne
+fabrique jamais un identifiant de modèle.
+
+### Human-in-the-loop renforcé
+
+- le `risk` validé par le Tool Registry est propagé jusqu'à l'interface ;
+- `human_confirmation_required=true` est désormais contraignant dans le
+  planificateur, l'exécuteur et l'API de contrôle ;
+- les actions en attente sont présentées dans une carte explicite ;
+- l'utilisateur dispose de **Confirmer** et **Refuser** ;
+- un refus est persisté côté orchestrateur et annule proprement le plan ;
+- une action déjà présentée comme confirmation gouvernée n'affiche plus une
+  seconde boîte de dialogue JavaScript redondante.
+
+### Principe de sécurité
+
+Le Context Engine ne donne jamais directement l'autorisation d'exécuter une
+action. Il ne fait que résoudre la référence et l'intention. Le plan résultant
+passe toujours par le Tool Registry, les contrats typés, RBAC/RLS et la
+politique de confirmation habituelle.
+
+
+
+
+## Nouveau dans v2.36.0 — Context Engine v6 / Project Memory
+
+DataVision dispose maintenant d'une **mémoire projet gouvernée** distincte de la mémoire de session. Elle conserve uniquement des références compactes vers les artefacts déterministes produits par la plateforme (graphiques, modèles, tests, rapports, RCA et scénarios), jamais le transcript brut de la conversation.
+
+Principales capacités :
+
+- rappel d'une analyse ou d'un modèle produit lors d'une session précédente ;
+- isolation par workspace en mode Enterprise et scope local explicite en mode desktop/local ;
+- recherche déterministe sur titres, résumés, aliases, colonnes et identifiants ;
+- rétention configurable (90 jours / 200 éléments par défaut) ;
+- épinglage et oubli explicites ;
+- rappel automatique désactivable ;
+- invalidation prudente au changement de dataset pour éviter les références croisées ;
+- gestion de la politique réservée aux rôles disposant de `workspace:manage` en mode Enterprise ;
+- aucun dump de lignes brutes dans la mémoire projet.
+
+L'assistant peut maintenant comprendre des demandes comme :
+
+```text
+quelles sont mes analyses précédentes ?
+retrouve le modèle d'avant sur Profit
+reprends l'analyse de la session précédente
+montre-moi les résultats mémorisés du projet
+```
+
+La mémoire projet est visible dans **Contexte actif → Mémoire projet**.
+
+## Nouveau dans v2.35.0 — Context Engine v5 / Multi-artifact Memory
+
+DataVision peut maintenant raisonner sur **plusieurs artefacts analytiques mémorisés**
+au lieu de toujours prendre le dernier résultat par défaut.
+
+### Références stables
+
+Chaque artefact reçoit une référence stable par type :
+
+```text
+Graphique #1
+Graphique #2
+Modèle #1
+Modèle #2
+Résultat statistique #1
+```
+
+Les références sont attribuées dans l'ordre de création et restent associées à
+l'artefact pendant toute la session active.
+
+### Résolution déterministe
+
+Exemples maintenant compris :
+
+```text
+refais le deuxième graphique avec Sales
+compare le modèle model-xgb au modèle model-cat
+utilise ce modèle pour prédire
+reprends l'analyse de Sales
+compare ce résultat au précédent
+```
+
+Les identifiants explicites, ordinaux, noms, algorithmes, variables et alias
+connus sont utilisés pour résoudre la référence sans calcul LLM.
+
+### Désambiguïsation fail-safe
+
+Si plusieurs artefacts correspondent à une référence générique comme :
+
+```text
+utilise le modèle pour prédire
+```
+
+et que plusieurs modèles sont présents, DataVision **ne choisit plus
+silencieusement le dernier**. Il liste les candidats et demande :
+
+```text
+le premier
+le deuxième
+ou l'identifiant exact
+```
+
+Le démonstratif reste volontairement contextuel : `ce modèle` signifie le
+modèle le plus récent du contexte courant.
+
+### Interface
+
+Le panneau **Contexte actif** affiche maintenant jusqu'à cinq résultats
+mémorisés avec leur référence stable et, lorsqu'il existe, leur identifiant de
+modèle, graphique ou rapport.
+
+La mémoire reste bornée, liée au dataset actif et purgée automatiquement lors
+d'un changement de dataset.
+
+
+## Nouveau dans v2.37.0 — Context Engine v7 / Semantic Project Recall
+
+La mémoire projet peut désormais retrouver un artefact antérieur par proximité sémantique locale et explicable.
+
+- recherche déterministe sans service d'embeddings externe ;
+- synonymes analytiques/business FR/EN (ventes/revenue/Sales, bénéfice/profit, régions/Geography, etc.) ;
+- boosts de type d'artefact, dataset actif, épinglage, paramètres et période ;
+- score de pertinence et raisons de correspondance retournés par l'API ;
+- champ de recherche directement dans **Contexte actif → Mémoire projet** ;
+- aucune extension des permissions : l'isolation workspace reste autoritaire.
+
+
+## Nouveau dans v2.38.0 — Semantic Memory Actions
+
+DataVision peut maintenant **agir sur les artefacts retrouvés dans la mémoire projet** sans exécuter directement un payload mémorisé. Les recettes passent toujours par le planificateur déterministe, le Tool Registry, les contrats Pydantic, RBAC/RLS et les confirmations humaines existantes.
+
+### Actions disponibles
+
+- **Ouvrir** : navigue vers le module correspondant et recharge le dataset source si nécessaire ;
+- **Relancer** : rejoue la recette compacte uniquement si le dataset source est actif ;
+- **Actif** : tente de rejouer la recette sur le dataset actif après validation du schéma ;
+- **Dupliquer** : clone la recette mémoire sans modifier le dataset ni le modèle.
+
+Les références UI utilisent un identifiant exact `project-memory:<id>`, ce qui évite qu'une recherche sémantique ambiguë sélectionne le mauvais artefact. Les outils rejouables sont limités à une allow-list déterministe : visualisation, tests statistiques, régression, AutoML et génération de rapport. Les lignes brutes et payloads de prédiction ne sont jamais persistés comme recettes.

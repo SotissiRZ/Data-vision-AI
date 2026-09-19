@@ -1,0 +1,24 @@
+{
+  "version": "2.33.0",
+  "base": "2.32.0 cumulative",
+  "features": [
+    "analytical artifact memory",
+    "result/chart/model/report reference resolution",
+    "deterministic artifact comparison",
+    "model reuse grounding",
+    "visible latest artifact in assistant context"
+  ],
+  "storage": "assistant_session_memory.facts_json recent_artifacts",
+  "migration_sql_required": false,
+  "validation": {
+    "assistant_tests_passed": 108,
+    "backend_non_assistant_tests_passed": 121,
+    "foundation_tests_passed": 64,
+    "total_split_tests_passed": 293,
+    "v233_targeted_tests_passed": 8,
+    "python_compile": "ok",
+    "typescript_transpile": "ok",
+    "cdc_missing_evidence": 0,
+    "full_monolithic_pytest": "timed_out_in_environment"
+  }
+}

@@ -34,6 +34,7 @@ from .plan import validate_agent_plan
 from .proactive import evaluate_proactive_event
 from .realtime import AssistantRealtimeHub, RealtimeMessage
 from .runtime import build_orchestrator
+from .persistent_memory import PersistentSessionMemoryStore
 from .turn_runs import AgentTurnRunStore
 from .model_gateway_config import build_model_gateway_from_env
 from .model_gateway import RoutingPolicy, NoEligibleProvider, ModelRequest
@@ -43,7 +44,19 @@ from .tools import build_default_registry
 from .workflows import list_workflows
 from .host_v212 import V212HostAuthorization, bind_v212_host
 from .plugin_runtime import attach_plugin_registry, safe_refresh_runtime_plugins
-from app.services.tenant_access import current_access_context
+from app.services.tenant_access import current_access_context, require_workspace_permission
+from app.services.auth_service import has_permission
+from app.services.audit_service import record_event
+from .project_memory import (
+    clear_unpinned as clear_project_memory_unpinned,
+    duplicate_entry as duplicate_project_memory_entry,
+    forget_entry as forget_project_memory_entry,
+    get_policy as get_project_memory_policy,
+    list_entries as list_project_memory_entries,
+    pin_entry as pin_project_memory_entry,
+    save_policy as save_project_memory_policy,
+    search_entries as search_project_memory_entries,
+)
 from .ai_settings import (
     AssistantAISettings,
     ProviderProfileInput,
@@ -75,6 +88,7 @@ action_lifecycle = ActionLifecycleManager(
 realtime_hub = AssistantRealtimeHub()
 model_gateway = build_model_gateway_from_env()
 turn_run_store = AgentTurnRunStore()
+persistent_memory = PersistentSessionMemoryStore()
 # v2.16: settings are resolved per local/workspace context at runtime.
 # No server restart is required after changing Model Gateway settings.
 configured_planner = SettingsAwarePlanner(tool_registry)
@@ -85,6 +99,7 @@ agent_orchestrator = build_orchestrator(
     action_lifecycle=action_lifecycle,
     turn_store=turn_run_store,
     planner=configured_planner,
+    memory=persistent_memory,
 )
 
 
@@ -93,10 +108,110 @@ def assistant_health():
     return {
         "status": "ok",
         "component": "conversational_voice_agent",
-        "version": "2.26.1",
+        "version": "2.39.0",
         "tool_count": len([spec for spec in tool_registry.list() if spec.metadata.get("origin") != "plugin"]),
         "plugin_tools": "tenant_scoped",
     }
+
+
+def _audit_project_memory(event_type: str, resource_id: str | None = None, payload: dict | None = None) -> None:
+    access = current_access_context()
+    try:
+        record_event(
+            event_type,
+            user_id=access.user_id if access else None,
+            organization_id=access.organization_id if access else None,
+            workspace_id=access.workspace_id if access else None,
+            resource_type="assistant_project_memory",
+            resource_id=resource_id,
+            payload=payload or {},
+        )
+    except Exception:
+        # Audit storage degradation must not leave a memory mutation half-applied.
+        pass
+
+
+def _project_memory_scope_id(*, manage: bool = False) -> tuple[str, bool]:
+    access = current_access_context()
+    if access is None:
+        return "local:default", True
+    require_workspace_permission("workspace:manage" if manage else "dataset:read", access)
+    can_manage = has_permission(access.user_id, access.workspace_id, "workspace:manage")
+    return f"workspace:{access.workspace_id}", can_manage
+
+
+@router.get("/memory")
+def get_project_memory(query: str | None = None, limit: int = 30):
+    scope_id, can_manage = _project_memory_scope_id()
+    safe_limit = max(1, min(int(limit), 100))
+    if query and query.strip():
+        entries = search_project_memory_entries(scope_id, query.strip(), limit=safe_limit)
+    else:
+        entries = list_project_memory_entries(scope_id, limit=safe_limit)
+    return {
+        "scope": scope_id,
+        "policy": get_project_memory_policy(scope_id),
+        "entries": entries,
+        "count": len(entries),
+        "can_manage": can_manage,
+        "query": query.strip() if query and query.strip() else None,
+        "search_mode": "semantic_local" if query and query.strip() else "recency",
+    }
+
+
+@router.get("/memory/policy")
+def get_project_memory_policy_route():
+    scope_id, can_manage = _project_memory_scope_id()
+    return {"scope": scope_id, "policy": get_project_memory_policy(scope_id), "can_manage": can_manage}
+
+
+@router.put("/memory/policy")
+def update_project_memory_policy(payload: dict):
+    scope_id, _can_manage = _project_memory_scope_id(manage=True)
+    policy = save_project_memory_policy(scope_id, payload)
+    _audit_project_memory("assistant.project_memory.policy_updated", payload={"scope": scope_id, "keys": sorted(payload.keys())})
+    return {"scope": scope_id, "policy": policy, "can_manage": True}
+
+
+@router.post("/memory/{entry_id}/pin")
+def update_project_memory_pin(entry_id: str, payload: dict):
+    scope_id, _can_manage = _project_memory_scope_id(manage=True)
+    entry = pin_project_memory_entry(scope_id, entry_id, bool(payload.get("pinned", True)))
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Mémoire projet introuvable.")
+    _audit_project_memory("assistant.project_memory.pin_updated", entry_id, {"pinned": bool(payload.get("pinned", True))})
+    return entry
+
+
+@router.post("/memory/{entry_id}/duplicate")
+def duplicate_project_memory(entry_id: str):
+    scope_id, _can_manage = _project_memory_scope_id(manage=True)
+    entry = duplicate_project_memory_entry(scope_id, entry_id)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="Mémoire projet introuvable.")
+    _audit_project_memory(
+        "assistant.project_memory.duplicated",
+        entry_id,
+        {"duplicate_id": entry.get("id"), "scope": scope_id},
+    )
+    return entry
+
+
+@router.delete("/memory/{entry_id}")
+def delete_project_memory_entry(entry_id: str):
+    scope_id, _can_manage = _project_memory_scope_id(manage=True)
+    if not forget_project_memory_entry(scope_id, entry_id):
+        raise HTTPException(status_code=404, detail="Mémoire projet introuvable.")
+    _audit_project_memory("assistant.project_memory.forgotten", entry_id)
+    return {"deleted": True, "id": entry_id}
+
+
+@router.delete("/memory")
+def clear_project_memory():
+    scope_id, _can_manage = _project_memory_scope_id(manage=True)
+    count = clear_project_memory_unpinned(scope_id)
+    _audit_project_memory("assistant.project_memory.cleared", payload={"scope": scope_id, "deleted": count, "pinned_preserved": True})
+    return {"deleted": count, "pinned_preserved": True, "scope": scope_id}
 
 
 @router.get("/tools", response_model=list[ToolCatalogItem])
@@ -181,7 +296,11 @@ def check_action(request: ActionCheckRequest):
                 reason="Tool plugin non disponible dans ce workspace.",
             )
     canonical_action = request.action.model_copy(update={"risk": spec.risk})
-    return evaluate_action_policy(canonical_action, request.context)
+    return evaluate_action_policy(
+        canonical_action,
+        request.context,
+        tool_metadata=spec.metadata,
+    )
 
 
 @router.post("/plan/validate", response_model=AgentPlanValidationResponse)

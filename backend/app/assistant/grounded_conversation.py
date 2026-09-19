@@ -14,6 +14,7 @@ from .models import AssistantContext
 from .privacy import AIDataPolicy, project_context_for_model
 from .result_composer import compose_run_results
 from .turn_runs import AgentTurnRunStore
+from .artifact_memory import project_artifacts_for_model
 
 
 @dataclass
@@ -92,6 +93,19 @@ class SettingsAwareConversationEngine:
                 else "Aucun résultat analytique antérieur dans cette session."
             )
 
+            memory_artifacts = []
+            try:
+                # The orchestrator persists compact artifact memory in metadata;
+                # grounded LLM answers receive only these governed summaries.
+                from .persistent_memory import PersistentSessionMemoryStore
+                memory_artifacts = project_artifacts_for_model(
+                    PersistentSessionMemoryStore().get_or_create(session_id, context.workspaceId),
+                    external=external,
+                    include_column_names_external=data_policy.include_column_names_external,
+                )
+            except Exception:
+                memory_artifacts = []
+
             request = ModelRequest(
                 task="explanation",
                 system=(
@@ -109,6 +123,7 @@ class SettingsAwareConversationEngine:
                         "question": message,
                         "context": semantic_context,
                         "last_deterministic_results": last_results,
+                        "recent_analytical_artifacts": memory_artifacts,
                     },
                     ensure_ascii=False,
                 ),

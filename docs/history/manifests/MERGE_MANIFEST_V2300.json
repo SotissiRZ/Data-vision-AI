@@ -1,0 +1,40 @@
+{
+  "version": "2.30.0",
+  "base": "2.29.0 cumulative",
+  "focus": "CDC Compliance and Production Acceptance",
+  "cdc": {
+    "version": "1.0 — August 2026",
+    "sections": 75,
+    "implemented": 52,
+    "partial": 23,
+    "missing": 0,
+    "weighted_coverage_percent": 84.7,
+    "mvp_acceptance": "pass",
+    "overall_acceptance": "conditional",
+    "evidence_complete": true
+  },
+  "validation": {
+    "python_ast": "OK",
+    "typescript_syntax": "OK",
+    "github_workflow_yaml": "OK",
+    "cdc_evidence_audit": "OK",
+    "v229_files_preserved": "330/330",
+    "missing_v229_files": [],
+    "nextjs_build": "not rerun locally; covered by GitHub Actions definition from v2.29",
+    "docker_compose": "not rerun locally; Docker CLI unavailable in this execution environment",
+    "backend_regression_before_final_packaging_fix": "263 passed across foundation (64), assistant (90), top-level versioned tests (109)",
+    "v230_targeted_final": "7 passed after release-manifest duplicate fix",
+    "release_archive_duplicates": "0",
+    "release_manifest_entries": "1"
+  },
+  "new_artifacts": [
+    "compliance/CDC_COVERAGE_MATRIX.json",
+    "compliance/CDC_COVERAGE_SUMMARY.json",
+    "compliance/PRODUCTION_ACCEPTANCE.json",
+    "docs/CDC_COVERAGE_MATRIX.md",
+    "docs/CDC_COMPLIANCE_V2300.md",
+    "scripts/cdc_audit.py",
+    "frontend/components/ComplianceCenter.tsx",
+    "frontend/components/ComplianceCenter.module.css"
+  ]
+}

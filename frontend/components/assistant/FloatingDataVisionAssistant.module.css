@@ -527,3 +527,425 @@
     bottom: 74px;
   }
 }
+
+/* v2.32.0 — visible grounded context */
+.contextStrip {
+  flex: 0 0 auto;
+  padding: 8px 10px;
+  background: #f7fafb;
+  border-bottom: 1px solid #e0e8ec;
+}
+
+.contextToggle {
+  width: 100%;
+  border: 1px solid #d7e3e8;
+  border-radius: 11px;
+  background: #ffffff;
+  color: #294553;
+  min-height: 44px;
+  padding: 7px 9px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.contextToggle > span:nth-child(2) {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.contextToggle b {
+  font-size: 12px;
+  line-height: 1.2;
+}
+
+.contextToggle small {
+  color: #70838e;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contextToggle i {
+  font-style: normal;
+  color: #77909c;
+  text-align: center;
+}
+
+.contextOk,
+.contextMuted {
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.contextOk {
+  color: #087d67;
+  background: #e9f8f3;
+}
+
+.contextMuted {
+  color: #81919a;
+  background: #eff3f5;
+}
+
+.contextDetails {
+  margin-top: 7px;
+  padding: 10px;
+  border: 1px solid #dce6ea;
+  border-radius: 11px;
+  background: #ffffff;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.contextDetails > div {
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: #f4f8fa;
+  display: grid;
+  gap: 2px;
+}
+
+.contextDetails span {
+  color: #7a8b95;
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.contextDetails b {
+  color: #2a4552;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.contextWide {
+  grid-column: 1 / -1;
+}
+
+.contextNote {
+  grid-column: 1 / -1;
+  color: #71848e;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+
+/* v2.33.0 — analytical artifact context */
+.artifactSummary {
+  display: block;
+  margin-top: 3px;
+  color: #667c88;
+  font-size: 10px;
+  line-height: 1.35;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 500;
+}
+
+
+/* v2.34.0 — governed contextual action cards */
+.actionCards {
+  display: grid;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.actionCard {
+  display: grid;
+  gap: 7px;
+  padding: 11px;
+  border: 1px solid #d8e4e9;
+  border-radius: 12px;
+  background: #f8fbfc;
+}
+
+.actionCardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.actionCardHead span {
+  color: #6c808b;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.actionCardHead b {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: #eaf5f2;
+  color: #1f715f;
+  font-size: 10px;
+}
+
+.actionCardHead b[data-risk="destructive"] {
+  background: #fff0ee;
+  color: #a43d33;
+}
+
+.actionCardHead b[data-risk="external"] {
+  background: #fff6e8;
+  color: #8a5a14;
+}
+
+.actionCard strong {
+  color: #233f4c;
+  font-size: 12px;
+}
+
+.actionCard small {
+  color: #667c88;
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.actionCardButtons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.rejectActionButton {
+  border: 1px solid #ccd9df;
+  border-radius: 9px;
+  background: #fff;
+  color: #4c626d;
+  padding: 8px 11px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.rejectActionButton:hover {
+  background: #f2f6f8;
+}
+
+.rejectActionButton:disabled,
+.actionButton:disabled {
+  cursor: not-allowed;
+  opacity: .55;
+}
+
+/* v2.35.0 — multi-artifact context catalog */
+.artifactList {
+  display: grid;
+  gap: 6px;
+  margin-top: 5px;
+}
+
+.artifactItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border: 1px solid #e0e9ed;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.artifactItem b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #294956;
+  font-size: 10px;
+}
+
+.artifactItem small {
+  grid-column: 1 / -1;
+  color: #71848e;
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.artifactItem code {
+  max-width: 115px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: #eef5f7;
+  color: #54707d;
+  font-size: 8px;
+}
+
+/* v2.36.0 — governed project memory */
+.projectMemoryHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.projectMemoryHeader > span {
+  color: #4f6874;
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.memoryPolicyOn,
+.memoryPolicyOff {
+  border: 1px solid #cfe0e6;
+  border-radius: 999px;
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.memoryPolicyOn {
+  background: #eaf7f3;
+  border-color: #b9ded3;
+  color: #1f725f;
+}
+
+.memoryPolicyOff {
+  background: #f4f6f7;
+  color: #687a83;
+}
+
+.projectMemoryList {
+  display: grid;
+  gap: 6px;
+}
+
+.projectMemoryItem {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 7px 8px;
+  border: 1px solid #e0e9ed;
+  border-radius: 9px;
+  background: #fff;
+}
+
+.projectMemoryItem > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.projectMemoryItem b {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #294956;
+  font-size: 10px;
+}
+
+.projectMemoryItem small {
+  color: #71848e;
+  font-size: 9px;
+  line-height: 1.3;
+}
+
+.projectMemoryActions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.projectMemoryActions button {
+  width: 27px;
+  height: 27px;
+  border: 1px solid #d6e2e7;
+  border-radius: 8px;
+  background: #f8fbfc;
+  color: #536b76;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.projectMemoryActions button:hover {
+  background: #edf5f7;
+}
+
+
+/* v2.37.0 — semantic project recall */
+.projectMemorySearch {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px auto;
+  gap: 6px;
+  margin: 8px 0 4px;
+}
+.projectMemorySearch input {
+  min-width: 0;
+  height: 38px;
+  border: 1px solid rgba(92, 129, 146, .28);
+  border-radius: 9px;
+  padding: 0 10px;
+  background: #fff;
+  color: #213d4b;
+  font-size: 13px;
+}
+.projectMemorySearch button {
+  height: 38px;
+  min-width: 36px;
+  border: 1px solid rgba(92, 129, 146, .28);
+  border-radius: 9px;
+  background: #f5fafb;
+  color: #245d72;
+  cursor: pointer;
+  font-weight: 800;
+}
+.projectMemorySearch button:hover { background: #eaf5f8; }
+.projectMemorySearchMode {
+  display: block;
+  margin-bottom: 7px;
+  color: #5d7886;
+  font-size: 11px;
+}
+.projectMemoryScore {
+  color: #28745f !important;
+  font-weight: 700;
+}
+
+/* v2.38.0 — semantic memory actions */
+.projectMemoryActions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 190px;
+}
+.projectMemoryActions .memoryActionText {
+  width: auto;
+  min-width: 52px;
+  padding: 0 8px;
+  font-size: 9px;
+  letter-spacing: .01em;
+}
+@media (max-width: 640px) {
+  .projectMemoryItem {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+  .projectMemoryActions {
+    max-width: none;
+    justify-content: flex-start;
+  }
+}

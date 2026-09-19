@@ -1,0 +1,27 @@
+{
+  "version": "2.35.0",
+  "base": "2.34.0 cumulative",
+  "scope": "Context Engine v5 / Multi-artifact Memory",
+  "features": [
+    "stable per-kind artifact references",
+    "ordinal artifact resolution",
+    "explicit model/chart/report id resolution",
+    "named artifact matching using labels, algorithms and columns",
+    "deterministic two-artifact comparison resolution",
+    "ambiguity clarification instead of implicit latest fallback",
+    "multi-artifact catalog in assistant context panel"
+  ],
+  "security": [
+    "dataset-bound artifact invalidation preserved",
+    "no permission escalation from context resolution",
+    "governed actions continue through Tool Registry and confirmation gates"
+  ],
+  "validation": {
+    "targeted_v235_tests": 8,
+    "assistant_tests": 124,
+    "backend_top_level_tests": 121,
+    "foundation_tests": 64,
+    "total_block_tests": 309,
+    "typescript_syntax": "ok"
+  }
+}

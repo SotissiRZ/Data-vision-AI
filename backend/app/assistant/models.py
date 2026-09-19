@@ -182,6 +182,10 @@ AgentIntentName = Literal[
     "file_analysis",
     "show_results",
     "dataset_assessment",
+    "dataset_context",
+    "artifact_context",
+    "replay_artifact",
+    "project_memory",
     "explain_previous",
     "capabilities",
     "conversation",
@@ -210,6 +214,7 @@ class AgentTurnStep(BaseModel):
     label: str
     args: dict[str, Any] = Field(default_factory=dict)
     reason: str | None = None
+    risk: ActionRisk | None = None
     status: Literal[
         "planned",
         "ready",

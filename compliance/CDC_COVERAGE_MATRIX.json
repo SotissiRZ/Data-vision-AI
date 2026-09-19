@@ -1,0 +1,985 @@
+{
+  "cdc_version": "1.0 — August 2026",
+  "product_version": "2.31.0",
+  "status_model": {
+    "implemented": 1.0,
+    "partial": 0.5,
+    "missing": 0.0
+  },
+  "requirements": [
+    {
+      "section": 1,
+      "title": "Vision produit",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "README.md",
+        "docs/PRODUCT_STRATEGY_2026.md"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 2,
+      "title": "Préserver / dépasser R & Shiny",
+      "status": "partial",
+      "priority": "P2",
+      "evidence": [
+        "docs/NOTEBOOK_SANDBOX_V2180.md",
+        "backend/app/services/data_workspace.py"
+      ],
+      "tests": [
+        "backend/tests/test_notebook_v218.py"
+      ],
+      "gaps": [
+        "Kernel R/Python persistant et expérience notebook plus proche de Jupyter encore partiels."
+      ]
+    },
+    {
+      "section": 3,
+      "title": "Objectifs",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "README.md"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 4,
+      "title": "Utilisateurs cibles",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "docs/PRODUCT_STRATEGY_2026.md"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 5,
+      "title": "Principes produit",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "README.md",
+        "docs/ARCHITECTURE.md"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 6,
+      "title": "Workflow UX de bout en bout",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "frontend/app/page.tsx",
+        "docs/UI_ARCHITECTURE_V2.md"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 7,
+      "title": "Dashboard",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/dashboard.py",
+        "backend/app/services/dashboard_builder.py",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 8,
+      "title": "Workspaces",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/workspace_service.py",
+        "backend/app/api/routes/enterprise.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 9,
+      "title": "Import & connecteurs",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/storage.py",
+        "backend/app/services/connector_service.py",
+        "backend/app/services/connector_backends.py"
+      ],
+      "tests": [
+        "backend/tests/test_connectors_v221.py"
+      ],
+      "gaps": [
+        "Import ZIP contenant des données non couvert comme chemin natif."
+      ]
+    },
+    {
+      "section": 10,
+      "title": "Profiling",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/profiling.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 11,
+      "title": "Data Quality",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/quality.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 12,
+      "title": "AI Data Quality",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/ai_analyst.py",
+        "backend/app/services/data_reliability.py"
+      ],
+      "tests": [],
+      "gaps": [
+        "Suggestions AI de qualité existent mais la couverture de remédiation guidée n’est pas exhaustive."
+      ]
+    },
+    {
+      "section": 13,
+      "title": "Preparation Studio",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/preparation.py",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 14,
+      "title": "Versioning dataset",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/storage.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 15,
+      "title": "Exploration automatique",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/exploration.py",
+        "backend/app/services/ai_analyst.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 16,
+      "title": "Statistiques",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/statistics_engine.py",
+        "backend/app/services/advanced_analysis.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 17,
+      "title": "Statistical Advisor",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/statistics_engine.py",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 18,
+      "title": "Visualisation",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/visualization.py",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [],
+      "gaps": [
+        "La liste complète des visualisations du CDC n’est pas encore couverte de façon homogène."
+      ]
+    },
+    {
+      "section": 19,
+      "title": "Langage naturel vers visualisation",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/ai_analyst.py",
+        "backend/app/services/visualization.py"
+      ],
+      "tests": [],
+      "gaps": [
+        "NL→viz existe mais n’atteint pas encore toute la profondeur de composition demandée."
+      ]
+    },
+    {
+      "section": 20,
+      "title": "AI Analyst",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/ai_analyst.py",
+        "backend/app/services/ai_analysis_runtime.py",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_ai_runtime_v228.py"
+      ],
+      "gaps": []
+    },
+    {
+      "section": 21,
+      "title": "Architecture multi-agent",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/assistant/orchestrator.py",
+        "backend/app/assistant/planner_runtime.py",
+        "backend/app/assistant/critic.py"
+      ],
+      "tests": [],
+      "gaps": [
+        "Orchestration agentique réelle présente, mais pas encore une flotte spécialisée multi-agent complète au sens V2 du CDC."
+      ]
+    },
+    {
+      "section": 22,
+      "title": "Reliability layer",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/data_reliability.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 23,
+      "title": "Semantic layer",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/semantic_layer.py",
+        "backend/app/services/semantic_nlq.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 24,
+      "title": "NLQ / Text-to-SQL",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/nlq_sql.py",
+        "backend/app/services/semantic_nlq.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 25,
+      "title": "AutoML",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/modeling.py"
+      ],
+      "tests": [
+        "backend/tests/test_xai_v219.py"
+      ],
+      "gaps": [
+        "Classification/régression solides; clustering et forecasting ne sont pas unifiés dans le même pipeline AutoML."
+      ]
+    },
+    {
+      "section": 26,
+      "title": "Model Benchmark",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/modeling.py",
+        "docs/XAI_MODEL_BENCHMARK_V2190.md"
+      ],
+      "tests": [
+        "backend/tests/test_xai_v219.py"
+      ],
+      "gaps": []
+    },
+    {
+      "section": 27,
+      "title": "ML Guardrails",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/modeling.py",
+        "backend/app/services/responsible_ai.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 28,
+      "title": "Explainable AI",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/xai.py",
+        "docs/XAI_MODEL_BENCHMARK_V2190.md"
+      ],
+      "tests": [
+        "backend/tests/test_xai_v219.py"
+      ],
+      "gaps": []
+    },
+    {
+      "section": 29,
+      "title": "Model Card",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/modeling.py",
+        "backend/app/services/model_registry.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 30,
+      "title": "Forecasting",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/forecasting.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 31,
+      "title": "Anomaly detection",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/anomaly_detection.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 32,
+      "title": "Automated Insight",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/ai_analyst.py",
+        "backend/app/services/proactive_intelligence.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 33,
+      "title": "Root Cause Analysis",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/root_cause.py",
+        "docs/ROOT_CAUSE_DECISION_INTELLIGENCE_V2200.md"
+      ],
+      "tests": [
+        "backend/tests/test_root_cause_v220.py"
+      ],
+      "gaps": []
+    },
+    {
+      "section": 34,
+      "title": "What-if / sensitivity",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/decision_lab.py"
+      ],
+      "tests": [
+        "backend/tests/test_decision_optimizer_v220.py"
+      ],
+      "gaps": []
+    },
+    {
+      "section": 35,
+      "title": "Data storytelling",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/report_builder.py",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [],
+      "gaps": [
+        "Storytelling narratif multi-page automatisé encore partiel."
+      ]
+    },
+    {
+      "section": 36,
+      "title": "Report Builder",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/report_builder.py",
+        "docs/REPORT_STUDIO.md"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 37,
+      "title": "Reproducible analysis",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/analysis_history.py",
+        "backend/app/services/notebook_service.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 38,
+      "title": "Notebook",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/notebook_service.py",
+        "backend/app/services/notebook_sandbox.py",
+        "sandbox/app/main.py"
+      ],
+      "tests": [
+        "backend/tests/test_notebook_v218.py"
+      ],
+      "gaps": [
+        "Cellules Python/R stateless entre exécutions; pas de kernel persistant/Jupyter protocol."
+      ]
+    },
+    {
+      "section": 39,
+      "title": "SQL workspace",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/data_workspace.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 40,
+      "title": "Python workspace",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/notebook_sandbox.py",
+        "sandbox/app/main.py"
+      ],
+      "tests": [],
+      "gaps": [
+        "Exécution réelle sandboxée, mais pas de kernel Python persistant ni environnements Conda utilisateur."
+      ]
+    },
+    {
+      "section": 41,
+      "title": "R workspace",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/notebook_sandbox.py",
+        "sandbox/app/main.py"
+      ],
+      "tests": [],
+      "gaps": [
+        "Exécution R réelle, mais pas de kernel persistant ni gestion de packages projet."
+      ]
+    },
+    {
+      "section": 42,
+      "title": "Collaboration",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/collaboration.py",
+        "docs/COLLABORATION_REVIEW_V260.md"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 43,
+      "title": "Data Catalog",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/metadata_store.py",
+        "backend/app/services/connector_service.py"
+      ],
+      "tests": [],
+      "gaps": [
+        "Catalogue fonctionnel mais expérience de discovery/documentation métier encore moins riche que le CDC cible."
+      ]
+    },
+    {
+      "section": 44,
+      "title": "Lineage",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/data_reliability.py",
+        "docs/DATA_RELIABILITY_LINEAGE_V280.md"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 45,
+      "title": "Governance",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/tenant_access.py",
+        "backend/app/services/workspace_service.py",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 46,
+      "title": "Security",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/auth_service.py",
+        "backend/app/services/identity_service.py",
+        "SECURITY.md",
+        "backend/app/services/mfa_service.py",
+        "backend/app/services/upload_security.py",
+        "backend/app/services/secret_crypto.py",
+        "backend/app/api/routes/enterprise.py",
+        "backend/app/api/routes/datasets.py",
+        "docker-compose.yml"
+      ],
+      "tests": [
+        "backend/tests/test_security_p0_v231.py",
+        "backend/tests/test_security_contract_v231.py"
+      ],
+      "gaps": [
+        "MFA WebAuthn, scan antivirus ClamAV et chiffrement AES-256-GCM dédié sont implémentés. Un KMS/HSM cloud externe reste optionnel et non intégré nativement."
+      ]
+    },
+    {
+      "section": 47,
+      "title": "AI Privacy",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/assistant/privacy.py",
+        "backend/app/assistant/ai_settings.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 48,
+      "title": "Model Gateway",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/assistant/model_gateway.py",
+        "backend/app/assistant/ai_settings.py"
+      ],
+      "tests": [],
+      "gaps": [
+        "OpenAI-compatible et Ollama couverts; adaptateurs Anthropic/Gemini natifs restent à compléter."
+      ]
+    },
+    {
+      "section": 49,
+      "title": "MCP / Tool connectivity",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/assistant/plugin_runtime.py",
+        "docs/PLUGIN_SYSTEM_MCP_V2220.md"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 50,
+      "title": "Plugin System",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/plugin_service.py",
+        "backend/app/assistant/plugin_runtime.py"
+      ],
+      "tests": [
+        "backend/tests/test_plugins_v222.py"
+      ],
+      "gaps": []
+    },
+    {
+      "section": 51,
+      "title": "Public API",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/main.py",
+        "backend/app/api/routes/datasets.py",
+        "backend/app/api/routes/enterprise.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 52,
+      "title": "Architecture technique cible",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "docs/ARCHITECTURE.md",
+        "docker-compose.yml"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 53,
+      "title": "Architecture logique",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "docs/ARCHITECTURE.md"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 54,
+      "title": "Multi-tenant",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/tenant_access.py",
+        "backend/app/services/workspace_service.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 55,
+      "title": "Observability",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/operational_intelligence.py",
+        "backend/app/main.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 56,
+      "title": "AI Observability",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/operational_intelligence.py",
+        "backend/app/services/ai_analysis_runtime.py"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 57,
+      "title": "Agent evaluation",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/app/services/operational_intelligence.py",
+        "backend/tests"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 58,
+      "title": "Testing",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "backend/tests",
+        ".github/workflows/ci.yml",
+        "frontend/e2e"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 59,
+      "title": "Performance",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "backend/app/services/ai_analysis_runtime.py",
+        "docs/AI_ANALYST_PERFORMANCE_V2280.md"
+      ],
+      "tests": [
+        "backend/tests/test_ai_runtime_v228.py"
+      ],
+      "gaps": [
+        "Benchmarks charge/latence à grande échelle et objectifs SLO complets restent à exécuter en environnement production."
+      ]
+    },
+    {
+      "section": 60,
+      "title": "UX/UI",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "frontend/app/page.tsx",
+        "frontend/app/globals.css"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 61,
+      "title": "Command Palette",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "frontend/app/page.tsx"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 62,
+      "title": "AI Interaction",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "frontend/components/assistant",
+        "backend/app/assistant"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 63,
+      "title": "Quick Commands",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 64,
+      "title": "Internationalisation",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "frontend/app/page.tsx"
+      ],
+      "tests": [],
+      "gaps": [
+        "Interface principalement française; framework i18n multi-langue complet absent."
+      ]
+    },
+    {
+      "section": 65,
+      "title": "Accessibilité",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "frontend/app/globals.css",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [],
+      "gaps": [
+        "Zoom et modes de lecture présents; audit WCAG complet, navigation clavier exhaustive et tests screen reader non documentés."
+      ]
+    },
+    {
+      "section": 66,
+      "title": "Product Plans",
+      "status": "partial",
+      "priority": "P2",
+      "evidence": [
+        "docs/PRODUCT_STRATEGY_2026.md"
+      ],
+      "tests": [],
+      "gaps": [
+        "Entitlements/quotas commerciaux par plan non appliqués partout dans le runtime."
+      ]
+    },
+    {
+      "section": 67,
+      "title": "Roadmap",
+      "status": "implemented",
+      "priority": "P2",
+      "evidence": [
+        "docs/ROADMAP_EXECUTION.md"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 68,
+      "title": "MVP obligatoire",
+      "status": "implemented",
+      "priority": "P0",
+      "evidence": [
+        "README.md",
+        "backend/app/main.py",
+        "docker-compose.yml"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 69,
+      "title": "V1",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "README.md",
+        "backend/app/main.py"
+      ],
+      "tests": [],
+      "gaps": [
+        "Notebook persistent kernel, quelques profondeurs connecteurs/UX et certains détails Enterprise restent partiels."
+      ]
+    },
+    {
+      "section": 70,
+      "title": "V2",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "README.md",
+        "backend/app/main.py"
+      ],
+      "tests": [],
+      "gaps": [
+        "Multi-agent avancé, cloud deployment Enterprise complet et certaines fonctions causales/proactives restent partiels."
+      ]
+    },
+    {
+      "section": 71,
+      "title": "Critères d’acceptation",
+      "status": "partial",
+      "priority": "P0",
+      "evidence": [
+        ".github/workflows/ci.yml",
+        "docs/PRODUCTION_HARDENING_V2290.md"
+      ],
+      "tests": [],
+      "gaps": [
+        "CI est définie mais son exécution GitHub réelle doit être observée; charge/performance production et acceptance utilisateur restent à signer."
+      ]
+    },
+    {
+      "section": 72,
+      "title": "Règles impératives de développement",
+      "status": "implemented",
+      "priority": "P0",
+      "evidence": [
+        "README.md",
+        "docs/ARCHITECTURE.md",
+        "backend/tests"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 73,
+      "title": "Livrables",
+      "status": "implemented",
+      "priority": "P1",
+      "evidence": [
+        "README.md",
+        "docs",
+        "docker-compose.yml",
+        ".github/workflows"
+      ],
+      "tests": [],
+      "gaps": []
+    },
+    {
+      "section": 74,
+      "title": "Definition of Done",
+      "status": "partial",
+      "priority": "P0",
+      "evidence": [
+        ".github/workflows/ci.yml",
+        ".github/workflows/security.yml",
+        "scripts/release.py"
+      ],
+      "tests": [],
+      "gaps": [
+        "DoD code/test/package outillée; validation production réelle, scans CI et E2E doivent être exécutés dans l’environnement cible avant signature finale."
+      ]
+    },
+    {
+      "section": 75,
+      "title": "Vision finale",
+      "status": "partial",
+      "priority": "P1",
+      "evidence": [
+        "README.md",
+        "docs/PRODUCT_STRATEGY_2026.md"
+      ],
+      "tests": [],
+      "gaps": [
+        "Vision largement matérialisée, mais les gaps P0/P1 empêchent de déclarer 100% du CDC."
+      ]
+    }
+  ]
+}

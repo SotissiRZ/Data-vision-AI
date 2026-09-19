@@ -1,5 +1,16 @@
 # Changelog
 
+
+## 2.39.0 — Repository Cleanup & Professional Structure
+- Racine du dépôt réduite aux fichiers opérationnels.
+- 35 manifests historiques déplacés dans `docs/history/manifests/`.
+- Guide de migration historique déplacé dans `docs/history/migrations/`.
+- Nouvelle documentation `docs/PROJECT_STRUCTURE.md`.
+- Ajout de `.gitignore` et `.editorconfig`.
+- Nouveau contrôle `scripts/repository_hygiene.py --check`.
+- Contrôle d'hygiène intégré au préflight Windows et à la CI.
+- Aucun changement des moteurs analytiques ni des API métier.
+
 ## 2.12.0 — Identity, SSO & Secret Management
 - Sessions Enterprise persistantes avec identifiant serveur et révocation immédiate.
 - Access tokens courts et refresh tokens rotatifs ; seul le hash du refresh token est stocké.

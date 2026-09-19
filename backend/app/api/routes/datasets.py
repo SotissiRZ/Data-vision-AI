@@ -1,9 +1,10 @@
 from typing import Any
 import time
 from fastapi import APIRouter, File, HTTPException, UploadFile, Request
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from app.services.upload_security import scan_upload
 from app.services.storage import (
     save_upload, load_dataframe, get_meta, save_dataframe_version,
     get_lineage, list_versions, list_dataset_catalog,
@@ -24,6 +25,10 @@ from app.services.anomaly_detection import detect_anomalies
 from app.services.xai import model_diagnostics, local_explanation, xai_capabilities, partial_dependence, shap_explanation, generate_counterfactuals
 from app.services.ai_analyst import AnalystContext, analyze_dataset, tool_registry
 from app.services.analysis_history import save_analysis, list_analyses, get_analysis
+from app.services.ai_analysis_runtime import (
+    assert_run_access, cancel_analysis_run, get_analysis_run,
+    stream_analysis_events, submit_analysis_run,
+)
 from app.services.nlq_sql import run_nlq
 from app.services.report_builder import build_report, list_reports, get_report, export_report
 from app.services.dashboard import dashboard_overview
@@ -62,7 +67,7 @@ from app.services.responsible_ai import (
     responsible_ai_gate,
     persist_responsible_ai_summary,
 )
-from app.services.tenant_access import access_summary, current_access_context
+from app.services.tenant_access import access_summary, current_access_context, authorize_dataset
 from app.services.data_reliability import publication_gate
 from app.services.operational_intelligence import record_telemetry
 from app.services.proactive_intelligence import (
@@ -515,6 +520,7 @@ class AIAnalysisRequest(BaseModel):
     group: str | None = None
     horizon: int = Field(default=12, ge=1, le=365)
     mode: str = Field(default="auto", pattern="^(auto|fast|deep)$")
+    use_cache: bool = True
 
 
 def _dataset_payload(meta: dict) -> dict:
@@ -548,7 +554,14 @@ def _bundle(meta: dict, frame=None) -> dict:
 async def upload_dataset(request: Request, file: UploadFile = File(...)):
     try:
         content = await file.read()
+        scan = scan_upload(file.filename or "dataset", content)
         meta = save_upload(file.filename or "dataset", content)
+        meta["security_scan"] = {
+            "id": scan.get("id"),
+            "status": scan.get("status"),
+            "engine": scan.get("engine"),
+            "sha256": scan.get("sha256"),
+        }
         workspace_id = request.headers.get("x-workspace-id")
         authorization = request.headers.get("authorization")
         if workspace_id and authorization and authorization.lower().startswith("bearer "):
@@ -1426,6 +1439,79 @@ def dataset_ai_capabilities(dataset_id: str):
         }
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.post("/{dataset_id}/ai/analyze/run")
+def dataset_ai_analysis_run(dataset_id: str, request: AIAnalysisRequest):
+    try:
+        get_meta(dataset_id)
+        access = current_access_context()
+        if access is not None:
+            authorize_dataset(dataset_id, "analysis:run", access)
+        run = submit_analysis_run(
+            dataset_id,
+            request.model_dump(exclude={"use_cache"}),
+            use_cache=request.use_cache,
+        )
+        return {"run": run}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Démarrage AI Analyst impossible: {exc}") from exc
+
+
+@router.get("/{dataset_id}/ai/runs/{run_id}")
+def dataset_ai_analysis_run_detail(dataset_id: str, run_id: str):
+    try:
+        run = get_analysis_run(run_id)
+        if str(run.get("dataset_id")) != dataset_id:
+            raise PermissionError("Cette exécution n'appartient pas au dataset demandé.")
+        assert_run_access(run)
+        return {"run": run}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/ai/runs/{run_id}/cancel")
+def dataset_ai_analysis_cancel(dataset_id: str, run_id: str):
+    try:
+        run = get_analysis_run(run_id)
+        if str(run.get("dataset_id")) != dataset_id:
+            raise PermissionError("Cette exécution n'appartient pas au dataset demandé.")
+        assert_run_access(run)
+        return {"run": cancel_analysis_run(run_id)}
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
+
+
+@router.get("/{dataset_id}/ai/runs/{run_id}/events")
+def dataset_ai_analysis_events(dataset_id: str, run_id: str):
+    try:
+        run = get_analysis_run(run_id)
+        if str(run.get("dataset_id")) != dataset_id:
+            raise PermissionError("Cette exécution n'appartient pas au dataset demandé.")
+        assert_run_access(run)
+        return StreamingResponse(
+            stream_analysis_events(run_id),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            },
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
 
 
 @router.post("/{dataset_id}/ai/analyze")

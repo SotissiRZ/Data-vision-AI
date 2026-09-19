@@ -22,6 +22,10 @@ from app.services.statistics_engine import correlation_analysis
 from app.services.semantic_nlq import plan_semantic_question, execute_semantic_question
 
 
+class AnalysisCancelled(RuntimeError):
+    """Cooperative cancellation marker for long AI Analyst runs."""
+
+
 @dataclass
 class AnalystContext:
     dataset: dict[str, Any]
@@ -302,13 +306,38 @@ def _critic(executions: list[dict[str, Any]], findings: list[dict[str, Any]]) ->
     return {"status": "passed" if all(c["passed"] for c in checks) else "warning", "checks": checks, "failed_tools": failed}
 
 
-def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
+def analyze_dataset(
+    df: pd.DataFrame,
+    ctx: AnalystContext,
+    *,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
+) -> dict[str, Any]:
     if df.empty:
         raise ValueError("Le dataset est vide")
     question = ctx.question.strip()
     if not question:
         raise ValueError("La question analytique ne peut pas être vide")
 
+    progress_value = 5
+
+    def emit(stage: str, *, tool: str | None = None, status: str = "running", advance: int = 0) -> None:
+        nonlocal progress_value
+        progress_value = max(progress_value, min(95, progress_value + max(0, int(advance))))
+        if progress_callback is not None:
+            progress_callback({
+                "progress": progress_value,
+                "stage": stage,
+                "tool": tool,
+                "status": status,
+            })
+
+    def ensure_not_cancelled() -> None:
+        if cancel_check is not None and cancel_check():
+            raise AnalysisCancelled("Analyse annulée par l'utilisateur.")
+
+    ensure_not_cancelled()
+    emit("Compréhension de la demande", advance=3)
     intent = detect_intent(question)
     semantic_plan = None
     if ctx.semantic_model and ctx.dataset.get("id"):
@@ -320,7 +349,10 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
     # Explicit statistical/ML/forecast intents keep priority so "prévoir le CA" still means forecast.
     if semantic_plan and intent == "overview":
         intent = "semantic_query"
+    ensure_not_cancelled()
+    emit("Préparation des moteurs analytiques", advance=4)
     profile = profile_dataframe(df)
+    ensure_not_cancelled()
     quality = quality_report(df)
     findings: list[dict[str, Any]] = []
     executions: list[dict[str, Any]] = []
@@ -337,16 +369,23 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
         }
 
     def execute(step: str, tool: str, fn: Callable[[], Any]) -> Any:
+        ensure_not_cancelled()
         plan.append({"step": len(plan) + 1, "action": step, "tool": tool})
+        emit(step, tool=tool, status="running", advance=6)
         started = time.perf_counter()
         try:
             raw = fn()
+            ensure_not_cancelled()
             executions.append({"tool": tool, "status": "ok", "duration_ms": round((time.perf_counter() - started) * 1000, 2)})
             artifacts[tool] = _compact(raw)
+            emit(step, tool=tool, status="completed", advance=4)
             return raw
+        except AnalysisCancelled:
+            raise
         except Exception as exc:
             executions.append({"tool": tool, "status": "failed", "duration_ms": round((time.perf_counter() - started) * 1000, 2), "error": str(exc)})
             artifacts[tool] = {"error": str(exc)}
+            emit(step, tool=tool, status="failed", advance=2)
             return None
 
     # Always ground the analysis in dataset structure and quality.
@@ -623,6 +662,9 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
     answer = " ".join(answer_parts) if answer_parts else "L'analyse s'est exécutée, mais aucun constat synthétique n'a été produit."
     if critic["status"] != "passed":
         answer += " Certains outils n'ont pas pu être exécutés; consultez le contrôle Critic."
+
+    ensure_not_cancelled()
+    emit("Validation Critic et synthèse", advance=max(0, 95 - progress_value))
 
     return {
         "session_id": str(uuid4()),

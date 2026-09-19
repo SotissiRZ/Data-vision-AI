@@ -1,0 +1,22 @@
+{
+  "version": "2.37.0",
+  "base": "2.36.0 cumulative",
+  "feature": "Context Engine v7 / Semantic Project Recall",
+  "changes": [
+    "local deterministic semantic ranker",
+    "search score and explainable match reasons",
+    "semantic FR/EN analytics synonyms",
+    "project memory search UI",
+    "workspace isolation preserved"
+  ],
+  "external_embeddings": false,
+  "validation": {
+    "targeted_tests": 7,
+    "assistant_tests": 140,
+    "backend_non_assistant_tests": 121,
+    "cdc_coverage_percent": 84.7,
+    "missing_cdc_evidence": 0,
+    "typescript_syntax": "ok",
+    "python_compile": "ok"
+  }
+}

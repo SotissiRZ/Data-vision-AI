@@ -1,0 +1,23 @@
+{
+  "version": "2.34.0",
+  "base": "2.33.0 cumulative",
+  "feature": "Context Engine v4 & governed contextual actions",
+  "changes": [
+    "contextual model registry transitions and status lookup",
+    "contextual model monitoring, retraining, fairness and risk assessment",
+    "Tool Registry human_confirmation_required is enforced end-to-end",
+    "validated action risk propagated to frontend",
+    "explicit confirm/reject governed action cards",
+    "server-side rejection cancels pending turn safely"
+  ],
+  "validation": {
+    "targeted_v234_tests": 8,
+    "assistant_tests": 116,
+    "backend_non_assistant_tests": 121,
+    "foundation_tests": 64,
+    "total_by_blocks": 301,
+    "typescript_syntax": "ok",
+    "next_build": "not_run_no_node_modules",
+    "docker_build": "not_run_in_environment"
+  }
+}

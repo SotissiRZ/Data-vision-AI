@@ -19,6 +19,50 @@ _SELECTED_BACKENDS: dict[str, str] = {}
 
 SCHEMA_SQL = [
     """
+    CREATE TABLE IF NOT EXISTS assistant_session_memory (
+        session_id TEXT PRIMARY KEY,
+        workspace_id TEXT,
+        active_entities_json TEXT NOT NULL DEFAULT '{}',
+        facts_json TEXT NOT NULL DEFAULT '{}',
+        decisions_json TEXT NOT NULL DEFAULT '[]',
+        last_intent TEXT,
+        last_entities_json TEXT NOT NULL DEFAULT '{}',
+        recent_columns_json TEXT NOT NULL DEFAULT '[]',
+        recent_intents_json TEXT NOT NULL DEFAULT '[]',
+        last_result_summary TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS assistant_project_memory (
+        id TEXT PRIMARY KEY,
+        scope_id TEXT NOT NULL,
+        workspace_id TEXT,
+        user_id TEXT,
+        session_id TEXT NOT NULL,
+        artifact_id TEXT NOT NULL,
+        dataset_id TEXT,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        payload_json TEXT NOT NULL DEFAULT '{}',
+        pinned INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_used_at TEXT NOT NULL,
+        UNIQUE(scope_id, artifact_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS assistant_project_memory_policy (
+        scope_id TEXT PRIMARY KEY,
+        policy_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY,
         email TEXT UNIQUE NOT NULL,
@@ -26,6 +70,13 @@ SCHEMA_SQL = [
         display_name TEXT NOT NULL,
         is_active INTEGER NOT NULL DEFAULT 1,
         created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS user_preferences (
+        user_id TEXT PRIMARY KEY,
+        preferences_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
     )
     """,
     """
@@ -459,6 +510,48 @@ CREATE TABLE IF NOT EXISTS model_serving_requests (
         finished_at TEXT
     )
     """,
+
+"""
+CREATE TABLE IF NOT EXISTS ai_analysis_runs (
+    id TEXT PRIMARY KEY,
+    dataset_id TEXT NOT NULL,
+    dataset_version INTEGER NOT NULL,
+    workspace_id TEXT,
+    organization_id TEXT,
+    user_id TEXT,
+    cache_key TEXT NOT NULL,
+    status TEXT NOT NULL,
+    progress INTEGER NOT NULL DEFAULT 0,
+    stage TEXT,
+    current_tool TEXT,
+    cancel_requested INTEGER NOT NULL DEFAULT 0,
+    cached INTEGER NOT NULL DEFAULT 0,
+    payload_json TEXT NOT NULL,
+    result_json TEXT,
+    error TEXT,
+    created_at TEXT NOT NULL,
+    started_at TEXT,
+    finished_at TEXT,
+    updated_at TEXT NOT NULL
+)
+""",
+"""
+CREATE INDEX IF NOT EXISTS idx_ai_analysis_runs_dataset_created
+ON ai_analysis_runs(dataset_id, created_at)
+""",
+"""
+CREATE TABLE IF NOT EXISTS ai_analysis_cache (
+    cache_key TEXT PRIMARY KEY,
+    dataset_id TEXT NOT NULL,
+    dataset_version INTEGER NOT NULL,
+    semantic_version TEXT,
+    engine_version TEXT NOT NULL,
+    result_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_hit_at TEXT,
+    hit_count INTEGER NOT NULL DEFAULT 0
+)
+""",
     """
     CREATE TABLE IF NOT EXISTS jobs (
         id TEXT PRIMARY KEY,
@@ -774,6 +867,44 @@ CREATE TABLE IF NOT EXISTS model_serving_requests (
         rotated_at TEXT
     )
     """,
+
+"""
+CREATE TABLE IF NOT EXISTS auth_webauthn_credentials (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    credential_id TEXT NOT NULL UNIQUE,
+    public_key TEXT NOT NULL,
+    sign_count INTEGER NOT NULL DEFAULT 0,
+    transports_json TEXT NOT NULL DEFAULT '[]',
+    label TEXT,
+    created_at TEXT NOT NULL,
+    last_used_at TEXT,
+    disabled_at TEXT
+)
+""",
+"""
+CREATE TABLE IF NOT EXISTS auth_mfa_challenges (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    challenge_type TEXT NOT NULL,
+    challenge_b64 TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL,
+    used_at TEXT
+)
+""",
+"""
+CREATE TABLE IF NOT EXISTS upload_security_scans (
+    id TEXT PRIMARY KEY,
+    filename TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    status TEXT NOT NULL,
+    engine TEXT NOT NULL,
+    detail TEXT,
+    created_at TEXT NOT NULL
+)
+""",
     """
     CREATE TABLE IF NOT EXISTS oidc_providers (
         id TEXT PRIMARY KEY,

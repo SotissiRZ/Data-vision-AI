@@ -18,6 +18,7 @@ def build_orchestrator(
     planner: PlannerProvider | None = None,
     action_lifecycle: ActionLifecycleManager | None = None,
     turn_store: AgentTurnRunStore | None = None,
+    memory: SessionMemoryStore | None = None,
 ) -> AgentOrchestrator:
     auth = authorization or AllowAllDevelopmentAuthorization()
 
@@ -32,7 +33,7 @@ def build_orchestrator(
         registry=registry,
         authorization=auth,
         action_lifecycle=action_lifecycle,
-        memory=SessionMemoryStore(),
+        memory=memory or SessionMemoryStore(),
         planner=planner or DeterministicPlanner(),
         critic=DeterministicCritic(),
         recovery=RecoveryPolicy(),

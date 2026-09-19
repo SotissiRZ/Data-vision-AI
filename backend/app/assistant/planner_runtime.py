@@ -73,6 +73,7 @@ class DeterministicPlanner:
         if name == "visualize":
             x = intent.entities.get("x") or intent.entities.get("column")
             y = intent.entities.get("y")
+            requested_chart_type = intent.entities.get("chart_type")
             selected = context.selectedEntity
 
             if not x and selected and selected.type in {"column", "variable"}:
@@ -84,7 +85,7 @@ class DeterministicPlanner:
                         tool="create_visualization",
                         label=f"Comparer {x} et {y}",
                         args={
-                            "chart_type": "scatter",
+                            "chart_type": requested_chart_type or "scatter",
                             "x": x,
                             "y": y,
                         },
@@ -97,7 +98,7 @@ class DeterministicPlanner:
                         tool="create_visualization",
                         label=f"Visualiser {x}",
                         args={
-                            "chart_type": "histogram",
+                            "chart_type": requested_chart_type or "histogram",
                             "x": x,
                         },
                     )
@@ -212,6 +213,29 @@ class DeterministicPlanner:
                     },
                 )
             ]
+        if name == "replay_artifact":
+            # v2.38: replay only compact, explicitly allow-listed deterministic
+            # recipes. The normal plan validator and Tool Registry still apply.
+            replayable = {
+                "create_visualization",
+                "run_statistical_test",
+                "run_regression",
+                "run_automl",
+                "generate_report",
+            }
+            tool = str(intent.entities.get("replay_tool") or "")
+            args = intent.entities.get("replay_args")
+            if tool not in replayable or not isinstance(args, dict):
+                return []
+            return [
+                AgentPlanStep(
+                    tool=tool,
+                    label=f"Relancer {tool.replace('_', ' ')}",
+                    reason="Réexécuter une recette analytique mémorisée via le moteur DataVision gouverné.",
+                    args=dict(args),
+                )
+            ]
+
         if name == "model_registry":
             if not context.activeModelId:
                 return []
@@ -249,11 +273,21 @@ class DeterministicPlanner:
         if name == "retraining_check":
             if not context.activeModelId:
                 return []
+            create_request = bool(intent.entities.get("create_request"))
             return [
                 AgentPlanStep(
-                    tool="check_model_retraining",
-                    label="Évaluer la nécessité d'un réentraînement",
-                    args={"create_request": False},
+                    tool=("request_model_retraining" if create_request else "check_model_retraining"),
+                    label=(
+                        "Créer une demande gouvernée de réentraînement"
+                        if create_request
+                        else "Évaluer la nécessité d'un réentraînement"
+                    ),
+                    reason=(
+                        "La création d'une demande de réentraînement est une action traçable soumise à confirmation humaine."
+                        if create_request
+                        else "Évaluer la politique MLOps sans modifier le modèle."
+                    ),
+                    args={"create_request": create_request},
                 )
             ]
 

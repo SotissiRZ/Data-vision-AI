@@ -105,7 +105,11 @@ def validate_agent_plan(
             args=validated_args,
             risk=spec.risk,
         )
-        policy = evaluate_action_policy(action, context)
+        policy = evaluate_action_policy(
+            action,
+            context,
+            tool_metadata=spec.metadata,
+        )
         if policy.decision == "deny":
             results.append(
                 AgentPlanStepValidation(

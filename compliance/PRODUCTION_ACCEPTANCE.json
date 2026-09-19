@@ -1,0 +1,56 @@
+{
+  "product_version": "2.31.0",
+  "acceptance": "conditional",
+  "coverage_percent": 84.7,
+  "gates": [
+    {
+      "id": "mvp",
+      "label": "MVP obligatoire",
+      "status": "pass",
+      "blocking": false
+    },
+    {
+      "id": "evidence",
+      "label": "Preuves code/tests présentes",
+      "status": "pass",
+      "blocking": false
+    },
+    {
+      "id": "security",
+      "label": "Security P0 implementation",
+      "status": "pass",
+      "blocking": false
+    },
+    {
+      "id": "full_cdc",
+      "label": "CDC 100%",
+      "status": "conditional",
+      "blocking": false
+    }
+  ],
+  "p0_gaps": [
+    {
+      "section": 71,
+      "title": "Critères d’acceptation",
+      "status": "partial",
+      "gaps": [
+        "CI est définie mais son exécution GitHub réelle doit être observée; charge/performance production et acceptance utilisateur restent à signer."
+      ]
+    },
+    {
+      "section": 74,
+      "title": "Definition of Done",
+      "status": "partial",
+      "gaps": [
+        "DoD code/test/package outillée; validation production réelle, scans CI et E2E doivent être exécutés dans l’environnement cible avant signature finale."
+      ]
+    }
+  ],
+  "signoff_required": [
+    "Exécution réelle du pipeline GitHub Actions sur le dépôt cible.",
+    "Validation Docker/Compose dans l'environnement de déploiement.",
+    "Tests de charge/SLO sur infrastructure cible.",
+    "Configurer ANTIVIRUS_MODE=required et SECRET_KMS_KEY dédié dans l’environnement de production.",
+    "Acceptance utilisateur métier sur les workflows prioritaires."
+  ]
+}

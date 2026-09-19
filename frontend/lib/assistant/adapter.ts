@@ -32,6 +32,42 @@ export type AssistantChatResponse = {
   metadata?: Record<string, unknown>;
 };
 
+
+export type ProjectMemoryEntry = {
+  id: string;
+  artifact_id?: string;
+  dataset_id?: string;
+  kind?: string;
+  title?: string;
+  summary?: string;
+  pinned?: boolean;
+  created_at?: string;
+  updated_at?: string;
+  last_used_at?: string;
+  payload?: Record<string, unknown>;
+  search_score?: number;
+  match_reasons?: string[];
+  search_mode?: "semantic_local" | "recency";
+};
+
+export type ProjectMemoryPolicy = {
+  enabled: boolean;
+  auto_recall: boolean;
+  retention_days: number;
+  max_entries: number;
+  allowed_kinds: string[];
+};
+
+export type ProjectMemoryResponse = {
+  scope: string;
+  policy: ProjectMemoryPolicy;
+  entries: ProjectMemoryEntry[];
+  count: number;
+  can_manage?: boolean;
+  query?: string | null;
+  search_mode?: "semantic_local" | "recency";
+};
+
 export type ProactiveAlert = {
   id: string;
   title: string;
@@ -60,6 +96,25 @@ export interface AssistantAdapter {
     action: AssistantActionProposal,
     context: AssistantContextSnapshot,
   ): Promise<AssistantChatResponse>;
+
+  rejectAction?(
+    action: AssistantActionProposal,
+    context: AssistantContextSnapshot,
+  ): Promise<AssistantChatResponse>;
+
+  getProjectMemory?(query?: string): Promise<ProjectMemoryResponse>;
+
+  updateProjectMemoryPolicy?(
+    updates: Partial<ProjectMemoryPolicy>,
+  ): Promise<{ scope: string; policy: ProjectMemoryPolicy }>;
+
+  pinProjectMemory?(entryId: string, pinned: boolean): Promise<ProjectMemoryEntry>;
+
+  duplicateProjectMemory?(entryId: string): Promise<ProjectMemoryEntry>;
+
+  forgetProjectMemory?(entryId: string): Promise<void>;
+
+  clearProjectMemory?(): Promise<{ deleted: number; pinned_preserved: boolean }>;
 }
 
 function authHeaders(): Record<string, string> {

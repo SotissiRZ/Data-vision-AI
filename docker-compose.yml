@@ -1,3 +1,5 @@
+name: datavision
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,16 +10,36 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U datavision"]
+      test: ["CMD-SHELL", "pg_isready -U datavision -d datavision"]
       interval: 5s
       timeout: 3s
       retries: 20
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+
+  clamav:
+    image: clamav/clamav:1.4
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      test: ["CMD-SHELL", "clamdscan --ping 1 >/dev/null 2>&1 || exit 1"]
+      interval: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 60s
+    restart: unless-stopped
 
   api:
     build: ./backend
@@ -33,7 +55,19 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import json,sys,urllib.request; d=json.load(urllib.request.urlopen('http://127.0.0.1:8005/health/ready', timeout=4)); sys.exit(0 if d.get('ready') else 1)"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
 
   sandbox:
     build: ./sandbox
@@ -49,6 +83,15 @@ services:
     cpus: 1.5
     networks:
       - notebook_sandbox
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/ready', timeout=3).read()"
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
     restart: unless-stopped
 
   worker:
@@ -61,7 +104,18 @@ services:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          python -c "import redis; from app.core.config import get_settings; r=redis.Redis.from_url(get_settings().redis_url, socket_connect_timeout=2); raise SystemExit(0 if r.ping() else 1)"
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 15s
     restart: unless-stopped
 
   web:
@@ -75,12 +129,23 @@ services:
     ports:
       - "3005:3005"
     depends_on:
-      - api
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          node -e "fetch('http://127.0.0.1:3005/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   redis_data:
-
+  clamav_data:
 
 networks:
   notebook_sandbox:

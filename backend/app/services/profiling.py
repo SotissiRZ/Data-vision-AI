@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from typing import Any
 
 import numpy as np
@@ -17,6 +18,94 @@ def _jsonable(value: Any) -> Any:
     if isinstance(value, (pd.Timestamp,)):
         return value.isoformat()
     return value
+
+
+
+def _temporal_profile(df: pd.DataFrame) -> dict[str, Any]:
+    """Detect temporal columns without treating arbitrary numeric/text columns as dates."""
+    candidates: list[dict[str, Any]] = []
+    name_hint = re.compile(r"(?:^|[_\s-])(date|datetime|timestamp|time|year|annee|année|month|mois|period|periode|période)(?:$|[_\s-])", re.I)
+    date_shape = re.compile(r"(?:\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}-\d{2}|\d{4})")
+
+    for name in df.columns:
+        series = df[name]
+        non_null = series.dropna()
+        if non_null.empty:
+            continue
+        column_name = str(name)
+        hinted = bool(name_hint.search(column_name))
+
+        # Native datetime columns are authoritative.
+        if pd.api.types.is_datetime64_any_dtype(series):
+            parsed = pd.to_datetime(non_null, errors="coerce", utc=True)
+            valid = parsed.dropna()
+            if valid.empty:
+                continue
+            candidates.append({
+                "column": column_name,
+                "kind": "datetime",
+                "valid_count": int(len(valid)),
+                "valid_ratio": round(float(len(valid)) / max(len(non_null), 1), 4),
+                "start": valid.min().isoformat(),
+                "end": valid.max().isoformat(),
+                "confidence": 1.0,
+            })
+            continue
+
+        # Numeric years are accepted only with a temporal column-name hint.
+        if hinted and pd.api.types.is_numeric_dtype(series):
+            numeric = pd.to_numeric(non_null, errors="coerce").dropna()
+            if not numeric.empty:
+                plausible = numeric[(numeric >= 1000) & (numeric <= 3000)]
+                integer_like = plausible[(plausible % 1).abs() < 1e-9]
+                ratio = float(len(integer_like)) / max(len(numeric), 1)
+                if ratio >= 0.8 and not integer_like.empty:
+                    start_year = int(integer_like.min())
+                    end_year = int(integer_like.max())
+                    candidates.append({
+                        "column": column_name,
+                        "kind": "year",
+                        "valid_count": int(len(integer_like)),
+                        "valid_ratio": round(ratio, 4),
+                        "start": f"{start_year:04d}-01-01T00:00:00+00:00",
+                        "end": f"{end_year:04d}-12-31T23:59:59+00:00",
+                        "confidence": round(min(0.99, 0.85 + 0.14 * ratio), 4),
+                    })
+                    continue
+
+        # String/object parsing is intentionally conservative.
+        if not (pd.api.types.is_object_dtype(series) or pd.api.types.is_string_dtype(series) or str(series.dtype).startswith("category")):
+            continue
+        sample = non_null.astype("string").head(250)
+        shape_ratio = float(sample.str.contains(date_shape, regex=True, na=False).mean()) if len(sample) else 0.0
+        if not hinted and shape_ratio < 0.65:
+            continue
+        try:
+            parsed = pd.to_datetime(non_null.astype("string"), errors="coerce", utc=True, format="mixed")
+        except TypeError:
+            parsed = pd.to_datetime(non_null.astype("string"), errors="coerce", utc=True)
+        valid = parsed.dropna()
+        ratio = float(len(valid)) / max(len(non_null), 1)
+        if ratio < (0.65 if hinted else 0.8) or valid.empty:
+            continue
+        confidence = 0.7 + min(0.25, 0.25 * ratio) + (0.04 if hinted else 0.0)
+        candidates.append({
+            "column": column_name,
+            "kind": "datetime_text",
+            "valid_count": int(len(valid)),
+            "valid_ratio": round(ratio, 4),
+            "start": valid.min().isoformat(),
+            "end": valid.max().isoformat(),
+            "confidence": round(min(confidence, 0.99), 4),
+        })
+
+    candidates.sort(key=lambda item: (item.get("confidence", 0), item.get("valid_count", 0)), reverse=True)
+    primary = candidates[0] if candidates else None
+    return {
+        "detected": bool(candidates),
+        "primary": primary,
+        "columns": candidates,
+    }
 
 
 def profile_dataframe(df: pd.DataFrame) -> dict:
@@ -57,4 +146,5 @@ def profile_dataframe(df: pd.DataFrame) -> dict:
         "memory_bytes": int(df.memory_usage(deep=True).sum()),
         "duplicates": int(df.duplicated().sum()),
         "columns": columns,
+        "temporal": _temporal_profile(df),
     }

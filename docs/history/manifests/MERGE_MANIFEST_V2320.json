@@ -1,0 +1,17 @@
+{
+  "version": "2.32.0",
+  "base": "2.31.3 cumulative",
+  "scope": "Context Engine v2",
+  "features": [
+    "persistent compact semantic assistant memory",
+    "tenant-safe workspace isolation for assistant memory",
+    "dataset-switch stale-reference reset",
+    "elliptical dataset-context follow-up resolution",
+    "focused-column comparison follow-up",
+    "visible assistant context inspector"
+  ],
+  "privacy": {
+    "raw_transcript_persisted": false,
+    "semantic_state_only": true
+  }
+}

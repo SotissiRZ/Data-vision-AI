@@ -103,7 +103,11 @@ class GovernedToolExecutor:
         canonical_action = action.model_copy(
             update={"risk": spec.risk, "args": validated_args}
         )
-        policy = evaluate_action_policy(canonical_action, context)
+        policy = evaluate_action_policy(
+            canonical_action,
+            context,
+            tool_metadata=spec.metadata,
+        )
 
         if policy.decision == "deny":
             return ExecutionDecision(status="deny", reason=policy.reason, tool=spec)

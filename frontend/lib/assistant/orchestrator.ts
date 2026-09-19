@@ -9,9 +9,23 @@ export type AgentIntent = {
     | "visualize"
     | "predict_target"
     | "explain_model"
+    | "model_registry"
+    | "monitor_model"
+    | "retraining_check"
+    | "fairness_analysis"
+    | "model_risk"
+    | "root_cause_analysis"
+    | "optimize_scenarios"
     | "geospatial_analysis"
     | "report"
     | "file_analysis"
+    | "show_results"
+    | "dataset_assessment"
+    | "dataset_context"
+    | "artifact_context"
+    | "explain_previous"
+    | "capabilities"
+    | "conversation"
     | "unknown";
   confidence: number;
   entities: Record<string, unknown>;
@@ -24,6 +38,7 @@ export type AgentTurnStep = {
   label: string;
   args: Record<string, unknown>;
   reason?: string;
+  risk?: "read" | "reversible" | "destructive" | "external";
   status:
     | "planned"
     | "ready"

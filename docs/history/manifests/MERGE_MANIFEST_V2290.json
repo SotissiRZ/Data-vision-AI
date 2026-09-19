@@ -1,0 +1,29 @@
+{
+  "version": "2.29.0",
+  "base": "2.28.1 cumulative",
+  "focus": "Production Hardening & CI/CD",
+  "validation": {
+    "python_ast": "OK",
+    "backend_pytest": "257 passed in 29.07s (plugin autoload disabled to avoid unrelated environment teardown hang)",
+    "typescript_syntax": "OK",
+    "workflow_yaml": "OK",
+    "reproducible_release": "OK — two independent archives produced identical SHA256",
+    "release_verify": "OK",
+    "docker_compose": "not run — Docker CLI unavailable in this execution environment",
+    "nextjs_build": "not run locally — dependencies/node_modules unavailable; CI workflow performs real build",
+    "v2281_files_preserved": "313/313",
+    "missing_v2281_files": []
+  },
+  "features": [
+    "GitHub Actions CI",
+    "Playwright smoke E2E",
+    "live/ready healthchecks",
+    "Compose healthchecks",
+    "pip/npm audits",
+    "Trivy SARIF",
+    "CycloneDX/SPDX SBOM",
+    "reproducible release ZIP",
+    "release verification",
+    "dockerignore hardening"
+  ]
+}

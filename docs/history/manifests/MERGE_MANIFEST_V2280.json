@@ -1,0 +1,32 @@
+{
+  "version": "2.28.0",
+  "base": "2.27.0 cumulative",
+  "focus": "AI Analyst performance, cache, streaming progress and cooperative cancellation",
+  "validation": {
+    "python_ast": "OK",
+    "backend_full_pytest": "253 passed in 32.54s",
+    "targeted_v228_pytest": "6 passed in 2.12s",
+    "typescript_syntax": "OK",
+    "nextjs_build": "not run - node_modules unavailable",
+    "docker_compose": "not run in this execution environment",
+    "v227_files_preserved": "305/305",
+    "missing_v227_files": [],
+    "checks": {
+      "version": true,
+      "ai_runs_table": true,
+      "ai_cache_table": true,
+      "stream_runtime": true,
+      "cache_runtime": true,
+      "dedupe_runtime": true,
+      "cooperative_cancel": true,
+      "sse_route": true,
+      "frontend_stream": true,
+      "frontend_stop": true,
+      "frontend_cache": true,
+      "v227_preserved": true
+    }
+  },
+  "notes": [
+    "Interactive cancellation is cooperative between analytical tools, not hard preemption inside native libraries."
+  ]
+}
