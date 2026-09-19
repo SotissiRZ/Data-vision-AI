@@ -1,0 +1,46 @@
+{
+  "version": "2.19.0",
+  "base": "2.18.2 cumulative",
+  "focus": "Advanced XAI and multi-engine model benchmarking",
+  "validation": {
+    "python_ast": "OK",
+    "pytest_returncode": 0,
+    "pytest_summary": "\u001b[32m\u001b[32m\u001b[1m167 passed\u001b[0m\u001b[32m in 25.23s\u001b[0m\u001b[0m",
+    "frontend_structural": "OK",
+    "nextjs_build": "not run - frontend dependencies/node_modules unavailable in this execution environment",
+    "docker_compose": "not run - docker CLI unavailable in this execution environment",
+    "checks": {
+      "model_benchmark_service": true,
+      "advanced_model_engines": true,
+      "runtime_engine_availability": true,
+      "shap_engine": true,
+      "partial_dependence": true,
+      "counterfactual_search": true,
+      "calibration_ece": true,
+      "benchmark_api": true,
+      "xai_api": true,
+      "assistant_benchmark_tool": true,
+      "assistant_xai_bridge": true,
+      "frontend_benchmark": true,
+      "frontend_shap": true,
+      "frontend_pdp": true,
+      "frontend_counterfactual": true,
+      "frontend_api_helpers": true
+    }
+  },
+  "features": [
+    "SVM benchmark/training",
+    "XGBoost runtime integration",
+    "LightGBM runtime integration",
+    "CatBoost runtime integration",
+    "candidate-level benchmark failure isolation",
+    "permutation importance",
+    "SHAP global/local with bounded fallback",
+    "partial dependence",
+    "binary calibration and ECE",
+    "counterfactual candidate search",
+    "assistant benchmark_models tool",
+    "assistant governed XAI methods"
+  ],
+  "non_causal_policy": "XAI, PDP and counterfactual outputs describe model behavior and are never presented as proof of causal effects."
+}

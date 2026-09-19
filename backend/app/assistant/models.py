@@ -170,6 +170,8 @@ AgentIntentName = Literal[
     "visualize",
     "predict_target",
     "explain_model",
+    "root_cause_analysis",
+    "optimize_scenarios",
     "geospatial_analysis",
     "report",
     "file_analysis",

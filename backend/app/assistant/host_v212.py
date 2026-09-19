@@ -9,11 +9,19 @@ import pandas as pd
 from app.core.config import get_settings
 from app.services.advanced_analysis import regression_analysis
 from app.services.auth_service import has_permission
-from app.services.modeling import automl_train, get_model_card, train_model
+from app.services.modeling import automl_train, benchmark_models, get_model_card, train_model
 from app.services.notebook_service import run_cell as run_notebook_cell
 from app.services.preparation import apply_operation, combine_dataframes
 from app.services.profiling import profile_dataframe
 from app.services.report_builder import build_report, export_report
+from app.services.root_cause import root_cause_analysis
+from app.services.decision_lab import optimize_scenarios
+from app.services.connector_service import (
+    discover_connector,
+    list_connectors,
+    list_sources,
+    test_connector,
+)
 from app.services.statistics_engine import statistical_test, test_advisor
 from app.services.storage import (
     get_meta,
@@ -22,7 +30,7 @@ from app.services.storage import (
 )
 from app.services.tenant_access import current_access_context
 from app.services.visualization import build_visualization, recommend_visualizations
-from app.services.xai import model_diagnostics
+from app.services.xai import model_diagnostics, partial_dependence, shap_explanation, generate_counterfactuals
 
 from .models import AssistantContext
 from .tools import AssistantToolRegistry, ToolSpec
@@ -40,6 +48,9 @@ _PERMISSION_MAP = {
     "dataset:export": "publish:write",
     "file:read": "dataset:read",
     "action:execute": "actions:trigger",
+    "connectors:read": "connectors:read",
+    "connectors:manage": "connectors:manage",
+    "plugin:execute": "plugins:execute",
 }
 
 
@@ -438,6 +449,44 @@ class V212AnalysisBridge:
         raise ValueError(f"Régression non supportée : {kind}")
 
 
+    def run_root_cause_analysis(
+        self,
+        *,
+        context: AssistantContext,
+        target: str,
+        comparison_column: str,
+        baseline_value: Any | None = None,
+        current_value: Any | None = None,
+        metric: str = "mean",
+        dimensions: list[str] | None = None,
+        time_grain: str = "auto",
+        min_segment_size: int = 5,
+        top_n: int = 8,
+        **_: Any,
+    ) -> dict[str, Any]:
+        dataset_id, df = _load(context)
+        result = root_cause_analysis(
+            df,
+            target=target,
+            comparison_column=comparison_column,
+            baseline_value=baseline_value,
+            current_value=current_value,
+            metric=metric,
+            dimensions=dimensions,
+            time_grain=time_grain,
+            min_segment_size=min_segment_size,
+            top_n=top_n,
+        )
+        meta = get_meta(dataset_id)
+        result["provenance"] = {
+            "dataset_id": dataset_id,
+            "dataset_version": meta.get("version"),
+            "root_id": meta.get("root_id") or meta.get("id"),
+            "calculation_engine": "deterministic_root_cause",
+        }
+        return result
+
+
 class V212MLBridge:
     def inspect_data_leakage(
         self,
@@ -483,6 +532,28 @@ class V212MLBridge:
             "note": "Contrôle déterministe de pré-entraînement; les garde-fous du moteur ML s'exécutent aussi pendant l'entraînement.",
         }
 
+
+    def benchmark_models(
+        self,
+        *,
+        context: AssistantContext,
+        target: str,
+        task: str = "auto",
+        primary_metric: str = "auto",
+        cv_folds: int = 5,
+        max_candidates: int = 10,
+        **_: Any,
+    ) -> dict[str, Any]:
+        _dataset_id_value, df = _load(context)
+        return benchmark_models(
+            df,
+            target=target,
+            task=task,
+            primary_metric=primary_metric,
+            cv_folds=cv_folds,
+            max_candidates=max_candidates,
+        )
+
     def run_automl(
         self,
         *,
@@ -524,6 +595,35 @@ class V212MLBridge:
         result["rollback_token"] = result.get("model_id")
         return result
 
+
+    def optimize_decision_scenarios(
+        self,
+        *,
+        context: AssistantContext,
+        base_row: dict[str, Any],
+        controls: dict[str, dict[str, Any]],
+        objective: str = "maximize",
+        target_value: float | None = None,
+        desired_class: Any | None = None,
+        max_candidates: int = 2000,
+        max_results: int = 10,
+        **_: Any,
+    ) -> dict[str, Any]:
+        model_id = context.activeModelId
+        if not model_id:
+            raise ValueError("Aucun modèle actif.")
+        return optimize_scenarios(
+            model_id,
+            base_row,
+            controls,
+            objective=objective,
+            target_value=target_value,
+            desired_class=desired_class,
+            max_candidates=max_candidates,
+            max_results=max_results,
+        )
+
+
     def explain_model(
         self,
         *,
@@ -531,6 +631,11 @@ class V212MLBridge:
         method: str,
         row_id: str | int | None = None,
         feature: str | None = None,
+        features: list[str] | None = None,
+        row: dict[str, Any] | None = None,
+        desired_class: Any | None = None,
+        desired_value: float | None = None,
+        direction: str | None = None,
         **_: Any,
     ) -> dict[str, Any]:
         model_id = context.activeModelId
@@ -538,21 +643,40 @@ class V212MLBridge:
             raise ValueError("Aucun modèle actif.")
         card = get_model_card(model_id)
 
-        if method in {"feature_importance", "permutation_importance"}:
+        if method in {
+            "feature_importance",
+            "permutation_importance",
+        }:
             return {
                 "model_id": model_id,
                 "method": method,
-                "feature_importance": card.get("feature_importance", []),
+                "feature_importance": card.get(
+                    "feature_importance",
+                    [],
+                ),
                 "model_card": card,
             }
 
-        if method in {"confusion_matrix", "calibration"}:
-            if not context.activeDatasetId:
-                raise ValueError("Dataset actif requis pour les diagnostics.")
+        dataset_id = (
+            context.activeDatasetId
+            or card.get("dataset", {}).get("id")
+        )
+
+        if method in {
+            "confusion_matrix",
+            "calibration",
+            "diagnostics",
+        }:
+            if not dataset_id:
+                raise ValueError(
+                    "Dataset de référence requis pour les diagnostics."
+                )
             diagnostics = model_diagnostics(
                 model_id,
-                load_dataframe(context.activeDatasetId),
+                load_dataframe(dataset_id),
             )
+            if method == "diagnostics":
+                return diagnostics
             return {
                 "model_id": model_id,
                 "method": method,
@@ -560,12 +684,111 @@ class V212MLBridge:
                 "diagnostics": diagnostics,
             }
 
-        if method.startswith("shap"):
-            raise ValueError("SHAP reste explicitement partiel dans la base v2.12.")
-        if method in {"partial_dependence", "counterfactual"}:
-            raise ValueError(f"{method} n'est pas encore implémenté dans le moteur v2.12.")
+        if method in {"shap", "shap_global", "shap_local"}:
+            if not dataset_id:
+                raise ValueError(
+                    "Dataset de référence requis pour SHAP."
+                )
+            return shap_explanation(
+                model_id,
+                load_dataframe(dataset_id),
+                row=row if method != "shap_global" else None,
+                max_rows=50,
+            )
 
-        raise ValueError(f"Méthode XAI non supportée : {method}")
+        if method == "partial_dependence":
+            if not dataset_id:
+                raise ValueError(
+                    "Dataset de référence requis pour PDP."
+                )
+            selected = list(features or [])
+            if feature and feature not in selected:
+                selected.append(feature)
+            if not selected:
+                raise ValueError(
+                    "Au moins une variable est requise pour PDP."
+                )
+            return partial_dependence(
+                model_id,
+                load_dataframe(dataset_id),
+                selected,
+                grid_points=20,
+            )
+
+        if method in {"counterfactual", "counterfactuals"}:
+            if not dataset_id:
+                raise ValueError(
+                    "Dataset de référence requis pour les contre-factuels."
+                )
+            if row is None:
+                raise ValueError(
+                    "Une observation de référence est requise."
+                )
+            return generate_counterfactuals(
+                model_id,
+                load_dataframe(dataset_id),
+                row,
+                desired_class=desired_class,
+                desired_value=desired_value,
+                direction=direction,
+                max_changes=2,
+                max_results=5,
+            )
+
+        raise ValueError(
+            f"Méthode XAI non supportée : {method}"
+        )
+
+class V212ConnectorBridge:
+    @staticmethod
+    def _workspace(context: AssistantContext) -> str:
+        workspace_id = context.workspaceId
+        if not workspace_id:
+            raise ValueError(
+                "Aucun workspace actif pour les connecteurs."
+            )
+        return workspace_id
+
+    def list_data_connectors(
+        self,
+        *,
+        context: AssistantContext,
+        **_: Any,
+    ) -> dict[str, Any]:
+        workspace_id = self._workspace(context)
+        return {
+            "workspace_id": workspace_id,
+            "connectors": list_connectors(workspace_id),
+            "sources": list_sources(workspace_id),
+        }
+
+    def discover_data_connector(
+        self,
+        *,
+        context: AssistantContext,
+        connector_id: str,
+        max_tables: int = 100,
+        **_: Any,
+    ) -> dict[str, Any]:
+        workspace_id = self._workspace(context)
+        return discover_connector(
+            workspace_id,
+            connector_id,
+            max_tables=max_tables,
+        )
+
+    def test_data_connector(
+        self,
+        *,
+        context: AssistantContext,
+        connector_id: str,
+        **_: Any,
+    ) -> dict[str, Any]:
+        workspace_id = self._workspace(context)
+        return test_connector(
+            workspace_id,
+            connector_id,
+        )
 
 
 class V212NotebookBridge:
@@ -726,6 +949,7 @@ def bind_v212_host(registry: AssistantToolRegistry) -> None:
     reports = V212ReportBridge()
     files = V212FileBridge()
     notebooks = V212NotebookBridge()
+    connectors = V212ConnectorBridge()
 
     mapping = {
         "profile_dataset": data.profile_dataset,
@@ -738,14 +962,20 @@ def bind_v212_host(registry: AssistantToolRegistry) -> None:
         "diagnose_analysis_failure": analysis.diagnose_analysis_failure,
         "run_statistical_test": analysis.run_statistical_test,
         "run_regression": analysis.run_regression,
+        "run_root_cause_analysis": analysis.run_root_cause_analysis,
         "inspect_data_leakage": ml.inspect_data_leakage,
+        "benchmark_models": ml.benchmark_models,
         "run_automl": ml.run_automl,
         "explain_model": ml.explain_model,
+        "optimize_decision_scenarios": ml.optimize_decision_scenarios,
         "generate_report": reports.generate_report,
         "inspect_uploaded_file": files.inspect_uploaded_file,
         "export_dataset": files.export_dataset,
         "export_sensitive_data": files.export_sensitive_data,
         "execute_notebook_cell": notebooks.execute_notebook_cell,
+        "list_data_connectors": connectors.list_data_connectors,
+        "discover_data_connector": connectors.discover_data_connector,
+        "test_data_connector": connectors.test_data_connector,
     }
 
     for name, handler in mapping.items():

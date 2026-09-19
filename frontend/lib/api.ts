@@ -510,6 +510,29 @@ export async function testWorkspaceSecret(token:string, workspace_id:string, sec
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/secrets/${secret_id}/test`, { method:'POST', headers:enterpriseHeaders(token) }), 'Test du secret impossible');
 }
 
+
+export async function getWorkspacePlugins(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/plugins`, { headers:enterpriseHeaders(token) }), 'Plugins indisponibles');
+}
+export async function installWorkspacePlugin(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/plugins`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Installation du plugin impossible');
+}
+export async function updateWorkspacePlugin(token:string, workspace_id:string, plugin_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/plugins/${plugin_id}`, { method:'PATCH', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Mise à jour du plugin impossible');
+}
+export async function deleteWorkspacePlugin(token:string, workspace_id:string, plugin_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/plugins/${plugin_id}`, { method:'DELETE', headers:enterpriseHeaders(token) }), 'Suppression du plugin impossible');
+}
+export async function testWorkspacePlugin(token:string, workspace_id:string, plugin_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/plugins/${plugin_id}/test`, { method:'POST', headers:enterpriseHeaders(token) }), 'Test du plugin impossible');
+}
+export async function syncWorkspacePlugin(token:string, workspace_id:string, plugin_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/plugins/${plugin_id}/sync`, { method:'POST', headers:enterpriseHeaders(token) }), 'Synchronisation du plugin impossible');
+}
+export async function getWorkspacePluginDetail(token:string, workspace_id:string, plugin_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/plugins/${plugin_id}`, { headers:enterpriseHeaders(token) }), 'Détail du plugin indisponible');
+}
+
 export async function createEnterpriseWorkspace(token:string, organization_id:string, name:string) {
   return parse<any>(await apiFetch(`${API}/workspaces`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({organization_id,name}) }), 'Création du workspace impossible');
 }
@@ -606,6 +629,10 @@ export async function revokeCertification(token:string, workspace_id:string, cer
 }
 
 // ---------------------------- Data connectors & refresh v2.7 ----------------------------
+export async function getConnectorCatalog(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/connectors/catalog`, { headers:enterpriseHeaders(token) }), 'Catalogue des connecteurs indisponible');
+}
+
 export async function getConnectorOverview(token:string, workspace_id:string) {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/connectors`, { headers:enterpriseHeaders(token) }), 'Connecteurs indisponibles');
 }
@@ -770,4 +797,147 @@ export async function replayActionRun(token:string, workspace_id:string, run_id:
 // ---------------------------- Enterprise Action Connectors v2.11 ----------------------------
 export async function testActionDestination(token:string, workspace_id:string, destination_id:string) {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/destinations/${destination_id}/test`, { method:'POST', headers:enterpriseHeaders(token) }), 'Test de la destination impossible');
+}
+
+
+export async function getModelEngines() {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/engines`),
+    'Moteurs ML indisponibles',
+  );
+}
+
+export async function runModelBenchmark(
+  datasetId: string,
+  payload: {
+    target: string;
+    task?: string;
+    primary_metric?: string;
+    cv_folds?: number;
+    max_candidates?: number;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/${encodeURIComponent(datasetId)}/models/benchmark`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Benchmark de modèles impossible',
+  );
+}
+
+export async function getModelXAICapabilities(modelId: string) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/xai/capabilities`),
+    'Capacités XAI indisponibles',
+  );
+}
+
+export async function runModelPDP(
+  modelId: string,
+  payload: {
+    features: string[];
+    grid_points?: number;
+    class_label?: string | number | null;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/xai/pdp`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Dépendance partielle impossible',
+  );
+}
+
+export async function runModelSHAP(
+  modelId: string,
+  payload: {
+    row?: Record<string, unknown> | null;
+    max_rows?: number;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/xai/shap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Calcul SHAP impossible',
+  );
+}
+
+export async function runModelCounterfactuals(
+  modelId: string,
+  payload: {
+    row: Record<string, unknown>;
+    desired_class?: string | number | null;
+    desired_value?: number | null;
+    direction?: 'increase' | 'decrease' | null;
+    max_changes?: number;
+    max_results?: number;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/xai/counterfactuals`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Recherche contrefactuelle impossible',
+  );
+}
+
+
+export async function runRootCauseAnalysis(
+  datasetId: string,
+  payload: {
+    target: string;
+    comparison_column: string;
+    baseline_value?: string | number | boolean | null;
+    current_value?: string | number | boolean | null;
+    metric?: 'mean' | 'sum' | 'count';
+    dimensions?: string[] | null;
+    time_grain?: 'auto' | 'raw' | 'day' | 'week' | 'month' | 'quarter' | 'year';
+    min_segment_size?: number;
+    top_n?: number;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/${encodeURIComponent(datasetId)}/root-cause`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Analyse des causes impossible',
+  );
+}
+
+export async function optimizeModelScenarios(
+  modelId: string,
+  payload: {
+    base_row: Record<string, unknown>;
+    controls: Record<string, {
+      values?: unknown[];
+      min?: number;
+      max?: number;
+      steps?: number;
+    }>;
+    objective?: 'maximize' | 'minimize' | 'target';
+    target_value?: number | null;
+    desired_class?: string | number | boolean | null;
+    max_candidates?: number;
+    max_results?: number;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/optimize-scenarios`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Optimisation des scénarios impossible',
+  );
 }

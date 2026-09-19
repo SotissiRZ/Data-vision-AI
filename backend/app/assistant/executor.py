@@ -65,6 +65,15 @@ class GovernedToolExecutor:
                 reason=f"Outil non enregistré : {action.tool}",
             )
 
+        if spec.metadata.get("origin") == "plugin":
+            plugin_workspace = spec.metadata.get("workspace_id")
+            if not context.workspaceId or str(plugin_workspace) != str(context.workspaceId):
+                return ExecutionDecision(
+                    status="deny",
+                    reason="Tool plugin non disponible dans ce workspace.",
+                    tool=spec,
+                )
+
         if spec.requires_dataset and not context.activeDatasetId:
             return ExecutionDecision(
                 status="deny",
@@ -82,7 +91,7 @@ class GovernedToolExecutor:
         # Validate arguments against the deterministic tool contract before
         # policy and authorization.
         try:
-            validated_args = validate_tool_arguments(action.tool, action.args)
+            validated_args = validate_tool_arguments(action.tool, action.args, spec.input_schema)
         except Exception as exc:
             return ExecutionDecision(
                 status="deny",
@@ -135,7 +144,12 @@ class GovernedToolExecutor:
         if decision.status not in {"ready", "confirmation_required"}:
             return decision
 
-        validated_args = validate_tool_arguments(action.tool, action.args)
+        spec = self.registry.get(action.tool)
+        validated_args = validate_tool_arguments(
+            action.tool,
+            action.args,
+            spec.input_schema if spec is not None else None,
+        )
         result = self.registry.execute(
             action.tool,
             context=context,

@@ -20,7 +20,7 @@ from app.services.collaboration import (
     certify_review, list_certifications, revoke_certification,
 )
 from app.services.connector_service import (
-    create_connector, update_connector, get_connector, list_connectors, delete_connector, test_connector, discover_connector,
+    create_connector, update_connector, get_connector, list_connectors, delete_connector, test_connector, discover_connector, connectors_catalog,
     create_source, get_source, list_sources, delete_source, preview_source, refresh_source,
     save_schedule, list_schedules, get_refresh_runs, workspace_refresh_health,
 )
@@ -38,6 +38,11 @@ from app.services.governed_actions import (
     get_run as get_action_run, list_destinations, list_rules as list_action_rules, list_runs as list_action_runs,
     reject_run, replay_run, save_rule as save_action_rule, test_destination_delivery,
 )
+from app.services.plugin_service import (
+    delete_plugin, get_plugin, install_plugin, list_plugin_runs, list_plugins,
+    sync_plugin, test_plugin, update_plugin,
+)
+from app.assistant.plugin_runtime import refresh_runtime_plugins
 from app.services.identity_service import (
     create_oidc_provider, list_oidc_providers, list_public_oidc_providers, delete_oidc_provider, oidc_start, oidc_exchange,
     create_secret, list_secrets, rotate_secret, test_secret,
@@ -75,6 +80,35 @@ class ContractRunRequest(BaseModel):
 
 class PublicationGateRequest(BaseModel):
     dataset_id: str
+
+
+class PluginInstallRequest(BaseModel):
+    plugin_key: str = Field(pattern=r"^[a-z][a-z0-9_-]{1,63}$")
+    name: str = Field(min_length=1, max_length=180)
+    version: str = Field(default="0.1.0", max_length=64)
+    description: str = Field(default="", max_length=4000)
+    protocol: str = Field(pattern="^(http_json|mcp_http)$")
+    endpoint: str = Field(min_length=8, max_length=2000)
+    network_scope: str = Field(default="public", pattern="^(public|private)$")
+    auth_type: str = Field(default="none", pattern="^(none|bearer|api_key)$")
+    auth_header: str | None = Field(default=None, max_length=120)
+    secret_id: str | None = Field(default=None, max_length=128)
+    context_policy: str = Field(default="none", pattern="^(none|semantic)$")
+    timeout_seconds: int = Field(default=15, ge=2, le=30)
+    enabled: bool = True
+    protocol_version: str = Field(default="2025-03-26", max_length=32)
+    tools: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+
+
+class PluginUpdateRequest(BaseModel):
+    enabled: bool | None = None
+    endpoint: str | None = Field(default=None, max_length=2000)
+    network_scope: str | None = Field(default=None, pattern="^(public|private)$")
+    secret_id: str | None = Field(default=None, max_length=128)
+    auth_type: str | None = Field(default=None, pattern="^(none|bearer|api_key)$")
+    auth_header: str | None = Field(default=None, max_length=120)
+    context_policy: str | None = Field(default=None, pattern="^(none|semantic)$")
+    timeout_seconds: int | None = Field(default=None, ge=2, le=30)
 
 class BootstrapRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
@@ -266,12 +300,12 @@ class ActionDecisionRequest(BaseModel):
 
 class ConnectorCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=160)
-    connector_type: str = Field(pattern="^(postgresql|mysql)$")
-    host: str = Field(min_length=1, max_length=255)
+    connector_type: str = Field(pattern="^(postgresql|mysql|mariadb|sqlite|sqlserver|oracle|redshift|snowflake|databricks|bigquery|mongodb)$")
+    host: str = Field(default="", max_length=255)
     port: int | None = Field(default=None, ge=1, le=65535)
-    database: str = Field(min_length=1, max_length=255)
-    username: str = Field(min_length=1, max_length=255)
-    password: str = Field(default="", max_length=2000)
+    database: str = Field(default="", max_length=2000)
+    username: str = Field(default="", max_length=255)
+    password: str = Field(default="", max_length=20000)
     ssl_mode: str = Field(default="prefer", pattern="^(disable|prefer|require)$")
     options: dict[str, Any] = {}
 
@@ -280,9 +314,9 @@ class ConnectorUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=160)
     host: str | None = Field(default=None, max_length=255)
     port: int | None = Field(default=None, ge=1, le=65535)
-    database: str | None = Field(default=None, max_length=255)
+    database: str | None = Field(default=None, max_length=2000)
     username: str | None = Field(default=None, max_length=255)
-    password: str | None = Field(default=None, max_length=2000)
+    password: str | None = Field(default=None, max_length=20000)
     ssl_mode: str | None = Field(default=None, pattern="^(disable|prefer|require)$")
     options: dict[str, Any] | None = None
 
@@ -290,7 +324,7 @@ class ConnectorUpdateRequest(BaseModel):
 class ConnectorSourceCreateRequest(BaseModel):
     connector_id: str
     name: str = Field(min_length=1, max_length=180)
-    source_kind: str = Field(default="table", pattern="^(table|query)$")
+    source_kind: str = Field(default="table", pattern="^(table|query|collection)$")
     table_name: str | None = Field(default=None, max_length=500)
     query: str | None = Field(default=None, max_length=50000)
     refresh_mode: str = Field(default="full", pattern="^(full|incremental)$")
@@ -443,7 +477,7 @@ def enterprise_status():
             "async_jobs": "redis_worker",
             "collaboration_review": "implemented",
             "resource_certification": "implemented",
-            "connectors": "postgresql_mysql_with_encrypted_credentials",
+            "connectors": "11_governed_database_and_cloud_warehouse_connectors",
             "data_contracts": "implemented_v2.8",
             "lineage_impact": "implemented_v2.8",
             "publication_gate": "contract_aware_v2.8",
@@ -497,6 +531,88 @@ def workspace_oidc_delete(workspace_id: str, provider_id: str, user=Depends(curr
         delete_oidc_provider(workspace_id, provider_id)
         record_event("identity.oidc_provider_disable", user_id=user["id"], workspace_id=workspace_id, resource_type="oidc_provider", resource_id=provider_id)
         return {"status": "disabled"}
+    except Exception as exc:
+        _handle(exc)
+
+
+
+@router.get("/workspaces/{workspace_id}/plugins")
+def workspace_plugins_list(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "plugins:read")
+        return {"plugins": list_plugins(workspace_id), "runs": list_plugin_runs(workspace_id, limit=50)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/plugins")
+def workspace_plugin_install(workspace_id: str, req: PluginInstallRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "plugins:manage")
+        plugin = install_plugin(user["id"], workspace_id, req.model_dump())
+        refresh_runtime_plugins()
+        return {"plugin": plugin}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.patch("/workspaces/{workspace_id}/plugins/{plugin_id}")
+def workspace_plugin_update(workspace_id: str, plugin_id: str, req: PluginUpdateRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "plugins:manage")
+        plugin = update_plugin(user["id"], workspace_id, plugin_id, **req.model_dump(exclude_none=True))
+        refresh_runtime_plugins()
+        return {"plugin": plugin}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/workspaces/{workspace_id}/plugins/{plugin_id}")
+def workspace_plugin_delete(workspace_id: str, plugin_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "plugins:manage")
+        result = delete_plugin(user["id"], workspace_id, plugin_id)
+        refresh_runtime_plugins()
+        return result
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/plugins/{plugin_id}/test")
+def workspace_plugin_test(workspace_id: str, plugin_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "plugins:manage")
+        result = test_plugin(workspace_id, plugin_id)
+        record_event(
+            "plugin.test", user_id=user["id"], workspace_id=workspace_id,
+            resource_type="plugin", resource_id=plugin_id,
+            outcome="success" if result.get("ok") else "failed",
+            payload={"ok": bool(result.get("ok")), "status": result.get("status")},
+        )
+        return result
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/plugins/{plugin_id}/sync")
+def workspace_plugin_sync(workspace_id: str, plugin_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "plugins:manage")
+        plugin = sync_plugin(user["id"], workspace_id, plugin_id)
+        refresh_runtime_plugins()
+        return {"plugin": plugin}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/plugins/{plugin_id}")
+def workspace_plugin_detail(workspace_id: str, plugin_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "plugins:read")
+        return {
+            "plugin": get_plugin(workspace_id, plugin_id),
+            "runs": list_plugin_runs(workspace_id, plugin_id=plugin_id, limit=100),
+        }
     except Exception as exc:
         _handle(exc)
 
@@ -1064,6 +1180,23 @@ def actions_run_replay(workspace_id: str, run_id: str, user=Depends(current_user
 
 
 # ---------------------------- Data connectors & refresh v2.7 ----------------------------
+
+
+@router.get("/workspaces/{workspace_id}/connectors/catalog")
+def connectors_catalog_endpoint(
+    workspace_id: str,
+    user=Depends(current_user),
+):
+    try:
+        _workspace_permission(
+            user["id"],
+            workspace_id,
+            "connectors:read",
+        )
+        return connectors_catalog()
+    except Exception as exc:
+        _raise_api(exc)
+
 
 @router.get("/workspaces/{workspace_id}/connectors/health")
 def connectors_health(workspace_id: str, user=Depends(current_user)):

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from .executor import HostAuthorization
+from .contracts import validate_tool_arguments
 from .models import (
     AgentPlanStep,
     AgentPlanStepValidation,
@@ -36,6 +37,20 @@ def validate_agent_plan(
             )
             continue
 
+        if spec.metadata.get("origin") == "plugin":
+            plugin_workspace = spec.metadata.get("workspace_id")
+            if not context.workspaceId or str(plugin_workspace) != str(context.workspaceId):
+                results.append(
+                    AgentPlanStepValidation(
+                        id=step.id,
+                        tool=step.tool,
+                        status="deny",
+                        reason="Tool plugin non disponible dans ce workspace.",
+                        risk=spec.risk,
+                    )
+                )
+                continue
+
         if spec.requires_dataset and not context.activeDatasetId:
             results.append(
                 AgentPlanStepValidation(
@@ -60,10 +75,34 @@ def validate_agent_plan(
             )
             continue
 
+        validated_args = dict(step.args)
+        # Dynamic plugin schemas must always be validated at planning time.
+        # For legacy built-in tools, keep the historical behavior for empty
+        # draft steps (the executor still performs the strict contract check
+        # before execution). Non-empty built-in args are validated here too.
+        if spec.input_schema is not None or step.args:
+            try:
+                validated_args = validate_tool_arguments(
+                    step.tool,
+                    step.args,
+                    spec.input_schema,
+                )
+            except Exception as exc:
+                results.append(
+                    AgentPlanStepValidation(
+                        id=step.id,
+                        tool=step.tool,
+                        status="deny",
+                        reason=f"Arguments invalides : {exc}",
+                        risk=spec.risk,
+                    )
+                )
+                continue
+
         action = AssistantAction(
             tool=step.tool,
             label=step.label,
-            args=step.args,
+            args=validated_args,
             risk=spec.risk,
         )
         policy = evaluate_action_policy(action, context)

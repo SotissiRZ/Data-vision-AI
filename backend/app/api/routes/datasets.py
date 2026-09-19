@@ -9,7 +9,7 @@ from app.services.storage import (
 )
 from app.services.profiling import profile_dataframe
 from app.services.quality import quality_report
-from app.services.modeling import train_model, automl_train, predict, get_model_card, list_model_cards
+from app.services.modeling import train_model, automl_train, benchmark_models, algorithm_availability, predict, get_model_card, list_model_cards
 from app.services.decision import decision_support
 from app.services.exploration import analyze_column, preview_dataframe
 from app.services.advanced_analysis import regression_analysis, anova_analysis, pca_analysis, clustering_analysis
@@ -20,7 +20,7 @@ from app.services.data_workspace import engine_info, run_sql
 from app.services.visualization import build_visualization, recommend_visualizations
 from app.services.forecasting import forecast_series
 from app.services.anomaly_detection import detect_anomalies
-from app.services.xai import model_diagnostics, local_explanation
+from app.services.xai import model_diagnostics, local_explanation, xai_capabilities, partial_dependence, shap_explanation, generate_counterfactuals
 from app.services.ai_analyst import AnalystContext, analyze_dataset, tool_registry
 from app.services.analysis_history import save_analysis, list_analyses, get_analysis
 from app.services.nlq_sql import run_nlq
@@ -33,7 +33,8 @@ from app.services.semantic_layer import (
     semantic_table_catalog, validate_semantic_model, query_semantic_metric,
 )
 from app.services.trust_center import trust_center
-from app.services.decision_lab import model_what_if, sensitivity_curve
+from app.services.decision_lab import model_what_if, sensitivity_curve, optimize_scenarios
+from app.services.root_cause import root_cause_analysis
 from app.services.tenant_access import access_summary, current_access_context
 from app.services.data_reliability import publication_gate
 from app.services.operational_intelligence import record_telemetry
@@ -49,7 +50,10 @@ router = APIRouter(prefix="/datasets", tags=["datasets"])
 class TrainRequest(BaseModel):
     target: str
     task: str = Field(default="auto", pattern="^(auto|classification|regression)$")
-    algorithm: str = Field(default="auto", pattern="^(auto|linear_regression|ridge|logistic_regression|random_forest|extra_trees|gradient_boosting|hist_gradient_boosting)$")
+    algorithm: str = Field(
+        default="auto",
+        pattern="^(auto|linear_regression|ridge|logistic_regression|random_forest|extra_trees|gradient_boosting|hist_gradient_boosting|svm|xgboost|lightgbm|catboost)$",
+    )
 
 
 class AutoMLRequest(BaseModel):
@@ -58,7 +62,15 @@ class AutoMLRequest(BaseModel):
     primary_metric: str = Field(default="auto", pattern="^(auto|accuracy|balanced_accuracy|f1_weighted|roc_auc|rmse|mae|r2)$")
     cv_folds: int = Field(default=5, ge=2, le=10)
     tune: bool = True
-    max_candidates: int = Field(default=5, ge=2, le=6)
+    max_candidates: int = Field(default=7, ge=2, le=10)
+
+
+class BenchmarkRequest(BaseModel):
+    target: str
+    task: str = Field(default="auto", pattern="^(auto|classification|regression)$")
+    primary_metric: str = Field(default="auto", pattern="^(auto|accuracy|balanced_accuracy|f1_weighted|roc_auc|rmse|mae|r2)$")
+    cv_folds: int = Field(default=5, ge=2, le=10)
+    max_candidates: int = Field(default=10, ge=2, le=10)
 
 
 class PredictRequest(BaseModel):
@@ -158,6 +170,29 @@ class LocalExplanationRequest(BaseModel):
     row: dict
 
 
+class PDPRequest(BaseModel):
+    features: list[str] = Field(min_length=1, max_length=8)
+    grid_points: int = Field(default=20, ge=3, le=40)
+    class_label: str | int | float | None = None
+
+
+class SHAPRequest(BaseModel):
+    row: dict | None = None
+    max_rows: int = Field(default=60, ge=10, le=80)
+
+
+class CounterfactualRequest(BaseModel):
+    row: dict
+    desired_class: str | int | float | None = None
+    desired_value: float | None = None
+    direction: str | None = Field(
+        default=None,
+        pattern="^(increase|decrease)?$",
+    )
+    max_changes: int = Field(default=2, ge=1, le=2)
+    max_results: int = Field(default=5, ge=1, le=10)
+
+
 
 
 class NLQRequest(BaseModel):
@@ -243,6 +278,36 @@ class SensitivityRequest(BaseModel):
     values: list
 
 
+
+
+
+
+class RootCauseRequest(BaseModel):
+    target: str
+    comparison_column: str
+    baseline_value: str | int | float | bool | None = None
+    current_value: str | int | float | bool | None = None
+    metric: str = Field(default="mean", pattern="^(mean|sum|count)$")
+    dimensions: list[str] | None = None
+    time_grain: str = Field(
+        default="auto",
+        pattern="^(auto|raw|day|week|month|quarter|year)$",
+    )
+    min_segment_size: int = Field(default=5, ge=1, le=10000)
+    top_n: int = Field(default=8, ge=1, le=20)
+
+
+class ScenarioOptimizeRequest(BaseModel):
+    base_row: dict
+    controls: dict[str, dict]
+    objective: str = Field(
+        default="maximize",
+        pattern="^(maximize|minimize|target)$",
+    )
+    target_value: float | None = None
+    desired_class: str | int | float | bool | None = None
+    max_candidates: int = Field(default=2000, ge=10, le=5000)
+    max_results: int = Field(default=10, ge=1, le=20)
 
 
 class ProactiveWatchRequest(BaseModel):
@@ -446,6 +511,42 @@ def dataset_automl(dataset_id: str, request: AutoMLRequest):
         raise HTTPException(status_code=422, detail=f"AutoML impossible: {exc}") from exc
 
 
+@router.post("/{dataset_id}/models/benchmark")
+def dataset_model_benchmark(
+    dataset_id: str,
+    request: BenchmarkRequest,
+):
+    try:
+        return benchmark_models(
+            load_dataframe(dataset_id),
+            target=request.target,
+            task=request.task,
+            primary_metric=request.primary_metric,
+            cv_folds=request.cv_folds,
+            max_candidates=request.max_candidates,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset introuvable",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Benchmark impossible: {exc}",
+        ) from exc
+
+
+@router.get("/models/engines")
+def model_engines():
+    return {"engines": algorithm_availability()}
+
+
 @router.get("/{dataset_id}/models")
 def dataset_models(dataset_id: str):
     try:
@@ -500,6 +601,106 @@ def model_xai_local(model_id: str, request: LocalExplanationRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Explication locale impossible: {exc}") from exc
+
+
+@router.get("/models/{model_id}/xai/capabilities")
+def model_xai_capabilities(model_id: str):
+    try:
+        return xai_capabilities(model_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Modèle introuvable",
+        ) from exc
+
+
+@router.post("/models/{model_id}/xai/pdp")
+def model_xai_pdp(model_id: str, request: PDPRequest):
+    try:
+        card = get_model_card(model_id)
+        dataset_id = card.get("dataset", {}).get("id")
+        if not dataset_id:
+            raise ValueError(
+                "La Model Card ne référence aucun dataset"
+            )
+        return partial_dependence(
+            model_id,
+            load_dataframe(dataset_id),
+            request.features,
+            grid_points=request.grid_points,
+            class_label=request.class_label,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Modèle ou dataset introuvable",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post("/models/{model_id}/xai/shap")
+def model_xai_shap(model_id: str, request: SHAPRequest):
+    try:
+        card = get_model_card(model_id)
+        dataset_id = card.get("dataset", {}).get("id")
+        if not dataset_id:
+            raise ValueError(
+                "La Model Card ne référence aucun dataset"
+            )
+        return shap_explanation(
+            model_id,
+            load_dataframe(dataset_id),
+            row=request.row,
+            max_rows=request.max_rows,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Modèle ou dataset introuvable",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post("/models/{model_id}/xai/counterfactuals")
+def model_xai_counterfactuals(
+    model_id: str,
+    request: CounterfactualRequest,
+):
+    try:
+        card = get_model_card(model_id)
+        dataset_id = card.get("dataset", {}).get("id")
+        if not dataset_id:
+            raise ValueError(
+                "La Model Card ne référence aucun dataset"
+            )
+        return generate_counterfactuals(
+            model_id,
+            load_dataframe(dataset_id),
+            request.row,
+            desired_class=request.desired_class,
+            desired_value=request.desired_value,
+            direction=request.direction,
+            max_changes=request.max_changes,
+            max_results=request.max_results,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Modèle ou dataset introuvable",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
 
 @router.get("/{dataset_id}/ai/capabilities")
@@ -832,6 +1033,72 @@ def dataset_trust_center(dataset_id: str):
         return trust_center(dataset_id, load_dataframe(dataset_id))
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404 if isinstance(exc, FileNotFoundError) else 400, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/root-cause")
+def dataset_root_cause(
+    dataset_id: str,
+    body: RootCauseRequest,
+):
+    try:
+        meta = get_meta(dataset_id)
+        result = root_cause_analysis(
+            load_dataframe(dataset_id),
+            target=body.target,
+            comparison_column=body.comparison_column,
+            baseline_value=body.baseline_value,
+            current_value=body.current_value,
+            metric=body.metric,
+            dimensions=body.dimensions,
+            time_grain=body.time_grain,
+            min_segment_size=body.min_segment_size,
+            top_n=body.top_n,
+        )
+        result["provenance"] = {
+            "dataset_id": dataset_id,
+            "dataset_version": meta.get("version"),
+            "root_id": meta.get("root_id") or meta.get("id"),
+            "calculation_engine": "deterministic_root_cause",
+        }
+        return result
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Dataset introuvable",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+
+@router.post("/models/{model_id}/optimize-scenarios")
+def model_optimize_scenarios(
+    model_id: str,
+    body: ScenarioOptimizeRequest,
+):
+    try:
+        return optimize_scenarios(
+            model_id,
+            body.base_row,
+            body.controls,
+            objective=body.objective,
+            target_value=body.target_value,
+            desired_class=body.desired_class,
+            max_candidates=body.max_candidates,
+            max_results=body.max_results,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(
+            status_code=404,
+            detail="Modèle introuvable",
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
 
 
 @router.post("/models/{model_id}/what-if")

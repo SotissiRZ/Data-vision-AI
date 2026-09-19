@@ -79,6 +79,30 @@ IntentRule(
         ),
         0.90,
     ),
+
+IntentRule(
+    "root_cause_analysis",
+    (
+        r"\broot\s+cause\b",
+        r"\bcause\s+racine\b",
+        r"\banalyse\s+des\s+causes\b",
+        r"\bqu['’]est[- ]ce\s+qui\s+explique\s+(?:la\s+)?(?:hausse|baisse|variation|chute)\b",
+        r"\bpourquoi\b.*\b(?:a\s+baiss[eé]|a\s+augment[eé]|a\s+chang[eé]|varie)\b",
+        r"\bquels?\s+(?:sont\s+)?les\s+facteurs\b.*\b(?:hausse|baisse|variation)\b",
+    ),
+    0.95,
+),
+IntentRule(
+    "optimize_scenarios",
+    (
+        r"\boptimis(?:e|er|ation)\b.*\bsc[eé]nario",
+        r"\bmeilleur\s+sc[eé]nario\b",
+        r"\bquel\s+sc[eé]nario\b.*\bmaximis",
+        r"\bquel\s+sc[eé]nario\b.*\bminimis",
+        r"\bvariables?\s+contr[oô]lables?\b",
+    ),
+    0.94,
+),
     IntentRule(
         "geospatial_analysis",
         (

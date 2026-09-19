@@ -9,14 +9,16 @@ import {
   runCorrelations, runStatisticalTest, getTestAdvice, getEngineInfo, runSql, recommendVisualizations, buildVisualization, runAutoML,
   runForecast, runAnomalyDetection, getModelDiagnostics, explainModelPrediction, getAIAnalystCapabilities, runAIAnalysis,
   runNaturalLanguageQuery, getAIHistory, getAIHistoryItem, getReports, createReport, downloadReport, getDashboard, saveVisualization, getSavedVisualizations,
+  getModelEngines, runModelBenchmark, getModelXAICapabilities, runModelPDP, runModelSHAP, runModelCounterfactuals,
   getDashboards, getDashboardDefinition, saveDashboardDefinition, deleteDashboardDefinition, previewDashboard,
-  getSemanticModel, saveSemanticModel, evaluateSemanticMetric, getMetricPulse, getSemanticTableCatalog, validateSemanticModel, querySemanticMetric, getTrustCenter, runModelWhatIf, runModelSensitivity,
+  getSemanticModel, saveSemanticModel, evaluateSemanticMetric, getMetricPulse, getSemanticTableCatalog, validateSemanticModel, querySemanticMetric, getTrustCenter, runModelWhatIf, runModelSensitivity, runRootCauseAnalysis, optimizeModelScenarios,
   getProactiveSummary, getProactiveWatches, autoConfigureProactiveWatches, scanProactiveSignals, getProactiveInbox, updateProactiveAlertStatus,
   bootstrapEnterprise, loginEnterprise, getEnterpriseSession, getEnterpriseStatus, createEnterpriseWorkspace, getEnterpriseWorkspace, addWorkspaceMember, bindWorkspaceDataset, saveWorkspacePolicy, getAuditEvents, getEnterpriseJobs, submitEnterpriseJob, cancelEnterpriseJob, getGovernedPreview,
   getEnterpriseAuthSessions, revokeEnterpriseAuthSession, logoutAllEnterpriseSessions, getPublicOIDCProviders, startEnterpriseOIDC, exchangeEnterpriseOIDC,
   getWorkspaceOIDCProviders, createWorkspaceOIDCProvider, disableWorkspaceOIDCProvider, getWorkspaceSecrets, createWorkspaceSecret, rotateWorkspaceSecret, testWorkspaceSecret,
+  getWorkspacePlugins, installWorkspacePlugin, updateWorkspacePlugin, deleteWorkspacePlugin, testWorkspacePlugin, syncWorkspacePlugin, getWorkspacePluginDetail,
   getReviewSummary, getReviews, getReviewDetail, createReview, assignReview, transitionReview, addReviewComment, resolveReviewComment, getCollaborationNotifications, markCollaborationNotificationRead, getCertifications, certifyReview, revokeCertification,
-  getConnectorOverview, getConnectorHealth, createDataConnector, testDataConnector, discoverDataConnector, createConnectorSource, deleteConnectorSource, previewConnectorSource, refreshConnectorSource, saveConnectorSchedule, getRefreshRuns,
+  getConnectorCatalog, getConnectorOverview, getConnectorHealth, createDataConnector, testDataConnector, discoverDataConnector, createConnectorSource, deleteConnectorSource, previewConnectorSource, refreshConnectorSource, saveConnectorSchedule, getRefreshRuns,
   getReliabilitySummary, getDataContracts, saveDataContract, deleteDataContract, runDataContract, getContractRuns, getLineageGraph, getImpactAnalysis, getPublicationGate,
   getOperationalOverview, getOperationalUsage, getOperationalTelemetry, getEvaluationSuites, createEvaluationSuite, getEvaluationSuite, addEvaluationCase, runEvaluationSuite, getEvaluationRun,
   getActionSummary, getActionDestinations, createActionDestination, deleteActionDestination, getActionRules, saveActionRule, deleteActionRule, dispatchActionEvent, getActionRuns, getActionRun, approveActionRun, rejectActionRun, replayActionRun, testActionDestination,
@@ -26,7 +28,7 @@ import { AIProviderControlCenter } from '../components/assistant/AIProviderContr
 import { NotebookStudio } from '../components/NotebookStudio';
 
 type AnyObj = Record<string, any>;
-type View = 'identity' | 'actions' | 'operations' | 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'notebook' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance' | 'ai-settings';
+type View = 'identity' | 'actions' | 'operations' | 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'notebook' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'forecast' | 'anomaly' | 'xai' | 'predict' | 'ai' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance' | 'ai-settings' | 'plugins';
 type AreaKey = 'overview'|'data'|'analyze'|'model'|'decide'|'publish'|'collaborate'|'governance';
 
 const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; views:View[] }[] = [
@@ -37,14 +39,14 @@ const areaConfig: { key:AreaKey; label:string; icon:string; defaultView:View; vi
   {key:'decide',label:'Décider',icon:'✦',defaultView:'inbox',views:['inbox','ai','semantic','decision','actions','trust']},
   {key:'publish',label:'Publier',icon:'▧',defaultView:'dashboard',views:['dashboard','report']},
   {key:'collaborate',label:'Collaborer',icon:'◎',defaultView:'review',views:['review']},
-  {key:'governance',label:'Gouverner',icon:'⌾',defaultView:'reliability',views:['reliability','sources','operations','identity','ai-settings','governance']},
+  {key:'governance',label:'Gouverner',icon:'⌾',defaultView:'reliability',views:['reliability','sources','operations','identity','plugins','ai-settings','governance']},
 ];
 const viewLabels: Record<View,string> = {
   home:'Vue d’ensemble',data:'Aperçu des données',quality:'Qualité',prepare:'Préparation',stats:'Statistiques descriptives',
   visual:'Visualisation',tests:'Tests & corrélations',sql:'SQL',notebook:'Notebook',regression:'Régression',anova:'ANOVA',pca:'ACP',cluster:'Clustering',
-  model:'AutoML',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',actions:'Actions & Automation',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',reliability:'Fiabilité & Lineage',sources:'Sources & Refresh',operations:'Observabilité & Eval',identity:'Identité & Secrets','ai-settings':'IA & Modèles',governance:'Gouvernance'
+  model:'AutoML',forecast:'Forecasting',anomaly:'Anomalies',xai:'XAI',predict:'Prédictions',inbox:'Inbox analytique',ai:'AI Analyst',semantic:'Couche sémantique',decision:'Decision Lab',actions:'Actions & Automation',trust:'Trust Center',dashboard:'Dashboards',report:'Rapports',review:'Review Center',reliability:'Fiabilité & Lineage',sources:'Sources & Refresh',operations:'Observabilité & Eval',identity:'Identité & Secrets',plugins:'Plugins & MCP','ai-settings':'IA & Modèles',governance:'Gouvernance'
 };
-const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',notebook:'⌘',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',actions:'⚡',trust:'✓',dashboard:'▦',report:'▧',review:'◎',reliability:'◫',sources:'↻',operations:'◉',identity:'◈','ai-settings':'✦',governance:'⌾'};
+const viewIcons: Partial<Record<View,string>>={home:'⌂',data:'▦',quality:'✓',prepare:'⌘',stats:'▤',visual:'▥',tests:'∑',sql:'⌗',notebook:'⌘',regression:'↗',anova:'≋',pca:'◔',cluster:'◫',model:'◆',forecast:'⌁',anomaly:'⚠',xai:'◇',predict:'◎',inbox:'◉',ai:'✦',semantic:'◈',decision:'⇄',actions:'⚡',trust:'✓',dashboard:'▦',report:'▧',review:'◎',reliability:'◫',sources:'↻',operations:'◉',identity:'◈',plugins:'⌘','ai-settings':'✦',governance:'⌾'};
 function areaForView(view:View){ return areaConfig.find(a=>a.views.includes(view)) ?? areaConfig[0]; }
 
 function formatNumber(value: unknown, digits = 3) {
@@ -329,7 +331,7 @@ export default function Home() {
         {view==='anova'&&<AnovaView result={result} setError={setError}/>} 
         {view==='pca'&&<PcaView result={result} setError={setError}/>} 
         {view==='cluster'&&<ClusterView result={result} setError={setError}/>} 
-        {view==='model'&&<ModelView result={result} target={target} setTarget={setTarget} algorithm={algorithm} setAlgorithm={setAlgorithm} training={training} automlRunning={automlRunning} doTrain={doTrain} doAutoML={doAutoML} model={model}/>} 
+        {view==='model'&&<ModelView result={result} target={target} setTarget={setTarget} algorithm={algorithm} setAlgorithm={setAlgorithm} training={training} automlRunning={automlRunning} doTrain={doTrain} doAutoML={doAutoML} model={model} setError={setError}/>} 
         {view==='forecast'&&<ForecastView result={result} setError={setError}/>} 
         {view==='anomaly'&&<AnomalyView result={result} setError={setError}/>} 
         {view==='xai'&&<XaiView result={result} model={model} setError={setError}/>} 
@@ -347,6 +349,7 @@ export default function Home() {
         {view==='sources'&&<SourcesRefreshCenter setError={setError} setView={setView} onActivate={id=>activateDataset(id,'data')}/>}
         {view==='operations'&&<OperationalIntelligenceCenter result={result} setError={setError} setView={setView}/>}
         {view==='identity'&&<IdentitySecurityCenter setError={setError} setView={setView}/>}
+        {view==='plugins'&&<PluginCenter setError={setError} setView={setView}/>}
         {view==='ai-settings'&&<AIProviderControlCenter setError={setError}/>} 
         {view==='governance'&&<GovernanceCenter result={result} setError={setError}/>}  
       </section>
@@ -734,22 +737,114 @@ function SqlWorkspace({ result, setError }: { result:AnyObj|null; setError:(s:st
   </div>;
 }
 
-function ModelView({ result, target, setTarget, algorithm, setAlgorithm, training, automlRunning, doTrain, doAutoML, model }: { result: AnyObj | null; target: string; setTarget:(v:string)=>void; algorithm:string; setAlgorithm:(v:string)=>void; training:boolean; automlRunning:boolean; doTrain:()=>void; doAutoML:(c:{primary_metric:string;cv_folds:number;tune:boolean;max_candidates:number})=>void; model:AnyObj|null }) {
-  const [metric,setMetric]=useState('auto'); const [folds,setFolds]=useState(5); const [tune,setTune]=useState(true); const [maxCandidates,setMaxCandidates]=useState(5);
+function ModelView({ result, target, setTarget, algorithm, setAlgorithm, training, automlRunning, doTrain, doAutoML, model, setError }: { result: AnyObj | null; target: string; setTarget:(v:string)=>void; algorithm:string; setAlgorithm:(v:string)=>void; training:boolean; automlRunning:boolean; doTrain:()=>void; doAutoML:(c:{primary_metric:string;cv_folds:number;tune:boolean;max_candidates:number})=>void; model:AnyObj|null; setError:(s:string)=>void }) {
+  const [metric,setMetric]=useState('auto');
+  const [folds,setFolds]=useState(5);
+  const [tune,setTune]=useState(true);
+  const [maxCandidates,setMaxCandidates]=useState(7);
+  const [engines,setEngines]=useState<AnyObj|null>(null);
+  const [benchmarkOnly,setBenchmarkOnly]=useState<AnyObj|null>(null);
+  const [benchmarkBusy,setBenchmarkBusy]=useState(false);
+
+  useEffect(()=>{
+    getModelEngines().then(setEngines).catch(()=>setEngines(null));
+    setBenchmarkOnly(null);
+  },[result?.dataset?.id]);
+
   if (!result) return <EmptyState title="Modélisation" text="Chargez un dataset avant de sélectionner une cible et d’entraîner un modèle."/>;
-  const benchmark=model?.benchmark??[]; const importance=model?.feature_importance??[]; const guardrails=model?.guardrails??[];
-  return <div className="page"><div className="page-title"><div><span className="eyebrow">MACHINE LEARNING · AUTOML</span><h1>Modélisation professionnelle</h1><p>Benchmark multi-modèles, validation croisée, train/validation/test, tuning contrôlé, garde-fous et Model Card.</p></div><span className="module-state implemented">AutoML vérifiable</span></div>
-    <div className="two-col model-layout"><Panel title="AutoML"><div className="stack-form"><label>Variable cible<select value={target} onChange={e=>setTarget(e.target.value)}>{result.profile.columns.filter((c:AnyObj)=>!isLikelyIdentifier(c,Number(result.profile.rows??0))).map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><div className="form-row"><label>Métrique principale<select value={metric} onChange={e=>setMetric(e.target.value)}><option value="auto">Auto</option><option value="roc_auc">ROC-AUC</option><option value="f1_weighted">F1 pondéré</option><option value="balanced_accuracy">Balanced accuracy</option><option value="accuracy">Accuracy</option><option value="rmse">RMSE</option><option value="mae">MAE</option><option value="r2">R²</option></select></label><label>CV<input type="number" min={2} max={10} value={folds} onChange={e=>setFolds(Number(e.target.value))}/></label><label>Candidats<input type="number" min={2} max={6} value={maxCandidates} onChange={e=>setMaxCandidates(Number(e.target.value))}/></label></div><label className="switch-line"><input type="checkbox" checked={tune} onChange={e=>setTune(e.target.checked)}/> Optimisation contrôlée des hyperparamètres</label><button className="primary-btn real-button" disabled={automlRunning} onClick={()=>doAutoML({primary_metric:metric,cv_folds:folds,tune,max_candidates:maxCandidates})}>{automlRunning?'AutoML en cours…':'▶ Lancer AutoML'}</button><small className="help-text">Le jeu de test final reste isolé jusqu’à l’évaluation du modèle sélectionné.</small></div></Panel>
-      <Panel title="Entraînement manuel"><div className="stack-form"><label>Algorithme<select value={algorithm} onChange={e=>setAlgorithm(e.target.value)}><option value="auto">Auto baseline</option><option value="linear_regression">Régression linéaire</option><option value="ridge">Ridge</option><option value="logistic_regression">Régression logistique</option><option value="random_forest">Random Forest</option><option value="extra_trees">Extra Trees</option><option value="gradient_boosting">Gradient Boosting</option><option value="hist_gradient_boosting">Histogram Gradient Boosting</option></select></label><button className="secondary-btn real-button" disabled={training} onClick={doTrain}>{training?'Entraînement…':'Entraîner un modèle précis'}</button><ul className="guardrails compact"><li>✓ Imputation + encodage dans le pipeline</li><li>✓ Split reproductible 60/20/20</li><li>✓ Test final non utilisé pour l’optimisation</li><li>✓ Modèle et Model Card sauvegardés localement</li></ul></div></Panel></div>
-    {model&&<><div className="metrics six"><Stat label="Tâche" value={model.task}/><Stat label="Algorithme retenu" value={model.algorithm}/><Stat label="Train" value={model.rows_train}/><Stat label="Validation" value={model.rows_validation??'—'}/><Stat label="Test final" value={model.rows_test}/><Stat label="Métrique" value={model.primary_metric??model.model_card?.primary_metric??'auto'}/></div>
+
+  const benchmark=model?.benchmark??[];
+  const importance=model?.feature_importance??[];
+  const guardrails=model?.guardrails??[];
+  const engineRows=Object.entries(engines?.engines??{}).map(([name,value]:[string,any])=>({name,...value}));
+
+  async function runBenchmarkOnly(){
+    if(!target)return;
+    setBenchmarkBusy(true);setError('');
+    try{
+      setBenchmarkOnly(await runModelBenchmark(result!.dataset.id,{
+        target,
+        task:'auto',
+        primary_metric:metric,
+        cv_folds:folds,
+        max_candidates:maxCandidates,
+      }));
+    }catch(e:unknown){
+      setError(e instanceof Error?e.message:String(e));
+    }finally{setBenchmarkBusy(false);}
+  }
+
+  return <div className="page">
+    <div className="page-title">
+      <div><span className="eyebrow">MACHINE LEARNING · AUTOML · BENCHMARK</span><h1>Modélisation professionnelle</h1><p>Benchmark multi-moteurs, validation croisée, train/validation/test, tuning contrôlé, garde-fous et Model Card.</p></div>
+      <span className="module-state implemented">AutoML vérifiable</span>
+    </div>
+
+    <Panel title="Moteurs disponibles" action={<span className="quiet">détection runtime</span>}>
+      <div className="engine-grid">
+        {engineRows.map((engine:AnyObj)=><div key={engine.name} className={engine.available?'engine-card available':'engine-card unavailable'}><b>{engine.name}</b><span>{engine.engine}</span><small>{engine.available?'disponible':'non installé'}</small></div>)}
+      </div>
+    </Panel>
+
+    <div className="two-col model-layout">
+      <Panel title="AutoML">
+        <div className="stack-form">
+          <label>Variable cible<select value={target} onChange={e=>setTarget(e.target.value)}>{result.profile.columns.filter((c:AnyObj)=>!isLikelyIdentifier(c,Number(result.profile.rows??0))).map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label>
+          <div className="form-row">
+            <label>Métrique principale<select value={metric} onChange={e=>setMetric(e.target.value)}><option value="auto">Auto</option><option value="roc_auc">ROC-AUC</option><option value="f1_weighted">F1 pondéré</option><option value="balanced_accuracy">Balanced accuracy</option><option value="accuracy">Accuracy</option><option value="rmse">RMSE</option><option value="mae">MAE</option><option value="r2">R²</option></select></label>
+            <label>CV<input type="number" min={2} max={10} value={folds} onChange={e=>setFolds(Number(e.target.value))}/></label>
+            <label>Candidats<input type="number" min={2} max={10} value={maxCandidates} onChange={e=>setMaxCandidates(Number(e.target.value))}/></label>
+          </div>
+          <label className="switch-line"><input type="checkbox" checked={tune} onChange={e=>setTune(e.target.checked)}/> Optimisation contrôlée des hyperparamètres</label>
+          <div className="button-row">
+            <button className="primary-btn real-button" disabled={automlRunning} onClick={()=>doAutoML({primary_metric:metric,cv_folds:folds,tune,max_candidates:maxCandidates})}>{automlRunning?'AutoML en cours…':'▶ Lancer AutoML'}</button>
+            <button className="secondary-btn real-button" disabled={benchmarkBusy} onClick={()=>void runBenchmarkOnly()}>{benchmarkBusy?'Benchmark…':'Comparer sans entraîner'}</button>
+          </div>
+          <small className="help-text">Le jeu de test final reste isolé jusqu’à l’évaluation du modèle sélectionné.</small>
+        </div>
+      </Panel>
+
+      <Panel title="Entraînement manuel">
+        <div className="stack-form">
+          <label>Algorithme<select value={algorithm} onChange={e=>setAlgorithm(e.target.value)}>
+            <option value="auto">Auto baseline</option>
+            <option value="linear_regression">Régression linéaire</option>
+            <option value="ridge">Ridge</option>
+            <option value="logistic_regression">Régression logistique</option>
+            <option value="random_forest">Random Forest</option>
+            <option value="extra_trees">Extra Trees</option>
+            <option value="gradient_boosting">Gradient Boosting</option>
+            <option value="hist_gradient_boosting">Histogram Gradient Boosting</option>
+            <option value="svm">SVM</option>
+            <option value="xgboost">XGBoost</option>
+            <option value="lightgbm">LightGBM</option>
+            <option value="catboost">CatBoost</option>
+          </select></label>
+          <button className="secondary-btn real-button" disabled={training} onClick={doTrain}>{training?'Entraînement…':'Entraîner un modèle précis'}</button>
+          <ul className="guardrails compact"><li>✓ Imputation + encodage dans le pipeline</li><li>✓ Split reproductible 60/20/20</li><li>✓ Test final non utilisé pour l’optimisation</li><li>✓ Model Card + provenance</li></ul>
+        </div>
+      </Panel>
+    </div>
+
+    {benchmarkOnly&&<Panel title="Benchmark indépendant" action={<span className="quiet">{benchmarkOnly.primary_metric} · {benchmarkOnly.cv_folds} folds</span>}>
+      <div className="two-col compact-panels">
+        <div><h4 className="subheading first">Validation</h4><BarChart rows={(benchmarkOnly.benchmark??[]).filter((x:AnyObj)=>x.status==='ok')} valueKey="validation_score" labelKey="label"/></div>
+        <div><h4 className="subheading first">Cross-validation</h4><BarChart rows={(benchmarkOnly.benchmark??[]).filter((x:AnyObj)=>x.status==='ok'&&x.cv_mean!=null)} valueKey="cv_mean" labelKey="label"/></div>
+      </div>
+      <SimpleTable rows={benchmarkOnly.benchmark??[]} columns={[["label","Modèle"],["engine","Moteur"],["status","Statut"],["validation_score","Validation"],["cv_mean","CV moyenne"],["cv_std","CV σ"],["error","Erreur"]]}/>
+    </Panel>}
+
+    {model&&<>
+      <div className="metrics six"><Stat label="Tâche" value={model.task}/><Stat label="Algorithme retenu" value={model.algorithm}/><Stat label="Train" value={model.rows_train}/><Stat label="Validation" value={model.rows_validation??'—'}/><Stat label="Test final" value={model.rows_test}/><Stat label="Métrique" value={model.primary_metric??model.model_card?.primary_metric??'auto'}/></div>
       <Panel title="Métriques — test final" action={<code>{model.model_id?.slice(0,8)}…</code>}><div className="metric-results">{Object.entries(model.metrics??{}).map(([k,v])=><span key={k}><small>{k}</small><b>{formatNumber(v)}</b></span>)}</div>{model.validation_metrics&&<div className="validation-line"><b>Validation avant test final :</b>{Object.entries(model.validation_metrics).map(([k,v])=><span key={k}>{k}: {formatNumber(v)}</span>)}</div>}</Panel>
-      {benchmark.length>0&&<Panel title="Benchmark AutoML"><div className="two-col compact-panels"><div><h4 className="subheading first">Score de validation</h4><BarChart rows={benchmark} valueKey="validation_score" labelKey="label"/></div><div><h4 className="subheading first">Moyenne cross-validation</h4><BarChart rows={benchmark.filter((x:AnyObj)=>x.cv_mean!=null)} valueKey="cv_mean" labelKey="label"/></div></div><details className="matrix-details"><summary>Voir le benchmark détaillé</summary><SimpleTable rows={benchmark} columns={[["label","Modèle"],["validation_score","Score validation"],["cv_mean","Moyenne CV"],["cv_std","Écart-type CV"],["cv_folds","Folds"]]}/></details></Panel>}
+      {benchmark.length>0&&<Panel title="Benchmark AutoML"><div className="two-col compact-panels"><div><h4 className="subheading first">Score de validation</h4><BarChart rows={benchmark.filter((x:AnyObj)=>x.status!=='error')} valueKey="validation_score" labelKey="label"/></div><div><h4 className="subheading first">Moyenne cross-validation</h4><BarChart rows={benchmark.filter((x:AnyObj)=>x.cv_mean!=null)} valueKey="cv_mean" labelKey="label"/></div></div><details className="matrix-details"><summary>Voir le benchmark détaillé</summary><SimpleTable rows={benchmark} columns={[["label","Modèle"],["validation_score","Score validation"],["cv_mean","Moyenne CV"],["cv_std","Écart-type CV"],["cv_folds","Folds"]]}/></details></Panel>}
       <div className="two-col"><Panel title="Garde-fous ML">{guardrails.length?<div className="ml-guardrail-list">{guardrails.map((g:AnyObj,i:number)=><div key={i} className={`ml-guardrail ${g.severity}`}><b>{g.code}</b><span>{g.message}</span>{g.columns&&<small>{JSON.stringify(g.columns)}</small>}</div>)}</div>:<div className="quiet-empty">Aucun diagnostic disponible.</div>}</Panel><Panel title="Importance des variables — permutation">{importance.length?<BarChart rows={importance.slice(0,12).map((x:AnyObj)=>({...x,importance_abs:Math.abs(Number(x.importance)||0)}))} valueKey="importance_abs" labelKey="feature"/>:<div className="quiet-empty">Importance indisponible pour ce modèle.</div>}</Panel></div>
       {model.best_params&&Object.keys(model.best_params).length>0&&<Panel title="Hyperparamètres retenus"><pre className="result-json">{JSON.stringify(model.best_params,null,2)}</pre></Panel>}
       {model.model_card&&<Panel title="Model Card"><div className="model-card-grid"><div><span>Cible</span><b>{model.model_card.target}</b></div><div><span>Dataset</span><b>{model.model_card.dataset?.name??'—'} · v{model.model_card.dataset?.version??'—'}</b></div><div><span>Validation</span><b>{model.model_card.validation_strategy?.split}</b></div><div><span>Créé</span><b>{new Date(model.model_card.created_at).toLocaleString('fr-FR')}</b></div></div><div className="limitation-box"><b>Limites connues</b><ul>{(model.model_card.known_limitations??[]).map((x:string)=><li key={x}>{x}</li>)}</ul></div><code className="model-id">Model ID: {model.model_id}</code></Panel>}
     </>}
   </div>;
 }
+
 function PredictView({ model, text, setText, predicting, doPredict, prediction }: { model:AnyObj|null; text:string; setText:(v:string)=>void; predicting:boolean; doPredict:()=>void; prediction:AnyObj|null }) { if(!model)return <EmptyState title="Prédictions" text="Entraînez d’abord un modèle dans l’onglet Modélisation."/>; return <div className="page"><div className="page-title"><div><span className="eyebrow">INFERENCE</span><h1>Prédictions</h1><p>Soumettez de nouvelles observations au pipeline entraîné.</p></div></div><Panel title="Observations à prédire" action={<code>{model.model_id.slice(0,8)}…</code>}><textarea className="json-editor" value={text} onChange={e=>setText(e.target.value)} spellCheck={false}/><button className="primary-btn real-button" disabled={predicting} onClick={doPredict}>{predicting?'Prédiction…':'▶ Lancer la prédiction'}</button></Panel>{prediction&&<Panel title="Résultat"><pre className="result-json">{JSON.stringify(prediction,null,2)}</pre></Panel>}</div>; }
 
 function ForecastView({ result, setError }: { result:AnyObj|null; setError:(s:string)=>void }) {
@@ -778,12 +873,104 @@ function AnomalyView({ result, setError }: { result:AnyObj|null; setError:(s:str
 }
 
 function XaiView({ result, model, setError }: { result:AnyObj|null; model:AnyObj|null; setError:(s:string)=>void }) {
-  const [diag,setDiag]=useState<AnyObj|null>(null); const [local,setLocal]=useState<AnyObj|null>(null); const [rowText,setRowText]=useState('{}'); const [busy,setBusy]=useState(false); const [explaining,setExplaining]=useState(false);
-  useEffect(()=>{setDiag(null);setLocal(null);if(model&&result){const features=model.model_card?.features??model.model_card?.features??[];const source=result.preview?.rows?.[0]??{};const row:AnyObj={};for(const f of features){if(f in source)row[f]=source[f];}setRowText(JSON.stringify(row,null,2));}},[model?.model_id,result?.dataset?.id]);
-  if(!model)return <EmptyState title="Explicabilité XAI" text="Entraînez d’abord un modèle v0.8+ dans l’onglet Modélisation."/>;
+  const [diag,setDiag]=useState<AnyObj|null>(null);
+  const [local,setLocal]=useState<AnyObj|null>(null);
+  const [rowText,setRowText]=useState('{}');
+  const [busy,setBusy]=useState(false);
+  const [explaining,setExplaining]=useState(false);
+  const [caps,setCaps]=useState<AnyObj|null>(null);
+  const [shap,setShap]=useState<AnyObj|null>(null);
+  const [pdp,setPdp]=useState<AnyObj|null>(null);
+  const [cf,setCf]=useState<AnyObj|null>(null);
+  const [xaiBusy,setXaiBusy]=useState('');
+  const [pdpFeatures,setPdpFeatures]=useState<string[]>([]);
+  const [desiredValue,setDesiredValue]=useState('');
+
+  useEffect(()=>{
+    setDiag(null);setLocal(null);setShap(null);setPdp(null);setCf(null);
+    if(model&&result){
+      const features=model.model_card?.features??model.features??[];
+      const source=result.preview?.rows?.[0]??{};
+      const row:AnyObj={};
+      for(const f of features){if(f in source)row[f]=source[f];}
+      setRowText(JSON.stringify(row,null,2));
+      setPdpFeatures(features.slice(0,Math.min(3,features.length)));
+      getModelXAICapabilities(model.model_id).then(setCaps).catch(()=>setCaps(null));
+    }
+  },[model?.model_id,result?.dataset?.id]);
+
+  if(!model)return <EmptyState title="Explicabilité XAI" text="Entraînez d’abord un modèle dans l’onglet Modélisation."/>;
+  const features=model.model_card?.features??model.features??[];
+
   async function load(){setBusy(true);setError('');try{setDiag(await getModelDiagnostics(model!.model_id));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   async function explain(){setExplaining(true);setError('');try{setLocal(await explainModelPrediction(model!.model_id,JSON.parse(rowText)));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setExplaining(false);}}
-  return <div className="page"><div className="page-title"><div><span className="eyebrow">EXPLAINABLE AI</span><h1>Explicabilité du modèle</h1><p>Diagnostics globaux, importance par permutation, calibration binaire et explication locale par perturbation contrôlée.</p></div><span className="module-state implemented">XAI core</span></div><Panel title="Diagnostics globaux" action={<code>{model.model_id.slice(0,8)}…</code>}><div className="button-row"><RunButton busy={busy} label="Calculer les diagnostics" busyLabel="Calcul…" onClick={load}/>{diag&&<small className="help-text">Évaluation : {diag.evaluation_source} · {diag.rows} lignes</small>}</div></Panel>{diag&&<><Panel title="Importance globale"><BarChart rows={(diag.permutation_importance??[]).slice(0,12).map((x:AnyObj)=>({...x,importance_abs:Math.abs(Number(x.importance)||0)}))} valueKey="importance_abs" labelKey="feature"/></Panel>{diag.task==='classification'&&<><div className="two-col"><Panel title="Matrice de confusion"><ConfusionMatrix matrix={diag.confusion_matrix} classes={diag.classes}/></Panel><Panel title="Courbe ROC"><div className="metrics mini"><Stat label="ROC-AUC" value={formatNumber(diag.roc_auc)}/><Stat label="Brier" value={formatNumber(diag.brier_score)}/></div>{diag.roc_curve&&<CurveChart rows={diag.roc_curve} xKey="fpr" yKey="tpr"/>}</Panel></div><div className="two-col"><Panel title="Precision / Recall">{diag.pr_curve&&<CurveChart rows={diag.pr_curve} xKey="recall" yKey="precision"/>}</Panel><Panel title="Calibration binaire">{diag.calibration&&<CurveChart rows={diag.calibration} xKey="mean_predicted" yKey="fraction_positive"/>}</Panel></div></>}{diag.task==='regression'&&<><Panel title="Résidus — métriques"><div className="metrics"><Stat label="MAE" value={formatNumber(diag.metrics?.mae)}/><Stat label="RMSE" value={formatNumber(diag.metrics?.rmse)}/><Stat label="R²" value={formatNumber(diag.metrics?.r2)}/><Stat label="Écart-type résidus" value={formatNumber(diag.metrics?.residual_std)}/></div></Panel><div className="two-col"><Panel title="Résidus vs prédictions"><ScatterPlot points={(diag.residual_points??[]).map((p:AnyObj)=>({x:p.predicted,y:p.residual}))} xLabel="Prédit" yLabel="Résidu" zeroLine/></Panel><Panel title="Observé vs prédit"><ScatterPlot points={(diag.residual_points??[]).map((p:AnyObj)=>({x:p.predicted,y:p.observed}))} xLabel="Prédit" yLabel="Observé" diagonal/></Panel></div></>}</>}<Panel title="Explication locale"><textarea className="json-editor compact-editor" value={rowText} onChange={e=>setRowText(e.target.value)} spellCheck={false}/><RunButton busy={explaining} label="Expliquer cette prédiction" busyLabel="Explication…" onClick={explain}/>{local&&<div className="local-xai"><div className="advisor-box"><span>PRÉDICTION</span><b>{formatNumber(local.prediction)}</b><p>Méthode : {local.method}</p></div><SimpleTable rows={local.contributions} columns={[["feature","Variable"],["value","Valeur"],["baseline","Baseline"],["effect","Effet local"]]}/><small className="help-text">{local.caveat}</small></div>}</Panel></div>;
+  async function runShap(){setXaiBusy('shap');setError('');try{setShap(await runModelSHAP(model!.model_id,{row:JSON.parse(rowText),max_rows:50}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setXaiBusy('');}}
+  async function runPdp(){if(!pdpFeatures.length)return;setXaiBusy('pdp');setError('');try{setPdp(await runModelPDP(model!.model_id,{features:pdpFeatures,grid_points:16}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setXaiBusy('');}}
+  async function runCf(){setXaiBusy('cf');setError('');try{const row=JSON.parse(rowText);const payload:AnyObj={row,max_changes:2,max_results:5};if(model.task==='regression'){if(desiredValue.trim())payload.desired_value=Number(desiredValue);else payload.direction='increase';}setCf(await runModelCounterfactuals(model!.model_id,payload));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setXaiBusy('');}}
+
+  return <div className="page">
+    <div className="page-title">
+      <div><span className="eyebrow">EXPLAINABLE AI · SHAP · PDP · COUNTERFACTUALS</span><h1>Explicabilité du modèle</h1><p>Diagnostics globaux, permutation importance, calibration, SHAP, dépendance partielle et contre-factuels bornés. Aucune sortie XAI n’est présentée comme une preuve causale.</p></div>
+      <span className="module-state implemented">XAI avancé</span>
+    </div>
+
+    {caps&&<div className="xai-cap-grid">
+      <div><span>SHAP</span><b>{caps.shap?.installed?'disponible':'non installé'}</b></div>
+      <div><span>PDP</span><b>{caps.partial_dependence?'disponible':'—'}</b></div>
+      <div><span>Contre-factuels</span><b>{caps.counterfactual_search?'disponible':'—'}</b></div>
+      <div><span>Calibration</span><b>{caps.calibration?'classification':'non applicable'}</b></div>
+    </div>}
+
+    <Panel title="Diagnostics globaux" action={<code>{model.model_id.slice(0,8)}…</code>}>
+      <div className="button-row"><RunButton busy={busy} label="Calculer les diagnostics" busyLabel="Calcul…" onClick={load}/>{diag&&<small className="help-text">Évaluation : {diag.evaluation_source} · {diag.rows} lignes</small>}</div>
+    </Panel>
+
+    {diag&&<>
+      <Panel title="Importance globale — permutation"><BarChart rows={(diag.permutation_importance??[]).slice(0,12).map((x:AnyObj)=>({...x,importance_abs:Math.abs(Number(x.importance)||0)}))} valueKey="importance_abs" labelKey="feature"/></Panel>
+      {diag.task==='classification'&&<>
+        <div className="two-col"><Panel title="Matrice de confusion"><ConfusionMatrix matrix={diag.confusion_matrix} classes={diag.classes}/></Panel><Panel title="Courbe ROC"><div className="metrics mini"><Stat label="ROC-AUC" value={formatNumber(diag.roc_auc)}/><Stat label="Brier" value={formatNumber(diag.brier_score)}/><Stat label="ECE" value={formatNumber(diag.expected_calibration_error)}/></div>{diag.roc_curve&&<CurveChart rows={diag.roc_curve} xKey="fpr" yKey="tpr"/>}</Panel></div>
+        <div className="two-col"><Panel title="Precision / Recall">{diag.pr_curve&&<CurveChart rows={diag.pr_curve} xKey="recall" yKey="precision"/>}</Panel><Panel title="Calibration binaire">{diag.calibration&&<CurveChart rows={diag.calibration} xKey="mean_predicted" yKey="fraction_positive"/>}</Panel></div>
+      </>}
+      {diag.task==='regression'&&<>
+        <Panel title="Résidus — métriques"><div className="metrics"><Stat label="MAE" value={formatNumber(diag.metrics?.mae)}/><Stat label="RMSE" value={formatNumber(diag.metrics?.rmse)}/><Stat label="R²" value={formatNumber(diag.metrics?.r2)}/><Stat label="Écart-type résidus" value={formatNumber(diag.metrics?.residual_std)}/></div></Panel>
+        <div className="two-col"><Panel title="Résidus vs prédictions"><ScatterPlot points={(diag.residual_points??[]).map((p:AnyObj)=>({x:p.predicted,y:p.residual}))} xLabel="Prédit" yLabel="Résidu" zeroLine/></Panel><Panel title="Observé vs prédit"><ScatterPlot points={(diag.residual_points??[]).map((p:AnyObj)=>({x:p.predicted,y:p.observed}))} xLabel="Prédit" yLabel="Observé" diagonal/></Panel></div>
+      </>}
+    </>}
+
+    <Panel title="Observation de référence">
+      <textarea className="json-editor compact-editor" value={rowText} onChange={e=>setRowText(e.target.value)} spellCheck={false}/>
+      <div className="button-row">
+        <RunButton busy={explaining} label="Explication locale" busyLabel="Explication…" onClick={explain}/>
+        <button className="secondary-btn real-button" disabled={!!xaiBusy} onClick={()=>void runShap()}>{xaiBusy==='shap'?'SHAP…':'Calculer SHAP'}</button>
+        <button className="secondary-btn real-button" disabled={!!xaiBusy} onClick={()=>void runCf()}>{xaiBusy==='cf'?'Recherche…':'Chercher des contre-factuels'}</button>
+      </div>
+      {model.task==='regression'&&<label className="inline-xai-field">Valeur cible contrefactuelle (optionnel)<input type="number" value={desiredValue} onChange={e=>setDesiredValue(e.target.value)} placeholder="Sinon : augmenter la prédiction"/></label>}
+    </Panel>
+
+    {local&&<Panel title="Explication locale — perturbation"><div className="local-xai"><div className="advisor-box"><span>PRÉDICTION</span><b>{formatNumber(local.prediction)}</b><p>Méthode : {local.method}</p></div><SimpleTable rows={local.contributions} columns={[["feature","Variable"],["value","Valeur"],["baseline","Baseline"],["effect","Effet local"]]}/><small className="help-text">{local.caveat}</small></div></Panel>}
+
+    {shap&&<Panel title="SHAP">
+      {shap.status==='ok'?<>
+        <div className="advisor-box"><span>MÉTHODE</span><b>{shap.method}</b><p>{shap.rows_explained} lignes · {shap.transformed_features} variables transformées</p></div>
+        <BarChart rows={(shap.global_importance??[]).slice(0,15)} valueKey="abs_value" labelKey="feature"/>
+        {shap.local?.contributions&&<details><summary>Contribution SHAP locale</summary><SimpleTable rows={shap.local.contributions.slice(0,20)} columns={[["feature","Variable"],["value","SHAP"],["abs_value","|SHAP|"]]}/></details>}
+        <small className="help-text">{shap.caveat}</small>
+      </>:<div className="warning-box">SHAP indisponible pour ce pipeline : {shap.reason}</div>}
+    </Panel>}
+
+    <Panel title="Dépendance partielle (PDP)">
+      <div className="check-grid">{features.map((f:string)=><label key={f}><input type="checkbox" checked={pdpFeatures.includes(f)} onChange={e=>setPdpFeatures(e.target.checked?[...pdpFeatures,f].slice(0,8):pdpFeatures.filter(x=>x!==f))}/>{f}</label>)}</div>
+      <button className="secondary-btn real-button" disabled={xaiBusy==='pdp'||!pdpFeatures.length} onClick={()=>void runPdp()}>{xaiBusy==='pdp'?'Calcul PDP…':'Calculer PDP'}</button>
+      {pdp&&<div className="pdp-grid">{(pdp.curves??[]).map((curve:AnyObj)=><article key={curve.feature}><b>{curve.feature}</b><small>{curve.kind}{curve.target_class!=null?` · classe ${curve.target_class}`:''}</small>{curve.kind==='numeric'?<LineChart rows={curve.points.map((p:AnyObj)=>({x:Number(p.value),y:Number(p.response)}))} xKey="x" yKey="y"/>:<SimpleTable rows={curve.points} columns={[["value","Valeur"],["response","Réponse moyenne"]]}/>}</article>)}</div>}
+      {pdp&&<small className="help-text">{pdp.caveat}</small>}
+    </Panel>
+
+    {cf&&<Panel title="Contre-factuels">
+      <div className="decision-warning">{cf.caveat}</div>
+      <SimpleTable rows={(cf.counterfactuals??[]).map((x:AnyObj)=>({reached:x.reached?'oui':'non',prediction:x.prediction,target_probability:x.target_probability,distance:x.distance,changes:JSON.stringify(x.changes)}))} columns={[["reached","Objectif atteint"],["prediction","Prédiction"],["target_probability","Proba cible"],["distance","Distance"],["changes","Modifications"]]}/>
+      <small className="help-text">{cf.searched_candidates} candidats évalués par le modèle sauvegardé.</small>
+    </Panel>}
+  </div>;
 }
 
 function ConfusionMatrix({matrix,classes}:{matrix:number[][];classes:any[]}) { if(!matrix?.length)return <div className="quiet-empty">Indisponible</div>; return <div className="confusion-grid" style={{gridTemplateColumns:`80px repeat(${classes.length},minmax(60px,1fr))`}}><span></span>{classes.map(c=><b key={`h${c}`}>Prédit {String(c)}</b>)}{matrix.map((row,i)=><><b key={`r${i}`}>Réel {String(classes[i])}</b>{row.map((v,j)=><span key={`${i}-${j}`} className={i===j?'correct':''}>{v}</span>)}</>)}</div>; }
@@ -915,17 +1102,207 @@ function DecisionLab({result,model,setError,setView}:{result:AnyObj|null;model:A
   const [feature,setFeature]=useState('');
   const [range,setRange]=useState({min:0,max:10,steps:9});
   const [busy,setBusy]=useState(false);
-  useEffect(()=>{if(!model||!result)return;const features=model.model_card?.features??model.features??[];const src=result.preview?.rows?.[0]??{};const row:AnyObj={};for(const f of features)row[f]=src[f]??null;setBaseText(JSON.stringify(row,null,2));const first=features.find((f:string)=>typeof row[f]==='number')??features[0]??'';setFeature(first);if(first&&typeof row[first]==='number'){const v=Number(row[first]);const span=Math.max(Math.abs(v)*.25,1);setRange({min:Number((v-span).toFixed(3)),max:Number((v+span).toFixed(3)),steps:9});setScenariosText(JSON.stringify([{name:'-10 %',["overrides"]:{[first]:Number((v*.9).toFixed(3))}},{name:'+10 %',["overrides"]:{[first]:Number((v*1.1).toFixed(3))}}],null,2));}},[model?.model_id,result?.dataset?.id]);
-  if(!result)return <EmptyState title="Decision Lab" text="Chargez un dataset puis entraînez un modèle pour simuler des scénarios."/>;
-  if(!model)return <div className="page"><div className="page-title"><div><span className="eyebrow">DECISION INTELLIGENCE</span><h1>Decision Lab</h1><p>Comparez des scénarios contrefactuels avec un modèle réellement entraîné et mesurez la sensibilité des prédictions.</p></div></div><div className="decision-empty"><span>⇄</span><h3>Aucun modèle actif</h3><p>Entraînez un modèle dans AutoML. Le Decision Lab utilisera exactement le pipeline sauvegardé pour comparer vos hypothèses.</p><button className="primary-btn" onClick={()=>setView('model')}>Ouvrir AutoML</button></div></div>;
-  const features=model.model_card?.features??model.features??[];
-  async function run(){setBusy(true);setError('');try{const base=JSON.parse(baseText),scenarios=JSON.parse(scenariosText);if(!Array.isArray(scenarios))throw new Error('Les scénarios doivent être un tableau JSON.');setOut(await runModelWhatIf(model!.model_id,{base_row:base,scenarios}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
-  async function sens(){if(!feature)return;setBusy(true);setError('');try{const base=JSON.parse(baseText);const steps=Math.max(3,Math.min(30,range.steps));const values=Array.from({length:steps},(_,i)=>range.min+(range.max-range.min)*i/(steps-1));setSensitivity(await runModelSensitivity(model!.model_id,{base_row:base,feature,values}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+
+  const [rcaTarget,setRcaTarget]=useState('');
+  const [rcaCompare,setRcaCompare]=useState('');
+  const [rcaMetric,setRcaMetric]=useState<'mean'|'sum'|'count'>('mean');
+  const [rcaTimeGrain,setRcaTimeGrain]=useState<'auto'|'raw'|'day'|'week'|'month'|'quarter'|'year'>('auto');
+  const [rcaDimensions,setRcaDimensions]=useState<string[]>([]);
+  const [rca,setRca]=useState<AnyObj|null>(null);
+  const [rcaBusy,setRcaBusy]=useState(false);
+
+  const [controlsText,setControlsText]=useState('{}');
+  const [objective,setObjective]=useState<'maximize'|'minimize'|'target'>('maximize');
+  const [objectiveTarget,setObjectiveTarget]=useState('');
+  const [optimized,setOptimized]=useState<AnyObj|null>(null);
+  const [optBusy,setOptBusy]=useState(false);
+
+  useEffect(()=>{
+    if(!result)return;
+    const cols=result.profile?.columns??[];
+    const numeric=cols.filter((c:AnyObj)=>isNumeric(c));
+    const comparative=cols.filter((c:AnyObj)=>{
+      const name=String(c.name??'').toLowerCase();
+      const dateLike=name.includes('date')||name.includes('time')||name.includes('month')||name.includes('mois')||name.includes('year')||name.includes('annee')||name.includes('année');
+      return Number(c.unique??0)>=2&&(Number(c.unique??0)<=100||dateLike);
+    });
+    setRcaTarget(prev=>prev&&cols.some((c:AnyObj)=>c.name===prev)?prev:(numeric[0]?.name??''));
+    setRcaCompare(prev=>prev&&cols.some((c:AnyObj)=>c.name===prev)?prev:(comparative[0]?.name??''));
+    setRcaDimensions(prev=>prev.length?prev:comparative.slice(1,5).map((c:AnyObj)=>c.name));
+    setRca(null);
+
+    if(!model)return;
+    const features=model.model_card?.features??model.features??[];
+    const src=result.preview?.rows?.[0]??{};
+    const row:AnyObj={};
+    for(const f of features)row[f]=src[f]??null;
+    setBaseText(JSON.stringify(row,null,2));
+    const first=features.find((f:string)=>typeof row[f]==='number')??features[0]??'';
+    setFeature(first);
+
+    const controls:AnyObj={};
+    for(const f of features.slice(0,5)){
+      const v=row[f];
+      if(typeof v==='number'&&Number.isFinite(v)){
+        const span=Math.max(Math.abs(v)*.2,1);
+        controls[f]={min:Number((v-span).toFixed(4)),max:Number((v+span).toFixed(4)),steps:5};
+      }else if(v!=null){
+        controls[f]={values:[v]};
+      }
+    }
+    setControlsText(JSON.stringify(controls,null,2));
+
+    if(first&&typeof row[first]==='number'){
+      const v=Number(row[first]);
+      const span=Math.max(Math.abs(v)*.25,1);
+      setRange({min:Number((v-span).toFixed(3)),max:Number((v+span).toFixed(3)),steps:9});
+      setScenariosText(JSON.stringify([
+        {name:'-10 %',overrides:{[first]:Number((v*.9).toFixed(3))}},
+        {name:'+10 %',overrides:{[first]:Number((v*1.1).toFixed(3))}},
+      ],null,2));
+    }
+  },[model?.model_id,result?.dataset?.id]);
+
+  if(!result)return <EmptyState title="Decision Lab" text="Chargez un dataset pour analyser les écarts, identifier les facteurs associés et simuler des décisions."/>;
+  const columns=result.profile?.columns??[];
+  const numericColumns=columns.filter((c:AnyObj)=>isNumeric(c));
+  const comparisonColumns=columns.filter((c:AnyObj)=>{
+    const name=String(c.name??'').toLowerCase();
+    const dateLike=name.includes('date')||name.includes('time')||name.includes('month')||name.includes('mois')||name.includes('year')||name.includes('annee')||name.includes('année');
+    return Number(c.unique??0)>=2&&(Number(c.unique??0)<=100||dateLike);
+  });
+  const features=model?.model_card?.features??model?.features??[];
+
+  async function runRca(){
+    if(!rcaTarget||!rcaCompare)return;
+    setRcaBusy(true);setError('');
+    try{
+      setRca(await runRootCauseAnalysis(result!.dataset.id,{
+        target:rcaTarget,
+        comparison_column:rcaCompare,
+        metric:rcaMetric,
+        dimensions:rcaDimensions,
+        time_grain:rcaTimeGrain,
+        min_segment_size:3,
+        top_n:8,
+      }));
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setRcaBusy(false);}
+  }
+
+  async function run(){
+    if(!model)return;
+    setBusy(true);setError('');
+    try{
+      const base=JSON.parse(baseText),scenarios=JSON.parse(scenariosText);
+      if(!Array.isArray(scenarios))throw new Error('Les scénarios doivent être un tableau JSON.');
+      setOut(await runModelWhatIf(model.model_id,{base_row:base,scenarios}));
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false);}
+  }
+
+  async function sens(){
+    if(!model||!feature)return;
+    setBusy(true);setError('');
+    try{
+      const base=JSON.parse(baseText);
+      const steps=Math.max(3,Math.min(30,range.steps));
+      const values=Array.from({length:steps},(_,i)=>range.min+(range.max-range.min)*i/(steps-1));
+      setSensitivity(await runModelSensitivity(model.model_id,{base_row:base,feature,values}));
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false);}
+  }
+
+  async function optimize(){
+    if(!model)return;
+    setOptBusy(true);setError('');
+    try{
+      const base=JSON.parse(baseText);
+      const controls=JSON.parse(controlsText);
+      setOptimized(await optimizeModelScenarios(model.model_id,{
+        base_row:base,
+        controls,
+        objective,
+        target_value:objective==='target'&&objectiveTarget.trim()?Number(objectiveTarget):null,
+        max_candidates:2000,
+        max_results:10,
+      }));
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setOptBusy(false);}
+  }
+
   const scenarioRows=(out?.scenarios??[]).map((x:AnyObj)=>({...x,delta_display:x.delta_pct==null?'—':`${x.delta_pct>=0?'+':''}${formatNumber(x.delta_pct,1)}%`}));
-  return <div className="page decision-page"><div className="page-title"><div><span className="eyebrow">WHAT-IF · SENSITIVITY · MODEL EVIDENCE</span><h1>Decision Lab</h1><p>Testez des hypothèses sans modifier les données originales. Les résultats représentent le comportement du modèle, pas une preuve causale.</p></div><span className="model-badge">{model.algorithm??model.model_card?.algorithm}</span></div>
-    <div className="decision-grid"><Panel title="Référence"><textarea className="json-editor compact-editor" value={baseText} onChange={e=>setBaseText(e.target.value)} spellCheck={false}/></Panel><Panel title="Scénarios"><textarea className="json-editor compact-editor" value={scenariosText} onChange={e=>setScenariosText(e.target.value)} spellCheck={false}/><RunButton busy={busy} label="Comparer les scénarios" busyLabel="Simulation…" onClick={run}/></Panel></div>
-    {out&&<Panel title="Impact sur la prédiction" action={<span className="quiet">{out.target} · {out.task}</span>}><div className="decision-warning">{out.warning}</div><div className="scenario-cards">{out.scenarios.map((x:AnyObj,i:number)=><article key={i} className={i===0?'baseline':''}><span>{x.name}</span><strong>{formatNumber(x.prediction,3)}</strong>{x.delta_pct!=null&&<small className={x.delta_pct>=0?'up':'down'}>{x.delta_pct>=0?'+':''}{formatNumber(x.delta_pct,1)}%</small>}{x.probabilities&&<small>Probabilités : {x.probabilities.map((p:number)=>formatNumber(p,2)).join(' · ')}</small>}</article>)}</div><details><summary>Voir le détail des scénarios</summary><SimpleTable rows={scenarioRows} columns={[["name","Scénario"],["prediction","Prédiction"],["delta_display","Variation"]]}/></details></Panel>}
-    <Panel title="Analyse de sensibilité"><div className="decision-sensitivity-form"><label>Variable<select value={feature} onChange={e=>setFeature(e.target.value)}>{features.map((f:string)=><option key={f}>{f}</option>)}</select></label><label>Minimum<input type="number" value={range.min} onChange={e=>setRange({...range,min:Number(e.target.value)})}/></label><label>Maximum<input type="number" value={range.max} onChange={e=>setRange({...range,max:Number(e.target.value)})}/></label><label>Points<input type="number" min={3} max={30} value={range.steps} onChange={e=>setRange({...range,steps:Number(e.target.value)})}/></label><RunButton busy={busy} label="Tracer la sensibilité" busyLabel="Calcul…" onClick={sens}/></div>{sensitivity&&<>{sensitivity.task==='regression'?<LineChart rows={sensitivity.points.map((p:AnyObj)=>({x:Number(p.value),y:Number(p.prediction)}))} xKey="x" yKey="y"/>:<SimpleTable rows={sensitivity.points.map((p:AnyObj)=>({value:p.value,prediction:p.prediction,probability:Math.max(...(p.probabilities??[]))}))} columns={[["value","Valeur"],["prediction","Classe"],["probability","Probabilité max"]]}/>}<small className="help-text">Courbe obtenue par inférence répétée du modèle sauvegardé, les autres variables restant à leur valeur de référence.</small></>}</Panel>
+  const rcaTop=(rca?.dimension_decompositions??[]).flatMap((d:AnyObj)=>(d.top_segments??[]).slice(0,4).map((s:AnyObj)=>({dimension:d.dimension,...s}))).sort((a:AnyObj,b:AnyObj)=>Math.abs(Number(b.contribution))-Math.abs(Number(a.contribution))).slice(0,12);
+
+  return <div className="page decision-page">
+    <div className="page-title">
+      <div><span className="eyebrow">ROOT CAUSE · WHAT-IF · OPTIMIZATION · MODEL EVIDENCE</span><h1>Decision Lab</h1><p>Expliquez les écarts observés, mesurez les changements de distribution et explorez des scénarios sans modifier les données originales. Les résultats décrivent des associations et le comportement des modèles, jamais une causalité garantie.</p></div>
+      {model?<span className="model-badge">{model.algorithm??model.model_card?.algorithm}</span>:<span className="module-state implemented">RCA sans modèle</span>}
+    </div>
+
+    <Panel title="Root Cause Analysis — décomposition de l’écart" action={<span className="quiet">moteur déterministe</span>}>
+      <div className="rca-form">
+        <label>Indicateur cible<select value={rcaTarget} onChange={e=>setRcaTarget(e.target.value)}>{numericColumns.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label>
+        <label>Comparer selon<select value={rcaCompare} onChange={e=>setRcaCompare(e.target.value)}>{comparisonColumns.filter((c:AnyObj)=>c.name!==rcaTarget).map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label>
+        <label>Agrégation<select value={rcaMetric} onChange={e=>setRcaMetric(e.target.value as any)}><option value="mean">Moyenne</option><option value="sum">Somme</option><option value="count">Nombre de valeurs</option></select></label>
+        <label>Granularité date<select value={rcaTimeGrain} onChange={e=>setRcaTimeGrain(e.target.value as any)}><option value="auto">Auto</option><option value="raw">Valeur brute</option><option value="day">Jour</option><option value="week">Semaine</option><option value="month">Mois</option><option value="quarter">Trimestre</option><option value="year">Année</option></select></label>
+        <RunButton busy={rcaBusy} label="Identifier les facteurs" busyLabel="Décomposition…" onClick={runRca}/>
+      </div>
+      <div className="rca-dimensions"><span>Dimensions explicatives</span><div className="check-grid">{comparisonColumns.filter((c:AnyObj)=>c.name!==rcaCompare&&c.name!==rcaTarget).slice(0,14).map((c:AnyObj)=><label key={c.name}><input type="checkbox" checked={rcaDimensions.includes(c.name)} onChange={e=>setRcaDimensions(e.target.checked?[...rcaDimensions,c.name].slice(0,20):rcaDimensions.filter(x=>x!==c.name))}/>{c.name}</label>)}</div></div>
+      <small className="help-text">Si aucune période n’est fournie explicitement, DataVision compare automatiquement les deux dernières valeurs de la variable de comparaison.</small>
+    </Panel>
+
+    {rca&&<>
+      <div className="metrics four">
+        <Stat label={`Baseline · ${String(rca.baseline.value)}`} value={formatNumber(rca.baseline.metric,3)}/>
+        <Stat label={`Actuel · ${String(rca.current.value)}`} value={formatNumber(rca.current.metric,3)}/>
+        <Stat label="Écart" value={`${Number(rca.delta)>=0?'+':''}${formatNumber(rca.delta,3)}`}/>
+        <Stat label="Écart %" value={rca.delta_pct==null?'—':`${Number(rca.delta_pct)>=0?'+':''}${formatNumber(rca.delta_pct,1)}%`}/>
+      </div>
+      <Panel title="Principales contributions à l’écart">
+        {rcaTop.length?<SimpleTable rows={rcaTop} columns={[["dimension","Dimension"],["segment","Segment"],["baseline_count","N baseline"],["current_count","N actuel"],["baseline_mean","Moy. baseline"],["current_mean","Moy. actuelle"],["contribution","Contribution"],["mix_effect","Effet mix"],["rate_effect","Effet niveau"]]}/>:<div className="quiet-empty">Aucune contribution suffisamment documentée.</div>}
+      </Panel>
+      <div className="two-col">
+        <Panel title="Dimensions les plus discriminantes">
+          <SimpleTable rows={(rca.dimension_decompositions??[]).slice(0,10)} columns={[["dimension","Dimension"],["segments_analyzed","Segments"],["top_contribution_share","Concentration top"],["absolute_contribution","Contribution absolue"],["reconciliation_error","Erreur réconciliation"]]}/>
+        </Panel>
+        <Panel title="Changements de distribution">
+          <SimpleTable rows={(rca.feature_shifts??[]).slice(0,12).map((x:AnyObj)=>({...x,detail:x.type==='numeric'?`Δ=${formatNumber(x.delta,3)} · d=${formatNumber(x.standardized_shift,2)}`:`TVD=${formatNumber(x.tvd,2)}`}))} columns={[["feature","Variable"],["type","Type"],["score","Score shift"],["detail","Détail"]]}/>
+        </Panel>
+      </div>
+      <div className="decision-warning">{rca.caveat}</div>
+      <small className="help-text">Provenance : dataset {rca.provenance?.dataset_id} · version {rca.provenance?.dataset_version??'—'} · {rca.provenance?.calculation_engine} · granularité {rca.comparison_time_grain}</small>
+    </>}
+
+    {!model&&<div className="decision-empty compact">
+      <span>⇄</span><h3>Simulation prédictive non disponible</h3><p>La Root Cause Analysis fonctionne déjà. Pour What-if, sensibilité et optimisation de scénarios, entraînez un modèle dans AutoML.</p><button className="primary-btn" onClick={()=>setView('model')}>Ouvrir AutoML</button>
+    </div>}
+
+    {model&&<>
+      <div className="decision-grid">
+        <Panel title="Référence"><textarea className="json-editor compact-editor" value={baseText} onChange={e=>setBaseText(e.target.value)} spellCheck={false}/></Panel>
+        <Panel title="Scénarios manuels"><textarea className="json-editor compact-editor" value={scenariosText} onChange={e=>setScenariosText(e.target.value)} spellCheck={false}/><RunButton busy={busy} label="Comparer les scénarios" busyLabel="Simulation…" onClick={run}/></Panel>
+      </div>
+
+      {out&&<Panel title="Impact sur la prédiction" action={<span className="quiet">{out.target} · {out.task}</span>}><div className="decision-warning">{out.warning}</div><div className="scenario-cards">{out.scenarios.map((x:AnyObj,i:number)=><article key={i} className={i===0?'baseline':''}><span>{x.name}</span><strong>{formatNumber(x.prediction,3)}</strong>{x.delta_pct!=null&&<small className={x.delta_pct>=0?'up':'down'}>{x.delta_pct>=0?'+':''}{formatNumber(x.delta_pct,1)}%</small>}{x.probabilities&&<small>Probabilités : {x.probabilities.map((p:number)=>formatNumber(p,2)).join(' · ')}</small>}</article>)}</div><details><summary>Voir le détail des scénarios</summary><SimpleTable rows={scenarioRows} columns={[["name","Scénario"],["prediction","Prédiction"],["delta_display","Variation"]]}/></details></Panel>}
+
+      <Panel title="Analyse de sensibilité"><div className="decision-sensitivity-form"><label>Variable<select value={feature} onChange={e=>setFeature(e.target.value)}>{features.map((f:string)=><option key={f}>{f}</option>)}</select></label><label>Minimum<input type="number" value={range.min} onChange={e=>setRange({...range,min:Number(e.target.value)})}/></label><label>Maximum<input type="number" value={range.max} onChange={e=>setRange({...range,max:Number(e.target.value)})}/></label><label>Points<input type="number" min={3} max={30} value={range.steps} onChange={e=>setRange({...range,steps:Number(e.target.value)})}/></label><RunButton busy={busy} label="Tracer la sensibilité" busyLabel="Calcul…" onClick={sens}/></div>{sensitivity&&<>{sensitivity.task==='regression'?<LineChart rows={sensitivity.points.map((p:AnyObj)=>({x:Number(p.value),y:Number(p.prediction)}))} xKey="x" yKey="y"/>:<SimpleTable rows={sensitivity.points.map((p:AnyObj)=>({value:p.value,prediction:p.prediction,probability:Math.max(...(p.probabilities??[]))}))} columns={[["value","Valeur"],["prediction","Classe"],["probability","Probabilité max"]]}/>}<small className="help-text">Courbe obtenue par inférence répétée du modèle sauvegardé, les autres variables restant à leur valeur de référence.</small></>}</Panel>
+
+      <Panel title="Optimisation multi-scénarios">
+        <div className="decision-opt-grid">
+          <label>Objectif<select value={objective} onChange={e=>setObjective(e.target.value as any)}><option value="maximize">Maximiser</option><option value="minimize">Minimiser</option><option value="target">Atteindre une valeur</option></select></label>
+          {objective==='target'&&<label>Valeur cible<input type="number" value={objectiveTarget} onChange={e=>setObjectiveTarget(e.target.value)}/></label>}
+        </div>
+        <label className="json-label">Variables contrôlables<textarea className="json-editor compact-editor" value={controlsText} onChange={e=>setControlsText(e.target.value)} spellCheck={false}/></label>
+        <RunButton busy={optBusy} label="Optimiser les scénarios" busyLabel="Exploration…" onClick={optimize}/>
+        <small className="help-text">Maximum 5 variables contrôlables et 5 000 combinaisons. Les valeurs sont évaluées par le modèle sauvegardé.</small>
+      </Panel>
+
+      {optimized&&<Panel title="Scénarios recommandés" action={<span className="quiet">{optimized.searched_candidates} candidats évalués</span>}>
+        <div className="decision-warning">{optimized.warning}</div>
+        <SimpleTable rows={(optimized.recommended_scenarios??[]).map((x:AnyObj,i:number)=>({rank:i+1,prediction:x.prediction,target_probability:x.target_probability,score:x.score,change_cost:x.change_cost,overrides:JSON.stringify(x.overrides)}))} columns={[["rank","#"],["prediction","Prédiction"],["target_probability","Proba cible"],["score","Score objectif"],["change_cost","Coût de changement"],["overrides","Variables"]]}/>
+      </Panel>}
+    </>}
   </div>;
 }
 
@@ -1378,6 +1755,7 @@ function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)
   const [session,setSession]=useState<AnyObj|null>(null);
   const [workspaceId,setWorkspaceId]=useState('');
   const [overview,setOverview]=useState<AnyObj>({connectors:[],sources:[],schedules:[]});
+  const [connectorCatalog,setConnectorCatalog]=useState<AnyObj[]>([]);
   const [health,setHealth]=useState<AnyObj|null>(null);
   const [runs,setRuns]=useState<AnyObj[]>([]);
   const [busy,setBusy]=useState(false);
@@ -1392,6 +1770,7 @@ function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)
   const [connectorUser,setConnectorUser]=useState('');
   const [connectorPassword,setConnectorPassword]=useState('');
   const [connectorSsl,setConnectorSsl]=useState('require');
+  const [connectorOptionsText,setConnectorOptionsText]=useState('{}');
   const [selectedConnector,setSelectedConnector]=useState('');
   const [discovery,setDiscovery]=useState<AnyObj|null>(null);
   const [sourceName,setSourceName]=useState('');
@@ -1410,13 +1789,17 @@ function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)
   const role=activeWorkspace?.role??'';
   const canManage=['owner','admin'].includes(role);
   const canRefresh=['owner','admin','data_scientist'].includes(role);
+  const connectorSpec=connectorCatalog.find((c:AnyObj)=>c.key===connectorType)??null;
+  const selectedConnectorRecord=(overview.connectors??[]).find((c:AnyObj)=>c.id===selectedConnector);
+  const selectedConnectorType=selectedConnectorRecord?.connector_type??'';
+  const connectorLogo=(type:string)=>({postgresql:'PG',mysql:'MY',mariadb:'MA',sqlite:'SQ',sqlserver:'MS',oracle:'OR',redshift:'RS',snowflake:'SF',databricks:'DB',bigquery:'BQ',mongodb:'MO'} as AnyObj)[type]??String(type||'?').slice(0,2).toUpperCase();
 
   async function load(t=token,ws=workspaceId){
     if(!t||!ws)return;
     setBusy(true);
     try{
-      const [o,h,r]=await Promise.all([getConnectorOverview(t,ws),getConnectorHealth(t,ws),getRefreshRuns(t,ws,runFilter||undefined)]);
-      setOverview(o);setHealth(h);setRuns(r.runs??[]);
+      const [catalog,o,h,r]=await Promise.all([getConnectorCatalog(t,ws),getConnectorOverview(t,ws),getConnectorHealth(t,ws),getRefreshRuns(t,ws,runFilter||undefined)]);
+      setConnectorCatalog(catalog.connectors??[]);setOverview(o);setHealth(h);setRuns(r.runs??[]);
       if(!selectedConnector&&o.connectors?.[0]?.id)setSelectedConnector(o.connectors[0].id);
     }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
     finally{setBusy(false)}
@@ -1435,14 +1818,43 @@ function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)
     setWorkspaceId(id);setDiscovery(null);setPreview(null);setRunFilter('');
     if(typeof window!=='undefined'){localStorage.setItem('dv_enterprise_workspace',id);window.dispatchEvent(new Event('datavision-enterprise-session'));}
   }
+  function changeConnectorType(type:string){
+    setConnectorType(type);
+    const spec=connectorCatalog.find((c:AnyObj)=>c.key===type);
+    setConnectorPort(String(spec?.default_port??''));
+    setConnectorHost('');
+    setConnectorDb('');
+    setConnectorUser('');
+    setConnectorPassword('');
+    const options:AnyObj={};
+    for(const key of (spec?.options??[]))options[key]='';
+    setConnectorOptionsText(JSON.stringify(options,null,2));
+    setConnectorSsl(type==='sqlite'||type==='bigquery'?'prefer':'require');
+  }
+
   async function createConnector(){
-    if(!token||!workspaceId||!connectorHost||!connectorDb||!connectorUser)return;
+    if(!token||!workspaceId)return;
     setBusy(true);setNotice('');
     try{
-      const r=await createDataConnector(token,workspaceId,{name:connectorName,connector_type:connectorType,host:connectorHost,port:Number(connectorPort)||(connectorType==='postgresql'?5432:3306),database:connectorDb,username:connectorUser,password:connectorPassword,ssl_mode:connectorSsl});
-      setConnectorPassword('');setSelectedConnector(r.connector.id);setShowConnectorForm(false);setNotice('Connecteur enregistré. Testez la connexion avant de créer une source.');await load();
-    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
+      let options:AnyObj={};
+      try{options=connectorOptionsText.trim()?JSON.parse(connectorOptionsText):{};}catch{throw new Error('Options JSON invalides.');}
+      if(connectorSpec?.host_required&&!connectorHost.trim())throw new Error(`Hôte requis pour ${connectorSpec.label}.`);
+      if(connectorSpec?.database_required&&!connectorDb.trim())throw new Error(`Base / projet requis pour ${connectorSpec.label}.`);
+      if(connectorSpec?.username_required&&!connectorUser.trim())throw new Error(`Utilisateur requis pour ${connectorSpec.label}.`);
+      if(connectorSpec?.secret_required&&!connectorPassword)throw new Error(`${connectorSpec.secret_label} requis.`);
+      const r=await createDataConnector(token,workspaceId,{
+        name:connectorName,connector_type:connectorType,host:connectorHost,
+        port:Number(connectorPort)||Number(connectorSpec?.default_port??0)||null,
+        database:connectorDb,username:connectorUser,password:connectorPassword,
+        ssl_mode:connectorSsl,options,
+      });
+      setConnectorPassword('');setSelectedConnector(r.connector.id);setShowConnectorForm(false);
+      setNotice('Connecteur enregistré. Testez la connexion avant de créer une source.');
+      await load();
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false)}
   }
+
   async function testConnector(id:string){
     setBusy(true);setNotice('');
     try{const r=await testDataConnector(token,workspaceId,id);setNotice(r.ok?'Connexion validée.':`Échec de connexion : ${r.error??'erreur inconnue'}`);await load();}
@@ -1450,11 +1862,11 @@ function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)
   }
   async function discoverConnector(id:string){
     setBusy(true);setNotice('');
-    try{const r=await discoverDataConnector(token,workspaceId,id);setSelectedConnector(id);setDiscovery(r);setNotice(`${r.tables?.length??0} tables découvertes.`);}
+    try{const r=await discoverDataConnector(token,workspaceId,id);setSelectedConnector(id);setDiscovery(r);setNotice(`${r.tables?.length??0} objets découverts.`);}
     catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
   }
   function useTable(table:AnyObj){
-    setSelectedConnector(discovery?.connector?.id??selectedConnector);setSourceKind('table');setTableName(table.qualified_name);setSourceName(table.name);setShowSourceForm(true);
+    setSelectedConnector(discovery?.connector?.id??selectedConnector);setSourceKind(table.kind==='collection'?'collection':'table');setTableName(table.qualified_name);setSourceName(table.name);setShowSourceForm(true);
     const candidate=(table.columns??[]).find((c:AnyObj)=>/(updated|created|date|time|timestamp|id)$/i.test(String(c.name)))?.name??'';
     setIncrementalColumn(candidate);
   }
@@ -1462,7 +1874,8 @@ function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)
     if(!token||!workspaceId||!selectedConnector||!sourceName)return;
     setBusy(true);setNotice('');
     try{
-      await createConnectorSource(token,workspaceId,{connector_id:selectedConnector,name:sourceName,source_kind:sourceKind,table_name:sourceKind==='table'?tableName:null,query:sourceKind==='query'?sourceQuery:null,refresh_mode:refreshMode,incremental_column:refreshMode==='incremental'?incrementalColumn:null,freshness_sla_minutes:Number(slaMinutes)||1440,schema_drift_policy:driftPolicy});
+      const effectiveSourceKind=selectedConnectorType==='mongodb'?'collection':sourceKind;
+      await createConnectorSource(token,workspaceId,{connector_id:selectedConnector,name:sourceName,source_kind:effectiveSourceKind,table_name:effectiveSourceKind==='query'?null:tableName,query:effectiveSourceKind==='query'?sourceQuery:null,refresh_mode:refreshMode,incremental_column:refreshMode==='incremental'?incrementalColumn:null,freshness_sla_minutes:Number(slaMinutes)||1440,schema_drift_policy:driftPolicy,source_options:{}});
       setShowSourceForm(false);setSourceName('');setTableName('');setSourceQuery('');setNotice('Source créée. Lancez le premier refresh pour matérialiser le dataset.');await load();
     }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
   }
@@ -1497,19 +1910,19 @@ function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)
     {notice&&<div className="source-notice"><span>◎</span><p>{notice}</p><button onClick={()=>setNotice('')}>×</button></div>}
     <div className="sources-scorecards"><Stat label="Connecteurs" value={health?.connectors??0} detail={`${health?.connector_errors??0} en erreur`}/><Stat label="Sources" value={health?.sources??0} detail={`${health?.scheduled??0} planifiée(s)`}/><Stat label="Fraîches" value={fresh} detail={`${stale} stale / erreur`}/><Stat label="Succès refresh" value={health?.success_rate==null?'—':`${health.success_rate}%`} detail={`${health?.runs_considered??0} exécution(s)`}/><Stat label="Lignes ingérées" value={formatNumber(health?.rows_fetched??0,0)} detail={health?.avg_duration_seconds==null?'Durée n/a':`Ø ${formatNumber(health.avg_duration_seconds,1)} s`}/></div>
 
-    {showConnectorForm&&<Panel title="Nouveau connecteur sécurisé" action={<span className="quiet">Le mot de passe est chiffré avant stockage.</span>}><div className="connector-form-grid"><label>Nom<input value={connectorName} onChange={e=>setConnectorName(e.target.value)}/></label><label>Moteur<select value={connectorType} onChange={e=>{setConnectorType(e.target.value);setConnectorPort(e.target.value==='postgresql'?'5432':'3306')}}><option value="postgresql">PostgreSQL</option><option value="mysql">MySQL</option></select></label><label>Hôte<input value={connectorHost} onChange={e=>setConnectorHost(e.target.value)} placeholder="db.company.internal"/></label><label>Port<input value={connectorPort} onChange={e=>setConnectorPort(e.target.value)}/></label><label>Base<input value={connectorDb} onChange={e=>setConnectorDb(e.target.value)}/></label><label>Utilisateur<input value={connectorUser} onChange={e=>setConnectorUser(e.target.value)}/></label><label>Mot de passe<input type="password" value={connectorPassword} onChange={e=>setConnectorPassword(e.target.value)}/></label><label>TLS<select value={connectorSsl} onChange={e=>setConnectorSsl(e.target.value)}><option value="require">Require</option><option value="prefer">Prefer</option><option value="disable">Disable</option></select></label><div className="connector-form-actions"><button className="secondary-btn" onClick={()=>setShowConnectorForm(false)}>Annuler</button><button className="primary-btn" onClick={createConnector} disabled={busy}>Enregistrer</button></div></div></Panel>}
+    {showConnectorForm&&<Panel title="Nouveau connecteur sécurisé" action={<span className="quiet">Le secret est chiffré avant stockage. Les options JSON ne doivent jamais contenir de secret.</span>}><div className="connector-form-grid"><label>Nom<input value={connectorName} onChange={e=>setConnectorName(e.target.value)}/></label><label>Moteur<select value={connectorType} onChange={e=>changeConnectorType(e.target.value)}>{(connectorCatalog.length?connectorCatalog:[{key:'postgresql',label:'PostgreSQL',default_port:5432,driver_available:true},{key:'mysql',label:'MySQL',default_port:3306,driver_available:true}]).map((spec:AnyObj)=><option key={spec.key} value={spec.key}>{spec.label}{spec.driver_available===false?' · driver absent':''}</option>)}</select></label>{connectorSpec?.host_required!==false&&<label>Hôte / compte<input value={connectorHost} onChange={e=>setConnectorHost(e.target.value)} placeholder={connectorType==='snowflake'?'org-account':connectorType==='databricks'?'dbc-xxxx.cloud.databricks.com':'db.company.internal'}/></label>}{(connectorSpec?.default_port??0)>0&&<label>Port<input value={connectorPort} onChange={e=>setConnectorPort(e.target.value)}/></label>}<label>{connectorType==='bigquery'?'Projet':connectorType==='sqlite'?'Fichier SQLite':connectorType==='databricks'?'Catalog (optionnel)':'Base'}<input value={connectorDb} onChange={e=>setConnectorDb(e.target.value)} placeholder={connectorType==='sqlite'?'warehouse.db':connectorType==='bigquery'?'my-gcp-project':''}/></label>{connectorSpec?.username_required!==false&&<label>Utilisateur<input value={connectorUser} onChange={e=>setConnectorUser(e.target.value)}/></label>}{connectorType!=='sqlite'&&<label>{connectorSpec?.secret_label??'Secret'}<textarea className={connectorType==='bigquery'?'connector-secret-json':''} value={connectorPassword} onChange={e=>setConnectorPassword(e.target.value)} placeholder={connectorType==='bigquery'?'JSON service account ou vide pour ADC':''}/></label>}{!['sqlite','bigquery'].includes(connectorType)&&<label>TLS<select value={connectorSsl} onChange={e=>setConnectorSsl(e.target.value)}><option value="require">Require</option><option value="prefer">Prefer</option><option value="disable">Disable</option></select></label>}{(connectorSpec?.options??[]).length>0&&<label className="span-2">Options non secrètes JSON<textarea value={connectorOptionsText} onChange={e=>setConnectorOptionsText(e.target.value)} spellCheck={false}/><small>{(connectorSpec.options??[]).join(' · ')}</small></label>}<div className="connector-form-actions"><button className="secondary-btn" onClick={()=>setShowConnectorForm(false)}>Annuler</button><button className="primary-btn" onClick={createConnector} disabled={busy}>Enregistrer</button></div></div>{connectorSpec&&<div className="connector-driver-note"><b>{connectorSpec.label}</b><span>{connectorSpec.docs_hint}</span><em className={connectorSpec.driver_available?'available':'missing'}>{connectorSpec.driver_available?'driver disponible':'driver absent dans ce runtime'}</em></div>}</Panel>}
 
     <div className="sources-main-grid">
       <section className="source-column">
         <div className="source-section-head"><div><span>CONNEXIONS</span><h3>Connecteurs</h3></div><small>{connectors.length} configuré(s)</small></div>
-        <div className="connector-list">{connectors.map((c:AnyObj)=><article key={c.id} className={`connector-card ${selectedConnector===c.id?'selected':''}`} onClick={()=>setSelectedConnector(c.id)}><div className="connector-logo">{c.connector_type==='postgresql'?'PG':'MY'}</div><div className="connector-copy"><div><b>{c.name}</b><span className={`connector-status ${c.status}`}>{c.status}</span></div><p>{c.host?`${c.host}:${c.port} · ${c.database_name}`:'Connexion gouvernée'}</p><small>{c.username} · TLS {c.ssl_mode}{c.last_tested_at?` · testé ${new Date(c.last_tested_at).toLocaleString('fr-FR')}`:''}</small>{c.last_error&&<em>{c.last_error}</em>}</div><div className="connector-actions">{canManage&&<button onClick={e=>{e.stopPropagation();testConnector(c.id)}} disabled={busy}>Tester</button>}<button onClick={e=>{e.stopPropagation();discoverConnector(c.id)}} disabled={busy}>Explorer</button></div></article>)}{!connectors.length&&<div className="quiet-empty">Aucun connecteur. Créez une connexion PostgreSQL ou MySQL.</div>}</div>
+        <div className="connector-list">{connectors.map((c:AnyObj)=><article key={c.id} className={`connector-card ${selectedConnector===c.id?'selected':''}`} onClick={()=>setSelectedConnector(c.id)}><div className="connector-logo">{connectorLogo(c.connector_type)}</div><div className="connector-copy"><div><b>{c.name}</b><span className={`connector-status ${c.status}`}>{c.status}</span></div><p>{c.host?`${c.host}${c.port?`:${c.port}`:''} · ${c.database_name||'—'}`:c.database_name||'Connexion gouvernée'}</p><small>{c.connector_type}{c.username?` · ${c.username}`:''}{c.ssl_mode?` · TLS ${c.ssl_mode}`:''}{c.last_tested_at?` · testé ${new Date(c.last_tested_at).toLocaleString('fr-FR')}`:''}</small>{c.last_error&&<em>{c.last_error}</em>}</div><div className="connector-actions">{canManage&&<button onClick={e=>{e.stopPropagation();testConnector(c.id)}} disabled={busy}>Tester</button>}<button onClick={e=>{e.stopPropagation();discoverConnector(c.id)}} disabled={busy}>Explorer</button></div></article>)}{!connectors.length&&<div className="quiet-empty">Aucun connecteur. Ajoutez une base locale, SQL, NoSQL ou un cloud warehouse.</div>}</div>
 
         {discovery&&<div className="discovery-panel"><div className="source-section-head"><div><span>CATALOGUE SOURCE</span><h3>{discovery.connector?.name}</h3></div><button className="ghost-btn" onClick={()=>setDiscovery(null)}>Fermer</button></div><div className="discovered-tables">{(discovery.tables??[]).map((t:AnyObj)=><button key={t.qualified_name} onClick={()=>useTable(t)}><span>▦</span><div><b>{t.qualified_name}</b><small>{t.columns?.length??0} colonnes · {(t.columns??[]).slice(0,4).map((c:AnyObj)=>c.name).join(', ')}</small></div><i>+ Source</i></button>)}</div></div>}
       </section>
 
       <section className="source-column source-wide">
         <div className="source-section-head"><div><span>DATA PRODUCTS</span><h3>Sources matérialisées</h3></div>{canManage&&<button className="secondary-btn" onClick={()=>setShowSourceForm(v=>!v)} disabled={!connectors.length}>+ Nouvelle source</button>}</div>
-        {showSourceForm&&<div className="source-compose"><div className="source-compose-grid"><label>Connecteur<select value={selectedConnector} onChange={e=>setSelectedConnector(e.target.value)}>{connectors.map((c:AnyObj)=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>Nom logique<input value={sourceName} onChange={e=>setSourceName(e.target.value)} placeholder="Ventes quotidiennes"/></label><label>Source<select value={sourceKind} onChange={e=>setSourceKind(e.target.value)}><option value="table">Table</option><option value="query">Requête SQL read-only</option></select></label>{sourceKind==='table'?<label>Table qualifiée<input value={tableName} onChange={e=>setTableName(e.target.value)} placeholder="public.sales"/></label>:<label className="span-2">Requête<textarea value={sourceQuery} onChange={e=>setSourceQuery(e.target.value)} placeholder="SELECT ..."/></label>}<label>Refresh<select value={refreshMode} onChange={e=>setRefreshMode(e.target.value)}><option value="full">Full refresh</option><option value="incremental">Incremental</option></select></label>{refreshMode==='incremental'&&<label>Colonne watermark<input value={incrementalColumn} onChange={e=>setIncrementalColumn(e.target.value)} placeholder="updated_at ou id"/></label>}<label>SLA fraîcheur<select value={slaMinutes} onChange={e=>setSlaMinutes(e.target.value)}><option value="60">1 heure</option><option value="360">6 heures</option><option value="720">12 heures</option><option value="1440">24 heures</option><option value="10080">7 jours</option></select></label><label>Schema drift<select value={driftPolicy} onChange={e=>setDriftPolicy(e.target.value)}><option value="warn">Avertir</option><option value="fail">Bloquer changements destructifs</option></select></label></div><div className="source-compose-actions"><small>Chaque refresh crée une nouvelle version immuable du dataset. L’incrémental n’importe que les valeurs supérieures au watermark.</small><button className="primary-btn" onClick={createSource} disabled={busy||!selectedConnector}>Créer la source</button></div></div>}
+        {showSourceForm&&<div className="source-compose"><div className="source-compose-grid"><label>Connecteur<select value={selectedConnector} onChange={e=>setSelectedConnector(e.target.value)}>{connectors.map((c:AnyObj)=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label><label>Nom logique<input value={sourceName} onChange={e=>setSourceName(e.target.value)} placeholder="Ventes quotidiennes"/></label><label>Source<select value={selectedConnectorType==='mongodb'?'collection':sourceKind} onChange={e=>setSourceKind(e.target.value)} disabled={selectedConnectorType==='mongodb'}>{selectedConnectorType==='mongodb'?<option value="collection">Collection MongoDB</option>:<><option value="table">Table</option><option value="query">Requête SQL read-only</option></>}</select></label>{sourceKind==='query'&&selectedConnectorType!=='mongodb'?<label className="span-2">Requête<textarea value={sourceQuery} onChange={e=>setSourceQuery(e.target.value)} placeholder="SELECT ..."/></label>:<label>{selectedConnectorType==='mongodb'?'Collection':'Table qualifiée'}<input value={tableName} onChange={e=>setTableName(e.target.value)} placeholder={selectedConnectorType==='mongodb'?'orders':'public.sales'}/></label>}<label>Refresh<select value={refreshMode} onChange={e=>setRefreshMode(e.target.value)}><option value="full">Full refresh</option><option value="incremental">Incremental</option></select></label>{refreshMode==='incremental'&&<label>Colonne watermark<input value={incrementalColumn} onChange={e=>setIncrementalColumn(e.target.value)} placeholder="updated_at ou id"/></label>}<label>SLA fraîcheur<select value={slaMinutes} onChange={e=>setSlaMinutes(e.target.value)}><option value="60">1 heure</option><option value="360">6 heures</option><option value="720">12 heures</option><option value="1440">24 heures</option><option value="10080">7 jours</option></select></label><label>Schema drift<select value={driftPolicy} onChange={e=>setDriftPolicy(e.target.value)}><option value="warn">Avertir</option><option value="fail">Bloquer changements destructifs</option></select></label></div><div className="source-compose-actions"><small>Chaque refresh crée une nouvelle version immuable du dataset. L’incrémental n’importe que les valeurs supérieures au watermark.</small><button className="primary-btn" onClick={createSource} disabled={busy||!selectedConnector}>Créer la source</button></div></div>}
         <div className="source-list">{sources.map((src:AnyObj)=>{const f=src.freshness??{};const sch=src.schedule;return <article key={src.id} className="source-card"><div className="source-card-head"><div><span className={`freshness-dot ${f.status}`}/><div><b>{src.name}</b><small>{src.refresh_mode==='incremental'?`Incremental · ${src.incremental_column}`:'Full refresh'} · SLA {f.sla_minutes} min</small></div></div><span className={`freshness-pill ${f.status}`}>{f.status}</span></div><div className="source-card-metrics"><div><span>Dataset actif</span><b>{src.dataset_id?String(src.dataset_id).slice(0,8):'Non matérialisé'}</b></div><div><span>Dernier succès</span><b>{src.last_success_at?new Date(src.last_success_at).toLocaleString('fr-FR'):'Jamais'}</b></div><div><span>Âge</span><b>{f.age_minutes==null?'—':`${f.age_minutes} min`}</b></div><div><span>Lignes dernier run</span><b>{formatNumber(src.last_rows_fetched??0,0)}</b></div></div>{src.schema_drift?.detected&&<div className="schema-drift-note">Schema drift détecté lors du dernier refresh.</div>}{src.last_error&&<div className="source-error">{src.last_error}</div>}<div className="source-card-actions">{canManage&&<button onClick={()=>previewSource(src)} disabled={busy}>Aperçu source</button>}{src.dataset_id&&<button onClick={()=>onActivate(src.dataset_id)}>Ouvrir dataset</button>}{canRefresh&&<button className="accent-action" onClick={()=>refreshSource(src)} disabled={busy}>↻ Refresh</button>}{canManage&&<label>Planification<select value={sch?.enabled?String(sch.interval_minutes):'0'} onChange={e=>setSchedule(src,Number(e.target.value))}><option value="0">Désactivée</option><option value="60">Toutes les heures</option><option value="360">Toutes les 6 h</option><option value="720">Toutes les 12 h</option><option value="1440">Quotidienne</option><option value="10080">Hebdomadaire</option></select></label>}{canManage&&<button className="danger-link" onClick={()=>removeSource(src)}>Supprimer</button>}</div></article>})}{!sources.length&&<div className="quiet-empty source-empty">Aucune source matérialisée. Explorez un connecteur, choisissez une table puis créez une source.</div>}</div>
       </section>
     </div>
@@ -1685,6 +2098,186 @@ function IdentitySecurityCenter({ setError, setView }: { setError:(s:string)=>vo
     </div>}
     {canManage&&<Panel title="Secrets versionnés" action={<span className="quiet">La valeur n’est jamais retournée par l’API</span>}><div className="secret-grid">{secrets.map((x:AnyObj)=><article key={x.id}><div><span className="secret-provider">{x.provider}</span><b>{x.name}</b><small>version {x.current_version} · checksum {x.latest_version?.checksum??'—'}</small>{x.provider==='env'&&<span>{x.reference?.variable}</span>}{x.provider==='vault_kv2'&&<span>{x.reference?.url} · {x.reference?.mount}/{x.reference?.path} · field {x.reference?.field}</span>}</div><div className="secret-actions"><button onClick={()=>testSecretNow(x.id)}>Tester</button>{x.provider!=='env'&&<button onClick={()=>{setRotateTarget(x.id);setRotateValue('')}}>Rotation</button>}</div></article>)}</div>{rotateTarget&&<div className="secret-rotate-bar"><input type="password" value={rotateValue} onChange={e=>setRotateValue(e.target.value)} placeholder="Nouvelle valeur secrète"/><button className="primary-btn" onClick={rotateSecretNow} disabled={busy||!rotateValue}>Activer la nouvelle version</button><button className="secondary-btn" onClick={()=>{setRotateTarget('');setRotateValue('')}}>Annuler</button></div>}</Panel>}
     {!canManage&&<div className="identity-note"><b>Administration restreinte</b><span>Seuls Owner et Admin peuvent gérer les fournisseurs d’identité et les secrets. Les sessions personnelles restent révocables par l’utilisateur.</span></div>}
+  </div>;
+}
+
+
+function PluginCenter({setError,setView}:{setError:(s:string)=>void;setView:(v:View)=>void}){
+  const [token,setToken]=useState('');
+  const [session,setSession]=useState<AnyObj|null>(null);
+  const [workspaceId,setWorkspaceId]=useState('');
+  const [plugins,setPlugins]=useState<AnyObj[]>([]);
+  const [runs,setRuns]=useState<AnyObj[]>([]);
+  const [secrets,setSecrets]=useState<AnyObj[]>([]);
+  const [selected,setSelected]=useState<AnyObj|null>(null);
+  const [busy,setBusy]=useState(false);
+  const [notice,setNotice]=useState('');
+  const [showForm,setShowForm]=useState(false);
+
+  const [pluginKey,setPluginKey]=useState('my_plugin');
+  const [pluginName,setPluginName]=useState('Mon plugin');
+  const [pluginVersion,setPluginVersion]=useState('0.1.0');
+  const [pluginDescription,setPluginDescription]=useState('');
+  const [protocol,setProtocol]=useState<'http_json'|'mcp_http'>('mcp_http');
+  const [endpoint,setEndpoint]=useState('https://');
+  const [networkScope,setNetworkScope]=useState<'public'|'private'>('public');
+  const [authType,setAuthType]=useState<'none'|'bearer'|'api_key'>('none');
+  const [authHeader,setAuthHeader]=useState('X-API-Key');
+  const [secretId,setSecretId]=useState('');
+  const [contextPolicy,setContextPolicy]=useState<'none'|'semantic'>('none');
+  const [healthPath,setHealthPath]=useState('');
+  const [toolsText,setToolsText]=useState(JSON.stringify([
+    {
+      name:'search',
+      description:'Recherche externe contrôlée',
+      input_schema:{type:'object',properties:{query:{type:'string'}},required:['query'],additionalProperties:false},
+      risk:'read',
+      required_permissions:[],
+      requires_dataset:false,
+      requires_model:false,
+      method:'POST',
+      path:'/search'
+    }
+  ],null,2));
+
+  const activeWorkspace=(session?.workspaces??[]).find((w:AnyObj)=>w.id===workspaceId);
+  const canManage=['owner','admin'].includes(activeWorkspace?.role??'');
+
+  async function load(nextToken=token,nextWorkspace=workspaceId){
+    if(!nextToken||!nextWorkspace)return;
+    try{
+      const [p,s]=await Promise.all([
+        getWorkspacePlugins(nextToken,nextWorkspace),
+        getWorkspaceSecrets(nextToken,nextWorkspace),
+      ]);
+      setPlugins(p.plugins??[]);setRuns(p.runs??[]);setSecrets(s.secrets??[]);
+      if(selected?.id){
+        const current=(p.plugins??[]).find((x:AnyObj)=>x.id===selected.id);
+        setSelected(current??null);
+      }
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+  }
+
+  useEffect(()=>{
+    if(typeof window==='undefined')return;
+    const t=localStorage.getItem('dv_enterprise_token')||'';
+    if(!t)return;
+    setToken(t);
+    getEnterpriseSession(t).then(s=>{
+      setSession(s);
+      const stored=localStorage.getItem('dv_enterprise_workspace')||'';
+      const ws=stored||s.workspaces?.[0]?.id||'';
+      setWorkspaceId(ws);
+      if(ws)void load(t,ws);
+    }).catch(()=>{setToken('');setSession(null);});
+  },[]);
+
+  async function changeWorkspace(id:string){
+    setWorkspaceId(id);setSelected(null);
+    if(typeof window!=='undefined'){
+      localStorage.setItem('dv_enterprise_workspace',id);
+      window.dispatchEvent(new Event('datavision-enterprise-session'));
+    }
+    await load(token,id);
+  }
+
+  async function install(){
+    if(!token||!workspaceId)return;
+    setBusy(true);setNotice('');
+    try{
+      let tools:AnyObj[]=[];
+      if(protocol==='http_json'){
+        try{tools=JSON.parse(toolsText);}catch{throw new Error('Le JSON des tools HTTP est invalide.');}
+        if(!Array.isArray(tools))throw new Error('Le manifest tools doit être un tableau JSON.');
+      }
+      const payload:AnyObj={
+        plugin_key:pluginKey.trim(),name:pluginName.trim(),version:pluginVersion.trim()||'0.1.0',
+        description:pluginDescription,protocol,endpoint:endpoint.trim(),network_scope:networkScope,
+        auth_type:authType,auth_header:authType==='api_key'?authHeader:null,
+        secret_id:authType==='none'?null:(secretId||null),context_policy:contextPolicy,
+        timeout_seconds:15,health_path:healthPath.trim()||null,enabled:true,tools,
+      };
+      const r=await installWorkspacePlugin(token,workspaceId,payload);
+      setSelected(r.plugin);setShowForm(false);
+      setNotice(protocol==='mcp_http'?'Plugin installé. Synchronisez maintenant le catalogue MCP.':'Plugin HTTP installé et tools enregistrés.');
+      await load();
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false)}
+  }
+
+  async function sync(plugin:AnyObj){
+    setBusy(true);setNotice('');
+    try{
+      const r=await syncWorkspacePlugin(token,workspaceId,plugin.id);
+      setSelected(r.plugin);setNotice(`${r.plugin.tool_count??0} tool(s) synchronisé(s).`);await load();
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false)}
+  }
+
+  async function test(plugin:AnyObj){
+    setBusy(true);setNotice('');
+    try{
+      const r=await testWorkspacePlugin(token,workspaceId,plugin.id);
+      setNotice(r.network_verified===false?(r.message||'Configuration valide, connectivité non affirmée.'):`Test plugin : ${r.status}.`);
+      await load();
+    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false)}
+  }
+
+  async function toggle(plugin:AnyObj){
+    setBusy(true);
+    try{await updateWorkspacePlugin(token,workspaceId,plugin.id,{enabled:!plugin.enabled});await load();}
+    catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false)}
+  }
+
+  async function remove(plugin:AnyObj){
+    if(!confirm(`Supprimer le plugin « ${plugin.name} » ?`))return;
+    setBusy(true);
+    try{await deleteWorkspacePlugin(token,workspaceId,plugin.id);if(selected?.id===plugin.id)setSelected(null);await load();}
+    catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false)}
+  }
+
+  async function inspect(plugin:AnyObj){
+    setBusy(true);
+    try{const r=await getWorkspacePluginDetail(token,workspaceId,plugin.id);setSelected(r.plugin);}
+    catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false)}
+  }
+
+  if(!token||!session)return <div className="page plugin-page"><div className="page-title"><div><span className="eyebrow">PLUGIN SYSTEM · MCP · GOVERNED EXTENSIONS</span><h1>Plugins & MCP</h1><p>Étendez DataVision sans charger du code arbitraire dans le cœur du logiciel.</p></div><span className="module-state implemented">v2.22</span></div><div className="collab-auth-empty"><span>⌘</span><div><h3>Session Enterprise requise</h3><p>Les plugins sont isolés par workspace, utilisent Secret Vault et passent par le Tool Registry.</p></div><button className="primary-btn" onClick={()=>setView('governance')}>Ouvrir Gouvernance</button></div></div>;
+
+  return <div className="page plugin-page">
+    <div className="page-title"><div><span className="eyebrow">PLUGIN SYSTEM · MCP HTTP · HTTP JSON</span><h1>Plugins & MCP</h1><p>Registre d’extensions gouverné : schémas validés, tools namespacés, secrets référencés et confirmation obligatoire avant tout appel externe.</p></div><div className="plugin-head-actions"><label>Workspace<select value={workspaceId} onChange={e=>void changeWorkspace(e.target.value)}>{(session.workspaces??[]).map((w:AnyObj)=><option key={w.id} value={w.id}>{w.name} · {w.role}</option>)}</select></label><button className="secondary-btn" onClick={()=>void load()} disabled={busy}>↻ Actualiser</button>{canManage&&<button className="primary-btn" onClick={()=>setShowForm(v=>!v)}>+ Installer</button>}</div></div>
+
+    <div className="plugin-safety-banner"><b>Boundary active</b><span>Les plugins ne reçoivent jamais automatiquement les lignes du dataset. Le contexte sémantique minimal n’est envoyé que si <code>context_policy=semantic</code>. Tout tool distant est classé <strong>external</strong> dans le Tool Registry et exige une confirmation humaine.</span></div>
+    {notice&&<div className="source-notice"><span>✓</span><p>{notice}</p><button onClick={()=>setNotice('')}>×</button></div>}
+
+    {showForm&&<Panel title="Installer une extension gouvernée" action={<span className="quiet">Aucun secret brut dans le manifest</span>}><div className="plugin-install-grid">
+      <label>Clé plugin<input value={pluginKey} onChange={e=>setPluginKey(e.target.value.toLowerCase().replace(/[^a-z0-9_-]+/g,'_'))} placeholder="crm_tools"/></label>
+      <label>Nom<input value={pluginName} onChange={e=>setPluginName(e.target.value)}/></label>
+      <label>Version<input value={pluginVersion} onChange={e=>setPluginVersion(e.target.value)}/></label>
+      <label>Protocole<select value={protocol} onChange={e=>setProtocol(e.target.value as any)}><option value="mcp_http">MCP HTTP</option><option value="http_json">HTTP JSON</option></select></label>
+      <label className="span-2">Endpoint<input value={endpoint} onChange={e=>setEndpoint(e.target.value)} placeholder="https://plugin.company.com/mcp"/></label>
+      <label>Réseau<select value={networkScope} onChange={e=>setNetworkScope(e.target.value as any)}><option value="public">Public · HTTPS uniquement</option><option value="private">Privé · intranet autorisé</option></select></label>
+      <label>Authentification<select value={authType} onChange={e=>setAuthType(e.target.value as any)}><option value="none">Aucune</option><option value="bearer">Bearer Secret Vault</option><option value="api_key">API key Secret Vault</option></select></label>
+      {authType==='api_key'&&<label>Header API key<input value={authHeader} onChange={e=>setAuthHeader(e.target.value)}/></label>}
+      {authType!=='none'&&<label>Secret<select value={secretId} onChange={e=>setSecretId(e.target.value)}><option value="">Sélectionner…</option>{secrets.map((s:AnyObj)=><option key={s.id} value={s.id}>{s.name} · {s.provider}</option>)}</select></label>}
+      <label>Contexte<select value={contextPolicy} onChange={e=>setContextPolicy(e.target.value as any)}><option value="none">Aucun contexte automatique</option><option value="semantic">Contexte sémantique minimal</option></select></label>
+      {protocol==='http_json'&&<label>Health path<input value={healthPath} onChange={e=>setHealthPath(e.target.value)} placeholder="/health (optionnel)"/></label>}
+      <label className="span-2">Description<textarea value={pluginDescription} onChange={e=>setPluginDescription(e.target.value)}/></label>
+      {protocol==='http_json'&&<label className="span-2">Tools déclaratifs<textarea className="plugin-manifest-editor" value={toolsText} onChange={e=>setToolsText(e.target.value)} spellCheck={false}/><small>Chaque tool fournit name, description, input_schema, méthode et path. Le risque runtime reste external.</small></label>}
+      <div className="connector-form-actions span-2"><button className="secondary-btn" onClick={()=>setShowForm(false)}>Annuler</button><button className="primary-btn" onClick={()=>void install()} disabled={busy}>Installer</button></div>
+    </div></Panel>}
+
+    <div className="plugin-layout">
+      <section className="plugin-list-panel"><div className="plugin-section-head"><div><span>INSTALLED EXTENSIONS</span><h3>{plugins.length} plugin(s)</h3></div></div>{plugins.length?<div className="plugin-list">{plugins.map((p:AnyObj)=><article key={p.id} className={`plugin-card ${selected?.id===p.id?'selected':''}`} onClick={()=>void inspect(p)}><div className="plugin-card-icon">{p.protocol==='mcp_http'?'MCP':'HTTP'}</div><div className="plugin-card-main"><div><b>{p.name}</b><span className={`connector-status ${p.status}`}>{p.status}</span></div><p>{p.plugin_key} · v{p.version}</p><small>{p.protocol} · {p.tool_count??0} tool(s) · {p.network_scope}</small>{p.last_error&&<em>{p.last_error}</em>}</div><div className="plugin-card-actions">{canManage&&<button onClick={e=>{e.stopPropagation();void test(p)}} disabled={busy}>Tester</button>}{canManage&&<button onClick={e=>{e.stopPropagation();void sync(p)}} disabled={busy}>Synchroniser</button>}{canManage&&<button onClick={e=>{e.stopPropagation();void toggle(p)}} disabled={busy}>{p.enabled?'Désactiver':'Activer'}</button>}</div></article>)}</div>:<div className="quiet-empty">Aucun plugin installé dans ce workspace.</div>}</section>
+
+      <section className="plugin-detail-panel">{selected?<><div className="plugin-detail-head"><div><span>PLUGIN</span><h3>{selected.name}</h3><p>{selected.description||'Aucune description.'}</p></div>{canManage&&<button className="danger-link" onClick={()=>void remove(selected)}>Supprimer</button>}</div><div className="plugin-meta-grid"><div><span>Protocol</span><b>{selected.protocol}</b></div><div><span>Status</span><b>{selected.status}</b></div><div><span>Endpoint</span><b>{selected.endpoint}</b></div><div><span>Context</span><b>{selected.context_policy}</b></div><div><span>Secret</span><b>{selected.has_secret?'référencé':'aucun'}</b></div><div><span>Checksum</span><b>{String(selected.checksum||'').slice(0,16)}</b></div></div><h4>Tools importés</h4>{(selected.tools??[]).length?<div className="plugin-tool-list">{selected.tools.map((tool:AnyObj)=><details key={tool.id}><summary><b>{tool.remote_name}</b><span>external · confirmation</span></summary><p>{tool.description}</p><code>{tool.namespaced_name}</code><pre>{JSON.stringify(tool.input_schema,null,2)}</pre></details>)}</div>:<div className="quiet-empty">Aucun tool synchronisé. Pour MCP, cliquez sur Synchroniser.</div>}</>:<div className="quiet-empty">Sélectionnez un plugin pour inspecter son manifest et ses tools.</div>}</section>
+    </div>
+
+    <Panel title="Exécutions récentes" action={<span className="quiet">Les arguments complets ne sont pas persistés</span>}><SimpleTable rows={runs.slice(0,30).map((r:AnyObj)=>({...r,argument_keys:(r.argument_keys??[]).join(', ')}))} columns={[["created_at","Date"],["tool_name","Tool"],["status","Statut"],["argument_keys","Clés arguments"],["duration_ms","ms"],["error","Erreur"]]}/></Panel>
   </div>;
 }
 

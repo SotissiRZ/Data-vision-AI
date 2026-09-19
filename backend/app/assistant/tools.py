@@ -16,6 +16,7 @@ class ToolSpec:
     requires_dataset: bool = False
     requires_model: bool = False
     deterministic: bool = True
+    input_schema: dict[str, Any] | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -33,18 +34,42 @@ class AssistantToolRegistry:
         self._specs: dict[str, ToolSpec] = {}
         self._handlers: dict[str, Callable[..., Any]] = {}
 
-    def register(self, spec: ToolSpec, handler: Callable[..., Any] | None = None) -> None:
-        if spec.name in self._specs:
+    def register(
+        self,
+        spec: ToolSpec,
+        handler: Callable[..., Any] | None = None,
+        *,
+        replace: bool = False,
+    ) -> None:
+        if spec.name in self._specs and not replace:
             raise ValueError(f"Tool already registered: {spec.name}")
         self._specs[spec.name] = spec
         if handler is not None:
             self._handlers[spec.name] = handler
+        elif replace:
+            self._handlers.pop(spec.name, None)
+
+    def unregister(self, name: str) -> None:
+        self._specs.pop(name, None)
+        self._handlers.pop(name, None)
 
     def get(self, name: str) -> ToolSpec | None:
         return self._specs.get(name)
 
     def list(self) -> list[ToolSpec]:
         return sorted(self._specs.values(), key=lambda item: (item.category, item.name))
+
+    def list_for_context(self, context: Any | None) -> list[ToolSpec]:
+        workspace_id = getattr(context, "workspaceId", None) if context is not None else None
+        visible: list[ToolSpec] = []
+        for spec in self._specs.values():
+            if spec.metadata.get("origin") != "plugin":
+                visible.append(spec)
+                continue
+            plugin_workspace = spec.metadata.get("workspace_id")
+            if workspace_id is not None and str(plugin_workspace) == str(workspace_id):
+                visible.append(spec)
+        return sorted(visible, key=lambda item: (item.category, item.name))
 
     def bind_handler(self, name: str, handler: Callable[..., Any]) -> None:
         if name not in self._specs:
@@ -187,6 +212,14 @@ def build_default_registry() -> AssistantToolRegistry:
             requires_dataset=True,
         ),
         ToolSpec(
+            name="benchmark_models",
+            description="Comparer plusieurs algorithmes ML sans laisser le LLM calculer les métriques.",
+            category="ml",
+            risk="read",
+            required_permissions=("model:read", "dataset:read"),
+            requires_dataset=True,
+        ),
+        ToolSpec(
             name="run_automl",
             description="Lancer un workflow AutoML gouverné.",
             category="ml",
@@ -198,6 +231,22 @@ def build_default_registry() -> AssistantToolRegistry:
             name="explain_model",
             description="Expliquer un modèle existant avec le moteur XAI.",
             category="ml",
+            risk="read",
+            required_permissions=("model:read",),
+            requires_model=True,
+        ),
+        ToolSpec(
+            name="run_root_cause_analysis",
+            description="Décomposer un écart observé par segments et changements de distribution sans inférer de causalité.",
+            category="decision",
+            risk="read",
+            required_permissions=("analysis:create", "dataset:read"),
+            requires_dataset=True,
+        ),
+        ToolSpec(
+            name="optimize_decision_scenarios",
+            description="Explorer un espace borné de scénarios avec le modèle sauvegardé.",
+            category="decision",
             risk="read",
             required_permissions=("model:read",),
             requires_model=True,
@@ -234,6 +283,27 @@ def build_default_registry() -> AssistantToolRegistry:
             required_permissions=("analysis:create",),
             deterministic=True,
             metadata={"human_confirmation_required": True, "sandboxed": True},
+        ),
+        ToolSpec(
+            name="list_data_connectors",
+            description="Lister les connecteurs et sources gouvernés du workspace sans exposer les secrets.",
+            category="connectors",
+            risk="read",
+            required_permissions=("connectors:read",),
+        ),
+        ToolSpec(
+            name="discover_data_connector",
+            description="Découvrir les tables, collections et schémas d'un connecteur gouverné.",
+            category="connectors",
+            risk="read",
+            required_permissions=("connectors:read",),
+        ),
+        ToolSpec(
+            name="test_data_connector",
+            description="Tester activement une connexion externe configurée.",
+            category="connectors",
+            risk="external",
+            required_permissions=("connectors:manage",),
         ),
         ToolSpec(
             name="send_external_message",

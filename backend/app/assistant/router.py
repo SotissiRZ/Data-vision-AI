@@ -42,6 +42,7 @@ from .settings_planner import SettingsAwarePlanner
 from .tools import build_default_registry
 from .workflows import list_workflows
 from .host_v212 import V212HostAuthorization, bind_v212_host
+from .plugin_runtime import attach_plugin_registry, safe_refresh_runtime_plugins
 from app.services.tenant_access import current_access_context
 from .ai_settings import (
     AssistantAISettings,
@@ -63,6 +64,7 @@ tool_registry = build_default_registry()
 activity_monitors: dict[str, ActivityMonitor] = defaultdict(ActivityMonitor)
 
 bind_v212_host(tool_registry)
+attach_plugin_registry(tool_registry)
 authorization = V212HostAuthorization()
 tool_executor = GovernedToolExecutor(tool_registry, authorization)
 action_run_store = ActionRunStore()
@@ -91,26 +93,33 @@ def assistant_health():
     return {
         "status": "ok",
         "component": "conversational_voice_agent",
-        "version": "2.18.2",
-        "tool_count": len(tool_registry.list()),
+        "version": "2.22.0",
+        "tool_count": len([spec for spec in tool_registry.list() if spec.metadata.get("origin") != "plugin"]),
+        "plugin_tools": "tenant_scoped",
     }
 
 
 @router.get("/tools", response_model=list[ToolCatalogItem])
 def list_tools():
+    safe_refresh_runtime_plugins()
+    access = current_access_context()
+    workspace_id = str(access.workspace_id) if access is not None else None
+    class _Context:
+        workspaceId = workspace_id
+    visible_tools = tool_registry.list_for_context(_Context()) if workspace_id else tool_registry.list_for_context(None)
     return [
         ToolCatalogItem(
             name=spec.name,
             description=spec.description,
             category=spec.category,
             risk=spec.risk,
-            input_schema=tool_json_schema(spec.name),
+            input_schema=spec.input_schema or tool_json_schema(spec.name),
             required_permissions=list(spec.required_permissions),
             requires_dataset=spec.requires_dataset,
             requires_model=spec.requires_model,
             deterministic=spec.deterministic,
         )
-        for spec in tool_registry.list()
+        for spec in visible_tools
     ]
 
 
@@ -156,6 +165,7 @@ def check_activity(request: ObserveRequest):
 
 @router.post("/action/check", response_model=ActionCheckResponse)
 def check_action(request: ActionCheckRequest):
+    safe_refresh_runtime_plugins()
     # Assistant gate only. Existing DataVision RBAC/RLS checks must still run.
     spec = tool_registry.get(request.action.tool)
     if spec is None:
@@ -163,12 +173,20 @@ def check_action(request: ActionCheckRequest):
             decision="deny",
             reason=f"Outil non enregistré : {request.action.tool}",
         )
+    if spec.metadata.get("origin") == "plugin":
+        plugin_workspace = spec.metadata.get("workspace_id")
+        if not request.context.workspaceId or str(plugin_workspace) != str(request.context.workspaceId):
+            return ActionCheckResponse(
+                decision="deny",
+                reason="Tool plugin non disponible dans ce workspace.",
+            )
     canonical_action = request.action.model_copy(update={"risk": spec.risk})
     return evaluate_action_policy(canonical_action, request.context)
 
 
 @router.post("/plan/validate", response_model=AgentPlanValidationResponse)
 def validate_plan(request: AgentPlanValidationRequest):
+    safe_refresh_runtime_plugins()
     # Replace AllowAllDevelopmentAuthorization with the host RBAC/RLS bridge
     # when integrating into the real DataVision v2.12 repository.
     return validate_agent_plan(
@@ -181,6 +199,7 @@ def validate_plan(request: AgentPlanValidationRequest):
 
 @router.post("/actions", response_model=ActionRun)
 async def propose_action(request: ActionRunCreateRequest):
+    safe_refresh_runtime_plugins()
     run = action_lifecycle.propose(
         action=request.action,
         context=request.context,
@@ -295,18 +314,23 @@ def assistant_event_stream(workspace_id: str | None = None):
 
 @router.post("/tools/{tool_name}/validate")
 def validate_tool_input(tool_name: str, payload: dict):
+    safe_refresh_runtime_plugins()
     spec = tool_registry.get(tool_name)
     if spec is None:
         raise HTTPException(status_code=404, detail="Outil inconnu.")
+    if spec.metadata.get("origin") == "plugin":
+        access = current_access_context()
+        if access is None or str(spec.metadata.get("workspace_id")) != str(access.workspace_id):
+            raise HTTPException(status_code=404, detail="Outil inconnu.")
     try:
-        normalized = validate_tool_arguments(tool_name, payload)
+        normalized = validate_tool_arguments(tool_name, payload, spec.input_schema)
     except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return {
         "tool": tool_name,
         "valid": True,
         "normalized": normalized,
-        "schema": tool_json_schema(tool_name),
+        "schema": spec.input_schema or tool_json_schema(tool_name),
     }
 
 
@@ -317,6 +341,7 @@ def assistant_workflows():
 
 @router.post("/turn", response_model=AgentTurnResponse)
 async def run_agent_turn(request: AgentTurnRequest):
+    safe_refresh_runtime_plugins()
     response = agent_orchestrator.run_turn(request)
 
     await realtime_hub.publish(
@@ -349,6 +374,7 @@ async def continue_agent_turn(
     turn_run_id: str,
     request: AgentTurnContinueRequest,
 ):
+    safe_refresh_runtime_plugins()
     try:
         response = agent_orchestrator.continue_turn(
             turn_run_id,

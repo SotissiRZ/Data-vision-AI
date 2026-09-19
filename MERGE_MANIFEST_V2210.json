@@ -1,0 +1,50 @@
+{
+  "version": "2.21.0",
+  "base": "2.20.0 cumulative",
+  "focus": "Advanced database connectors and cloud warehouses",
+  "validation": {
+    "python_ast": "OK",
+    "pytest_summary": "\u001b[32m\u001b[32m\u001b[1m194 passed\u001b[0m\u001b[32m in 25.05s\u001b[0m\u001b[0m",
+    "pytest_returncode": 0,
+    "frontend_structural": "OK",
+    "nextjs_build": "not run - node_modules unavailable in this environment",
+    "docker_compose": "not run - Docker CLI unavailable in this environment",
+    "checks": {
+      "11_connector_types": true,
+      "runtime_catalog": true,
+      "fail_closed_driver": true,
+      "sqlite_confinement": true,
+      "native_cloud_backends": true,
+      "source_delegation": true,
+      "collection_source": true,
+      "catalog_endpoint": true,
+      "frontend_catalog": true,
+      "frontend_mongodb": true,
+      "frontend_driver_health": true,
+      "assistant_connector_tools": true,
+      "driver_dependencies": true,
+      "version": true
+    }
+  },
+  "connectors": [
+    "postgresql",
+    "mysql",
+    "mariadb",
+    "sqlite",
+    "sqlserver",
+    "oracle",
+    "mongodb",
+    "bigquery",
+    "snowflake",
+    "databricks",
+    "redshift"
+  ],
+  "security": [
+    "encrypted connector secret",
+    "non-secret connector options",
+    "SQLite filesystem confinement",
+    "read-only SQL source validation",
+    "driver-missing fail-closed status",
+    "assistant external-connection tests require confirmation"
+  ]
+}

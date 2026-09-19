@@ -78,6 +78,52 @@ def compose_run_results(run: AgentTurnRun) -> str:
             if model_id:
                 facts.append(f"identifiant du modèle : {model_id}")
 
+
+        elif step.tool == "run_root_cause_analysis":
+            target = result.get("target")
+            delta = result.get("delta")
+            delta_pct = result.get("delta_pct")
+            baseline = result.get("baseline") or {}
+            current = result.get("current") or {}
+            bits = []
+            if target:
+                bits.append(f"écart de {target}")
+            if baseline.get("metric") is not None and current.get("metric") is not None:
+                bits.append(
+                    f"{format_number(baseline['metric'])} → "
+                    f"{format_number(current['metric'])}"
+                )
+            if delta is not None:
+                delta_text = format_number(delta)
+                if float(delta) >= 0:
+                    delta_text = f"+{delta_text}"
+                bits.append(f"delta {delta_text}")
+            if delta_pct is not None:
+                pct = format_number(delta_pct)
+                if float(delta_pct) >= 0:
+                    pct = f"+{pct}"
+                bits.append(f"{pct}%")
+            dimensions = result.get("dimension_decompositions") or []
+            if dimensions:
+                bits.append(
+                    f"dimension prioritaire : {dimensions[0].get('dimension')}"
+                )
+            if bits:
+                facts.append(", ".join(bits))
+
+        elif step.tool == "optimize_decision_scenarios":
+            scenarios = result.get("recommended_scenarios") or []
+            objective = result.get("objective")
+            if scenarios:
+                best = scenarios[0]
+                prediction = best.get("prediction")
+                probability = best.get("target_probability")
+                text = f"meilleur scénario pour l'objectif {objective or 'défini'}"
+                if prediction is not None:
+                    text += f", prédiction {format_number(prediction)}"
+                if probability is not None:
+                    text += f", probabilité cible {format_number(probability)}"
+                facts.append(text)
         elif step.tool == "create_visualization":
             chart_type = result.get("chart_type") or result.get("type")
             if chart_type:

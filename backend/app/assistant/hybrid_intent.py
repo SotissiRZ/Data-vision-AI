@@ -13,7 +13,7 @@ from .privacy import AIDataPolicy, project_context_for_model
 
 ALLOWED_INTENTS = [
     "analyze_dataset", "data_quality", "compare_groups", "visualize",
-    "predict_target", "explain_model", "geospatial_analysis", "report",
+    "predict_target", "explain_model", "root_cause_analysis", "optimize_scenarios", "geospatial_analysis", "report",
     "file_analysis", "show_results", "dataset_assessment", "capabilities", "conversation", "unknown",
 ]
 
@@ -24,6 +24,8 @@ HybridIntentName = Literal[
     "visualize",
     "predict_target",
     "explain_model",
+    "root_cause_analysis",
+    "optimize_scenarios",
     "geospatial_analysis",
     "report",
     "file_analysis",

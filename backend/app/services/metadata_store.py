@@ -666,6 +666,72 @@ SCHEMA_SQL = [
         UNIQUE(secret_id, version)
     )
     """,
+
+"""
+CREATE TABLE IF NOT EXISTS plugin_installations (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    plugin_key TEXT NOT NULL,
+    name TEXT NOT NULL,
+    version TEXT NOT NULL,
+    description TEXT NOT NULL,
+    protocol TEXT NOT NULL,
+    endpoint TEXT NOT NULL,
+    network_scope TEXT NOT NULL DEFAULT 'public',
+    auth_type TEXT NOT NULL DEFAULT 'none',
+    auth_header TEXT,
+    secret_id TEXT,
+    context_policy TEXT NOT NULL DEFAULT 'none',
+    timeout_seconds INTEGER NOT NULL DEFAULT 15,
+    manifest_json TEXT NOT NULL,
+    checksum TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    status TEXT NOT NULL DEFAULT 'installed',
+    last_error TEXT,
+    last_synced_at TEXT,
+    created_by TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (workspace_id, plugin_key)
+)
+""",
+"""
+CREATE TABLE IF NOT EXISTS plugin_tools (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    plugin_id TEXT NOT NULL,
+    remote_name TEXT NOT NULL,
+    namespaced_name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    input_schema_json TEXT NOT NULL,
+    declared_risk TEXT NOT NULL DEFAULT 'read',
+    required_permissions_json TEXT NOT NULL,
+    requires_dataset INTEGER NOT NULL DEFAULT 0,
+    requires_model INTEGER NOT NULL DEFAULT 0,
+    http_method TEXT,
+    http_path TEXT,
+    metadata_json TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    UNIQUE (workspace_id, namespaced_name)
+)
+""",
+"""
+CREATE TABLE IF NOT EXISTS plugin_runs (
+    id TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL,
+    plugin_id TEXT NOT NULL,
+    tool_name TEXT NOT NULL,
+    user_id TEXT,
+    status TEXT NOT NULL,
+    argument_keys_json TEXT NOT NULL,
+    error TEXT,
+    duration_ms REAL,
+    created_at TEXT NOT NULL,
+    finished_at TEXT
+)
+""",
 ]
 
 
@@ -711,10 +777,14 @@ def get_engine() -> Engine:
     selected = _SELECTED_BACKENDS.get(preferred)
     if selected:
         return _make_engine(selected)
-    engine = _make_engine(preferred)
-    if _probe(engine):
-        _SELECTED_BACKENDS[preferred] = preferred
-        return engine
+    try:
+        engine = _make_engine(preferred)
+        if _probe(engine):
+            _SELECTED_BACKENDS[preferred] = preferred
+            return engine
+    except Exception:
+        if not settings.metadata_fallback_sqlite:
+            raise
     if not settings.metadata_fallback_sqlite:
         raise RuntimeError("Metadata database unavailable and SQLite fallback disabled")
     fallback = _fallback_url()

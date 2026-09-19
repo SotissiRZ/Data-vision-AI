@@ -1,0 +1,46 @@
+{
+  "version": "2.20.0",
+  "base": "2.19.0 cumulative from user-provided complete archive",
+  "focus": "Root Cause Analysis and Decision Intelligence",
+  "validation": {
+    "python_ast": "OK",
+    "pytest_returncode": 0,
+    "pytest_summary": "\u001b[32m\u001b[32m\u001b[1m182 passed\u001b[0m\u001b[32m in 24.96s\u001b[0m\u001b[0m",
+    "frontend_structural": "OK",
+    "nextjs_build": "not run - project node_modules unavailable in this execution environment",
+    "docker_compose": "not run - docker CLI unavailable in this execution environment",
+    "checks": {
+      "root_cause_service": true,
+      "mean_gap_decomposition": true,
+      "distribution_shift": true,
+      "temporal_grain": true,
+      "review_priorities": true,
+      "scenario_optimizer": true,
+      "root_cause_api": true,
+      "optimizer_api": true,
+      "assistant_root_cause_tool": true,
+      "assistant_optimizer_tool": true,
+      "host_root_cause_bridge": true,
+      "host_optimizer_bridge": true,
+      "ai_analyst_root_cause": true,
+      "frontend_root_cause": true,
+      "frontend_optimizer": true,
+      "frontend_api_helpers": true,
+      "version_file": true
+    }
+  },
+  "features": [
+    "deterministic root cause analysis",
+    "exact mean gap decomposition by segment",
+    "sum/count decomposition",
+    "automatic temporal aggregation",
+    "numeric distribution shift",
+    "categorical TVD shift",
+    "descriptive evidence strength",
+    "review priorities",
+    "bounded multi-variable scenario optimization",
+    "AI Analyst root cause routing",
+    "governed assistant decision tools"
+  ],
+  "causal_boundary": "Root Cause outputs identify descriptive contributors and distribution shifts. They are not presented as causal proof."
+}

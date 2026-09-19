@@ -10,13 +10,22 @@ from typing import Any
 
 import pandas as pd
 from cryptography.fernet import Fernet, InvalidToken
-from sqlalchemy import create_engine, inspect, text
-from sqlalchemy.engine import URL
+from sqlalchemy import text
 
 from app.core.config import get_settings
 from app.services.metadata_store import execute, fetch_all, fetch_one, json_dumps, json_loads, utcnow
+from app.services.connector_backends import (
+    CONNECTOR_SPECS,
+    connector_catalog,
+    discover_backend,
+    fetch_backend,
+    is_sqlalchemy_connector,
+    normalize_connector_payload,
+    sqlalchemy_engine,
+    test_backend,
+)
 
-SUPPORTED_CONNECTORS = {"postgresql", "mysql"}
+SUPPORTED_CONNECTORS = set(CONNECTOR_SPECS)
 SUPPORTED_REFRESH_MODES = {"full", "incremental"}
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*$")
 
@@ -76,26 +85,55 @@ def create_connector(
     *,
     name: str,
     connector_type: str,
-    host: str,
-    port: int | None,
-    database: str,
-    username: str,
-    password: str,
+    host: str = "",
+    port: int | None = None,
+    database: str = "",
+    username: str = "",
+    password: str = "",
     ssl_mode: str = "prefer",
     options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    connector_type = connector_type.lower().strip()
-    if connector_type not in SUPPORTED_CONNECTORS:
-        raise ValueError("Connecteur non supporté. Utilisez postgresql ou mysql.")
-    if not host.strip() or not database.strip() or not username.strip():
-        raise ValueError("Hôte, base et utilisateur sont requis.")
     if ssl_mode not in {"disable", "prefer", "require"}:
         raise ValueError("ssl_mode invalide")
-    cid = str(uuid.uuid4()); now = utcnow()
+
+    normalized = normalize_connector_payload(
+        connector_type=connector_type,
+        host=host,
+        port=port,
+        database=database,
+        username=username,
+        password=password,
+        options=options,
+    )
+    connector_type = normalized["connector_type"]
+    cid = str(uuid.uuid4())
+    now = utcnow()
+
     execute(
-        """INSERT INTO data_connectors(id,workspace_id,name,connector_type,host,port,database_name,username,password_ciphertext,ssl_mode,options_json,status,created_by,created_at,updated_at)
-           VALUES(:id,:ws,:name,:type,:host,:port,:db,:username,:password,:ssl,:options,'untested',:user,:created,:updated)""",
-        {"id":cid,"ws":workspace_id,"name":name.strip(),"type":connector_type,"host":host.strip(),"port":port or (5432 if connector_type=="postgresql" else 3306),"db":database.strip(),"username":username.strip(),"password":encrypt_secret(password),"ssl":ssl_mode,"options":json_dumps(options or {}),"user":actor_id,"created":now,"updated":now},
+        """INSERT INTO data_connectors(
+            id,workspace_id,name,connector_type,host,port,database_name,
+            username,password_ciphertext,ssl_mode,options_json,status,
+            created_by,created_at,updated_at
+        ) VALUES(
+            :id,:ws,:name,:type,:host,:port,:db,:username,:password,
+            :ssl,:options,'untested',:user,:created,:updated
+        )""",
+        {
+            "id": cid,
+            "ws": workspace_id,
+            "name": name.strip(),
+            "type": connector_type,
+            "host": normalized["host"],
+            "port": normalized["port"],
+            "db": normalized["database"],
+            "username": normalized["username"],
+            "password": encrypt_secret(normalized["password"]),
+            "ssl": ssl_mode,
+            "options": json_dumps(normalized["options"]),
+            "user": actor_id,
+            "created": now,
+            "updated": now,
+        },
     )
     return get_connector(workspace_id, cid)
 
@@ -115,19 +153,68 @@ def update_connector(
     options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     current = _get_connector_secret(workspace_id, connector_id)
-    updates: dict[str, Any] = {"id":connector_id,"ws":workspace_id,"updated":utcnow()}
-    clauses = ["updated_at=:updated", "status='untested'"]
-    mapping = {"name":("name",name),"host":("host",host),"port":("port",port),"database":("database_name",database),"username":("username",username),"ssl_mode":("ssl_mode",ssl_mode)}
-    for key,(column,value) in mapping.items():
-        if value is not None:
-            if key == "ssl_mode" and value not in {"disable","prefer","require"}: raise ValueError("ssl_mode invalide")
-            clauses.append(f"{column}=:{key}"); updates[key]=value
-    if password is not None and password != "":
-        clauses.append("password_ciphertext=:password"); updates["password"] = encrypt_secret(password)
-    if options is not None:
-        clauses.append("options_json=:options"); updates["options"] = json_dumps(options)
-    execute(f"UPDATE data_connectors SET {', '.join(clauses)} WHERE id=:id AND workspace_id=:ws", updates)
-    if not current: raise KeyError("Connecteur introuvable")
+    prospective = normalize_connector_payload(
+        connector_type=current["connector_type"],
+        host=host if host is not None else current.get("host", ""),
+        port=port if port is not None else current.get("port"),
+        database=(
+            database
+            if database is not None
+            else current.get("database_name", "")
+        ),
+        username=(
+            username
+            if username is not None
+            else current.get("username", "")
+        ),
+        password=(
+            password
+            if password not in (None, "")
+            else current.get("password", "")
+        ),
+        options=(
+            options
+            if options is not None
+            else current.get("options") or {}
+        ),
+    )
+
+    next_ssl = ssl_mode if ssl_mode is not None else current.get("ssl_mode", "prefer")
+    if next_ssl not in {"disable", "prefer", "require"}:
+        raise ValueError("ssl_mode invalide")
+
+    updates: dict[str, Any] = {
+        "id": connector_id,
+        "ws": workspace_id,
+        "updated": utcnow(),
+        "name": (name if name is not None else current["name"]).strip(),
+        "host": prospective["host"],
+        "port": prospective["port"],
+        "database": prospective["database"],
+        "username": prospective["username"],
+        "ssl_mode": next_ssl,
+        "options": json_dumps(prospective["options"]),
+    }
+    clauses = [
+        "updated_at=:updated",
+        "status='untested'",
+        "name=:name",
+        "host=:host",
+        "port=:port",
+        "database_name=:database",
+        "username=:username",
+        "ssl_mode=:ssl_mode",
+        "options_json=:options",
+    ]
+    if password not in (None, ""):
+        clauses.append("password_ciphertext=:password")
+        updates["password"] = encrypt_secret(prospective["password"])
+
+    execute(
+        f"UPDATE data_connectors SET {', '.join(clauses)} "
+        "WHERE id=:id AND workspace_id=:ws",
+        updates,
+    )
     return get_connector(workspace_id, connector_id)
 
 
@@ -156,71 +243,86 @@ def delete_connector(workspace_id: str, connector_id: str) -> None:
     execute("DELETE FROM data_connectors WHERE id=:id AND workspace_id=:ws", {"id":connector_id,"ws":workspace_id})
 
 
-def _url_and_connect_args(connector: dict[str, Any]) -> tuple[URL, dict[str, Any]]:
-    ctype = connector["connector_type"]
-    driver = "postgresql+psycopg" if ctype == "postgresql" else "mysql+pymysql"
-    query: dict[str, str] = {}
-    connect_args: dict[str, Any] = {"connect_timeout": 5}
-    ssl_mode = connector.get("ssl_mode", "prefer")
-    if ctype == "postgresql" and ssl_mode in {"disable", "require"}:
-        query["sslmode"] = ssl_mode
-    if ctype == "mysql" and ssl_mode == "require":
-        connect_args["ssl"] = {}
-    options = connector.get("options") or {}
-    for key,value in options.get("query", {}).items() if isinstance(options.get("query"), dict) else []:
-        query[str(key)] = str(value)
-    url = URL.create(driver, username=connector["username"], password=connector.get("password") or "", host=connector["host"], port=int(connector["port"]), database=connector["database_name"], query=query)
-    return url, connect_args
-
-
 def connector_engine(workspace_id: str, connector_id: str):
     connector = _get_connector_secret(workspace_id, connector_id)
-    url, connect_args = _url_and_connect_args(connector)
-    engine = create_engine(url, future=True, pool_pre_ping=True, pool_recycle=1800, connect_args=connect_args)
-    return connector, engine
+    if not is_sqlalchemy_connector(connector["connector_type"]):
+        raise ValueError(
+            f"{connector['connector_type']} utilise un backend natif, "
+            "pas un moteur SQLAlchemy."
+        )
+    return connector, sqlalchemy_engine(connector)
 
 
-def test_connector(workspace_id: str, connector_id: str) -> dict[str, Any]:
-    connector, engine = connector_engine(workspace_id, connector_id)
+def connectors_catalog() -> dict[str, Any]:
+    return {
+        "connectors": connector_catalog(),
+        "supported": sorted(SUPPORTED_CONNECTORS),
+    }
+
+
+def test_connector(
+    workspace_id: str,
+    connector_id: str,
+) -> dict[str, Any]:
+    connector = _get_connector_secret(workspace_id, connector_id)
     now = utcnow()
     try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        execute("UPDATE data_connectors SET status='healthy',last_tested_at=:now,last_error=NULL,updated_at=:now WHERE id=:id", {"now":now,"id":connector_id})
-        return {"ok":True,"status":"healthy","tested_at":now,"connector_id":connector_id}
+        result = test_backend(connector)
+        execute(
+            """UPDATE data_connectors
+               SET status='healthy',last_tested_at=:now,last_error=NULL,
+                   updated_at=:now
+               WHERE id=:id""",
+            {"now": now, "id": connector_id},
+        )
+        return {
+            "ok": True,
+            "status": "healthy",
+            "tested_at": now,
+            "connector_id": connector_id,
+            "backend": connector["connector_type"],
+            **(result or {}),
+        }
     except Exception as exc:
         error = _safe_error(exc, connector.get("password", ""))
-        execute("UPDATE data_connectors SET status='error',last_tested_at=:now,last_error=:error,updated_at=:now WHERE id=:id", {"now":now,"error":error,"id":connector_id})
-        return {"ok":False,"status":"error","tested_at":now,"connector_id":connector_id,"error":error}
-    finally:
-        engine.dispose()
+        status = "driver_missing" if error.startswith("driver_missing:") else "error"
+        execute(
+            """UPDATE data_connectors
+               SET status=:status,last_tested_at=:now,last_error=:error,
+                   updated_at=:now
+               WHERE id=:id""",
+            {
+                "status": status,
+                "now": now,
+                "error": error,
+                "id": connector_id,
+            },
+        )
+        return {
+            "ok": False,
+            "status": status,
+            "tested_at": now,
+            "connector_id": connector_id,
+            "backend": connector["connector_type"],
+            "error": error,
+        }
 
 
-def discover_connector(workspace_id: str, connector_id: str, max_tables: int = 250) -> dict[str, Any]:
-    connector, engine = connector_engine(workspace_id, connector_id)
-    try:
-        inspector = inspect(engine)
-        schemas = []
-        try: schemas = inspector.get_schema_names()
-        except Exception: schemas = []
-        ignore = {"information_schema", "pg_catalog", "pg_toast", "mysql", "performance_schema", "sys"}
-        selected_schemas = [s for s in schemas if s not in ignore] or [None]
-        tables: list[dict[str, Any]] = []
-        for schema in selected_schemas[:30]:
-            try: names = inspector.get_table_names(schema=schema)
-            except Exception: continue
-            for name in names:
-                if len(tables) >= max_tables: break
-                try:
-                    cols = inspector.get_columns(name, schema=schema)
-                    columns = [{"name":str(c.get("name")),"type":str(c.get("type")),"nullable":bool(c.get("nullable", True))} for c in cols]
-                except Exception:
-                    columns = []
-                tables.append({"schema":schema,"name":name,"qualified_name":f"{schema}.{name}" if schema else name,"columns":columns})
-            if len(tables) >= max_tables: break
-        return {"connector":_row_to_connector(connector),"schemas":[s for s in selected_schemas if s],"tables":tables,"truncated":len(tables)>=max_tables}
-    finally:
-        engine.dispose()
+def discover_connector(
+    workspace_id: str,
+    connector_id: str,
+    max_tables: int = 250,
+) -> dict[str, Any]:
+    connector = _get_connector_secret(workspace_id, connector_id)
+    discovered = discover_backend(
+        connector,
+        max_tables=max(1, min(int(max_tables), 1000)),
+    )
+    safe = _row_to_connector(dict(connector))
+    return {
+        "connector": safe,
+        **discovered,
+    }
 
 
 def create_source(
@@ -238,24 +340,87 @@ def create_source(
     schema_drift_policy: str = "warn",
     source_options: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    get_connector(workspace_id, connector_id)
-    if source_kind not in {"table", "query"}: raise ValueError("source_kind doit être table ou query")
-    if source_kind == "table":
-        if not table_name or not _IDENTIFIER.match(table_name): raise ValueError("Nom de table invalide")
+    connector = get_connector(workspace_id, connector_id)
+    ctype = connector["connector_type"]
+    spec = CONNECTOR_SPECS[ctype]
+
+    allowed_kinds = {"collection"} if ctype == "mongodb" else {"table", "query"}
+    if source_kind not in allowed_kinds:
+        raise ValueError(
+            f"source_kind invalide pour {spec.label}: "
+            + ", ".join(sorted(allowed_kinds))
+        )
+
+    if source_kind in {"table", "collection"}:
+        if not table_name or not str(table_name).strip():
+            raise ValueError("Nom de table/collection requis.")
+        if len(str(table_name)) > 500:
+            raise ValueError("Nom de table/collection trop long.")
     else:
-        if not query or not query.strip().lower().startswith(("select", "with")): raise ValueError("La source SQL doit être une requête SELECT/CTE en lecture seule")
-        cleaned = query.strip().rstrip(";")
-        if ";" in cleaned: raise ValueError("Une seule requête SQL est autorisée")
-        if re.search(r"\b(insert|update|delete|drop|alter|create|truncate|merge|grant|revoke|call|execute|copy)\b", cleaned, flags=re.I):
-            raise ValueError("La source SQL doit rester strictement en lecture seule")
-    if refresh_mode not in SUPPORTED_REFRESH_MODES: raise ValueError("refresh_mode invalide")
-    if refresh_mode == "incremental" and not incremental_column: raise ValueError("incremental_column requis en mode incremental")
-    if incremental_column and not re.match(r"^[A-Za-z_][A-Za-z0-9_$]*$", incremental_column): raise ValueError("Colonne incrémentale invalide")
-    if schema_drift_policy not in {"warn","fail"}: raise ValueError("schema_drift_policy invalide")
-    sid = str(uuid.uuid4()); now = utcnow()
-    execute("""INSERT INTO connector_sources(id,workspace_id,connector_id,name,source_kind,table_name,source_query,refresh_mode,incremental_column,watermark_json,freshness_sla_minutes,schema_drift_policy,source_options_json,status,created_by,created_at,updated_at)
-             VALUES(:id,:ws,:connector,:name,:kind,:table,:query,:mode,:incremental,NULL,:sla,:drift,:options,'never_refreshed',:user,:created,:updated)""",
-            {"id":sid,"ws":workspace_id,"connector":connector_id,"name":name.strip(),"kind":source_kind,"table":table_name,"query":query,"mode":refresh_mode,"incremental":incremental_column,"sla":max(5,int(freshness_sla_minutes)),"drift":schema_drift_policy,"options":json_dumps(source_options or {}),"user":actor_id,"created":now,"updated":now})
+        cleaned = str(query or "").strip().rstrip(";")
+        if not cleaned.lower().startswith(("select", "with")):
+            raise ValueError(
+                "La source SQL doit être une requête SELECT/CTE en lecture seule."
+            )
+        if ";" in cleaned:
+            raise ValueError("Une seule requête SQL est autorisée.")
+        if re.search(
+            r"\b(insert|update|delete|drop|alter|create|truncate|merge|grant|revoke|call|execute|copy|put|get)\b",
+            cleaned,
+            flags=re.I,
+        ):
+            raise ValueError(
+                "La source SQL doit rester strictement en lecture seule."
+            )
+        query = cleaned
+
+    if refresh_mode not in SUPPORTED_REFRESH_MODES:
+        raise ValueError("refresh_mode invalide")
+    if refresh_mode == "incremental":
+        if not spec.supports_incremental:
+            raise ValueError(
+                f"Le refresh incrémental n'est pas supporté par {spec.label}."
+            )
+        if not incremental_column:
+            raise ValueError("incremental_column requis en mode incremental")
+    if incremental_column and not re.fullmatch(
+        r"[A-Za-z_][A-Za-z0-9_.$]*",
+        incremental_column,
+    ):
+        raise ValueError("Colonne/champ incrémental invalide")
+    if schema_drift_policy not in {"warn", "fail"}:
+        raise ValueError("schema_drift_policy invalide")
+
+    sid = str(uuid.uuid4())
+    now = utcnow()
+    execute(
+        """INSERT INTO connector_sources(
+            id,workspace_id,connector_id,name,source_kind,table_name,
+            source_query,refresh_mode,incremental_column,watermark_json,
+            freshness_sla_minutes,schema_drift_policy,source_options_json,
+            status,created_by,created_at,updated_at
+        ) VALUES(
+            :id,:ws,:connector,:name,:kind,:table,:query,:mode,:incremental,
+            NULL,:sla,:drift,:options,'never_refreshed',:user,:created,:updated
+        )""",
+        {
+            "id": sid,
+            "ws": workspace_id,
+            "connector": connector_id,
+            "name": name.strip(),
+            "kind": source_kind,
+            "table": table_name,
+            "query": query,
+            "mode": refresh_mode,
+            "incremental": incremental_column,
+            "sla": max(5, int(freshness_sla_minutes)),
+            "drift": schema_drift_policy,
+            "options": json_dumps(source_options or {}),
+            "user": actor_id,
+            "created": now,
+            "updated": now,
+        },
+    )
     return get_source(workspace_id, sid)
 
 
@@ -274,40 +439,29 @@ def delete_source(workspace_id: str, source_id: str) -> None:
     execute("DELETE FROM connector_sources WHERE id=:id AND workspace_id=:ws", {"id":source_id,"ws":workspace_id})
 
 
-def _quote_qualified(engine, name: str) -> str:
-    if not _IDENTIFIER.match(name): raise ValueError("Identifiant SQL invalide")
-    prep = engine.dialect.identifier_preparer
-    return ".".join(prep.quote(part) for part in name.split("."))
-
-
-def _source_sql(engine, source: dict[str, Any], watermark: Any = None) -> tuple[str, dict[str, Any]]:
-    params: dict[str, Any] = {}
-    if source["source_kind"] == "table":
-        base = f"SELECT * FROM {_quote_qualified(engine, source['table_name'])}"
-    else:
-        base = f"SELECT * FROM ({str(source['source_query']).strip().rstrip(';')}) AS dv_source"
-    if source["refresh_mode"] == "incremental" and watermark is not None:
-        col = source.get("incremental_column")
-        if not col or not re.match(r"^[A-Za-z_][A-Za-z0-9_$]*$", col): raise ValueError("Colonne incrémentale invalide")
-        quoted = engine.dialect.identifier_preparer.quote(col)
-        base += f" WHERE {quoted} > :dv_watermark ORDER BY {quoted}"
-        params["dv_watermark"] = watermark
-    return base, params
-
-
-def fetch_source_frame(workspace_id: str, source_id: str, *, watermark: Any = None, limit: int | None = None) -> pd.DataFrame:
+def fetch_source_frame(
+    workspace_id: str,
+    source_id: str,
+    *,
+    watermark: Any = None,
+    limit: int | None = None,
+) -> pd.DataFrame:
     source = get_source(workspace_id, source_id)
-    connector, engine = connector_engine(workspace_id, source["connector_id"])
+    connector = _get_connector_secret(
+        workspace_id,
+        source["connector_id"],
+    )
     try:
-        sql, params = _source_sql(engine, source, watermark)
-        if limit is not None:
-            sql = f"SELECT * FROM ({sql}) AS dv_limited LIMIT {max(1,min(int(limit),5000))}"
-        with engine.connect() as conn:
-            return pd.read_sql_query(text(sql), conn, params=params)
+        return fetch_backend(
+            connector,
+            source,
+            watermark=watermark,
+            limit=limit,
+        )
     except Exception as exc:
-        raise RuntimeError(_safe_error(exc, connector.get("password", ""))) from exc
-    finally:
-        engine.dispose()
+        raise RuntimeError(
+            _safe_error(exc, connector.get("password", ""))
+        ) from exc
 
 
 def preview_source(workspace_id: str, source_id: str, limit: int = 50) -> dict[str, Any]:
@@ -510,7 +664,7 @@ def workspace_refresh_health(workspace_id: str) -> dict[str, Any]:
         a,b=_parse_dt(r.get("started_at")),_parse_dt(r.get("finished_at"))
         if a and b: durations.append(max(0,(b-a).total_seconds()))
     return {
-        "connectors":len(connectors),"connector_errors":sum(1 for c in connectors if c.get("status")=="error"),"sources":len(sources),"freshness":counts,
+        "connectors":len(connectors),"connector_errors":sum(1 for c in connectors if c.get("status") in {"error","driver_missing"}),"sources":len(sources),"freshness":counts,
         "runs_considered":len(runs),"success_rate":round((len(completed)/len(runs))*100,1) if runs else None,"avg_duration_seconds":round(sum(durations)/len(durations),2) if durations else None,
         "rows_fetched":sum(int(r.get("rows_fetched") or 0) for r in completed),"scheduled":sum(1 for s in sources if (s.get("schedule") or {}).get("enabled")),
     }

@@ -1,4 +1,4 @@
-# DataVision AI — v2.18.2
+# DataVision AI — v2.22.0
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
 
@@ -282,6 +282,404 @@ Le contexte de session reste stable dans le navigateur via
 `sessionStorage`, ce qui permet aux relances successives de partager la même
 mémoire courte.
 
+
+
+## Nouveau dans v2.19.0 — XAI avancé & Model Benchmark
+
+### Benchmark multi-moteurs
+
+DataVision peut désormais comparer, selon disponibilité runtime :
+
+- Régression logistique / linéaire / Ridge ;
+- Random Forest ;
+- Extra Trees ;
+- Gradient Boosting ;
+- Histogram Gradient Boosting ;
+- SVM ;
+- XGBoost ;
+- LightGBM ;
+- CatBoost.
+
+Le benchmark :
+- utilise uniquement le sous-ensemble d'entraînement pour la cross-validation ;
+- classe les candidats sur le jeu de validation ;
+- conserve le test final hors sélection ;
+- n'échoue pas globalement si un moteur optionnel est indisponible ;
+- expose le statut et l'erreur de chaque candidat.
+
+### XAI complet
+
+Le module **Modéliser → XAI** ajoute :
+
+- permutation importance ;
+- SHAP global et local lorsque le pipeline est compatible ;
+- dépendance partielle (PDP) ;
+- calibration binaire ;
+- Expected Calibration Error (ECE) ;
+- matrice de confusion ;
+- ROC / Precision-Recall ;
+- diagnostics de résidus ;
+- recherche contrefactuelle bornée ;
+- explication locale par perturbation.
+
+Aucune de ces sorties n'est présentée comme une preuve causale.
+
+### Assistant
+
+Le Tool Registry ajoute `benchmark_models`.
+
+`explain_model` peut maintenant demander :
+- `diagnostics` ;
+- `shap_global` / `shap_local` ;
+- `partial_dependence` ;
+- `counterfactuals`.
+
+Tous les calculs passent par les moteurs déterministes DataVision.
+
+
+
+## Nouveau dans v2.20.0 — Root Cause Analysis & Decision Intelligence
+
+### Root Cause Analysis déterministe
+
+Le **Decision Lab** ne dépend plus obligatoirement d'un modèle.
+
+À partir d'un dataset actif, DataVision peut maintenant comparer deux groupes
+ou deux périodes et décomposer l'écart d'un indicateur numérique.
+
+Métriques :
+- moyenne ;
+- somme ;
+- nombre de valeurs.
+
+Pour chaque dimension explicative, le moteur calcule :
+- taille baseline / actuelle ;
+- moyenne baseline / actuelle ;
+- contribution nette ;
+- effet de composition (`mix_effect`) ;
+- effet de niveau (`rate_effect`) pour une moyenne ;
+- erreur de réconciliation.
+
+Pour les moyennes, la décomposition symétrique réconcilie exactement l'écart
+global lorsque tous les segments sont inclus.
+
+### Comparaison temporelle
+
+Une variable de date peut être regroupée automatiquement par :
+- jour ;
+- semaine ;
+- mois ;
+- trimestre ;
+- année.
+
+En mode `auto`, DataVision choisit une granularité cohérente avec la durée de
+la série.
+
+### Distribution Shift
+
+Le RCA compare également les distributions entre baseline et période actuelle :
+
+- variable numérique : déplacement standardisé ;
+- variable catégorielle : Total Variation Distance (TVD).
+
+Ces signaux servent à prioriser les variables à examiner, jamais à déclarer
+une causalité.
+
+### Priorités de revue
+
+Le moteur produit une liste de `review_priorities` fondée sur :
+- contributions segmentaires ;
+- changements de distribution ;
+- taille des groupes.
+
+Le niveau `evidence_strength` est uniquement descriptif et n'est pas un score
+de causalité.
+
+### Optimisation multi-scénarios
+
+Lorsqu'un modèle actif existe, le Decision Lab peut explorer un espace borné
+de variables contrôlables :
+
+```text
+base_row
++ controls
++ objectif
+        ↓
+grid search borné
+        ↓
+modèle sauvegardé
+        ↓
+scénarios classés
+```
+
+Limites :
+- 5 variables contrôlables maximum ;
+- 5 000 scénarios maximum ;
+- résultats classés par objectif puis coût de changement.
+
+Objectifs régression :
+- maximiser ;
+- minimiser ;
+- atteindre une valeur cible.
+
+Pour une classification, DataVision classe les scénarios selon la probabilité
+de la classe cible.
+
+### AI Analyst
+
+Les demandes comme :
+
+```text
+Pourquoi le chiffre d'affaires a baissé ?
+Analyse les causes.
+```
+
+sont maintenant routées vers le moteur Root Cause plutôt que vers une simple
+régression.
+
+Le calcul reste effectué par le moteur déterministe ; le LLM n'invente aucune
+contribution.
+
+### Assistant flottant
+
+Nouveaux tools gouvernés :
+- `run_root_cause_analysis` ;
+- `optimize_decision_scenarios`.
+
+Ils passent par le Tool Registry, le RBAC/RLS et les moteurs DataVision.
+
+
+
+## Nouveau dans v2.21.0 — Connecteurs avancés & Cloud Warehouses
+
+Le centre **Données → Sources & Refresh** couvre maintenant onze familles de
+connecteurs gouvernés :
+
+- PostgreSQL ;
+- MySQL ;
+- MariaDB ;
+- SQLite ;
+- Microsoft SQL Server ;
+- Oracle Database ;
+- MongoDB ;
+- Google BigQuery ;
+- Snowflake ;
+- Databricks SQL ;
+- Amazon Redshift.
+
+### Même pipeline de gouvernance
+
+Tous les connecteurs réutilisent les briques existantes :
+
+```text
+Connector
+  ↓
+test / discovery
+  ↓
+source gouvernée
+  ↓
+preview read-only
+  ↓
+refresh full / incremental selon capacité
+  ↓
+nouvelle version immuable du dataset
+  ↓
+schema drift / freshness SLA / lineage / audit
+```
+
+Il n'existe pas de pipeline cloud séparé.
+
+### Secrets
+
+Le champ secret du connecteur est chiffré par DataVision avant stockage.
+
+Les `options` restent non secrètes.
+
+Exemples :
+- Snowflake : `warehouse`, `schema`, `role` dans les options ;
+- Databricks : `http_path`, `catalog`, `schema` dans les options et token dans
+  le champ secret ;
+- BigQuery : `project_id` dans Base/Projet, dataset/location dans les options,
+  JSON de service account dans le champ secret ou secret vide pour ADC ;
+- MongoDB : `auth_source`, `replica_set`, `tls` dans les options.
+
+### SQLite
+
+SQLite est volontairement confiné à :
+
+```text
+DATA_ROOT/connectors/sqlite
+```
+
+Une connexion ne peut pas pointer vers un fichier arbitraire du serveur.
+
+### Runtime Catalog
+
+Nouvel endpoint :
+
+```text
+GET /api/v1/workspaces/{workspace_id}/connectors/catalog
+```
+
+Il expose :
+- types supportés ;
+- port par défaut ;
+- champs requis ;
+- options non secrètes ;
+- capacités de refresh ;
+- disponibilité réelle du driver.
+
+Un driver absent est signalé par :
+
+```text
+driver_missing
+```
+
+DataVision ne simule jamais une connexion réussie.
+
+### MongoDB
+
+MongoDB utilise des sources `collection` au lieu de requêtes SQL.
+
+Les documents sont normalisés en dataframe lors du preview/refresh. Les types
+BSON spéciaux comme ObjectId sont sérialisés de façon contrôlée.
+
+### Assistant
+
+Le Tool Registry expose aussi :
+
+- `list_data_connectors` ;
+- `discover_data_connector` ;
+- `test_data_connector`.
+
+Le test actif d'un système externe est classé `external` et nécessite donc la
+confirmation prévue par la Safety Policy de l'assistant.
+
+
+
+## Nouveau dans v2.22.0 — Plugin System & MCP
+
+DataVision dispose désormais d'un registre d'extensions gouverné dans
+**Gouverner → Plugins & MCP**.
+
+Deux protocoles sont pris en charge :
+
+- `mcp_http` : serveur MCP accessible par HTTP/HTTPS, avec `initialize`,
+  `tools/list` et `tools/call` ;
+- `http_json` : manifest déclaratif DataVision associant chaque tool à une
+  méthode GET/POST et un chemin HTTP.
+
+### Aucun code plugin arbitraire dans le cœur
+
+La v2.22 ne charge pas de module Python tiers dans le processus FastAPI.
+Les extensions sont des capacités distantes déclaratives. Elles doivent passer
+par le même pipeline que les tools natifs :
+
+```text
+manifest / MCP tools/list
+        ↓
+validation JSON Schema
+        ↓
+Tool Registry DataVision
+        ↓
+RBAC workspace
+        ↓
+Safety Policy
+        ↓
+confirmation humaine
+        ↓
+appel externe borné
+        ↓
+audit / plugin_runs
+```
+
+### Risque canonique
+
+Un plugin peut déclarer son propre risque à titre documentaire, mais DataVision
+ne lui fait pas confiance pour abaisser son niveau de sécurité.
+
+Tout tool distant est enregistré avec :
+
+```text
+risk = external
+```
+
+La confirmation humaine est donc obligatoire avant exécution par l'assistant.
+
+### Isolation tenant-aware
+
+Les tools importés sont isolés par workspace. Leur nom runtime contient un
+suffixe dérivé du workspace et le catalogue présenté au planner est filtré par
+contexte tenant.
+
+Un tool d'un autre workspace est refusé même si son nom est fourni directement.
+
+### Secret Vault
+
+Les manifests n'acceptent pas de password, token, API key ou Authorization
+bruts. Ils référencent uniquement `secret_id`.
+
+Authentification supportée :
+
+- aucune ;
+- Bearer token via Secret Vault ;
+- API key via un header autorisé et Secret Vault.
+
+### Politique réseau
+
+Les plugins publics exigent HTTPS et bloquent les destinations privées,
+loopback, link-local et metadata endpoints.
+
+Les plugins `network_scope=private` peuvent atteindre un intranet explicitement
+configuré, mais loopback/link-local restent bloqués.
+
+Les query strings et credentials dans l'URL sont interdits.
+
+### Contexte transmis
+
+Par défaut :
+
+```text
+context_policy = none
+```
+
+Aucun contexte DataVision n'est alors joint automatiquement.
+
+Avec `semantic`, seuls des identifiants et éléments sémantiques minimaux peuvent
+être joints : workspace, route, dataset/model IDs et objet sélectionné. Les
+lignes brutes du dataset et `uiState` ne sont jamais ajoutés automatiquement.
+
+### Bornes d'exécution
+
+- manifest : 256 Ko maximum ;
+- 100 tools maximum par plugin ;
+- JSON Schema : 64 Ko maximum par tool ;
+- requête distante : 256 Ko maximum ;
+- réponse distante : 2 Mo maximum, lue en streaming ;
+- timeout : 2 à 30 secondes ;
+- aucun redirect HTTP automatique.
+
+### Audit
+
+DataVision conserve :
+
+- plugin installé / mis à jour / supprimé ;
+- synchronisation MCP ;
+- test de plugin ;
+- tool exécuté ;
+- statut, durée et noms des clés d'arguments.
+
+Les valeurs complètes des arguments ne sont pas persistées dans `plugin_runs`.
+
+### MCP
+
+La v2.22 fournit une compatibilité MCP HTTP avec réponses JSON et lecture
+bornée des réponses `text/event-stream` simples. Le protocole de compatibilité
+par défaut est configurable dans le manifest (`protocol_version`).
+
+Cette version ne revendique pas encore : marketplace public, signatures de
+packages, MCP stdio local, OAuth dynamique MCP, sampling MCP, resources/prompts
+MCP ni exécution de code plugin local.
 
 ## Ports
 

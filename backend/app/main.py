@@ -20,7 +20,7 @@ from app.services.tenant_access import (
 )
 
 settings = get_settings()
-app = FastAPI(title=settings.app_name, version="2.18.2", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.22.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -253,7 +253,7 @@ async def assistant_tenant_access(request: Request, call_next):
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "product": settings.app_name, "version": "2.18.2"}
+    return {"status": "ok", "product": settings.app_name, "version": "2.22.0"}
 
 
 @app.get("/api/v1/capabilities")
@@ -274,6 +274,8 @@ def capabilities():
             "local_model_registry", "model_cards", "prediction_api",
             "forecasting", "forecast_model_benchmark", "prediction_intervals", "anomaly_detection",
             "xai_diagnostics", "confusion_matrix", "roc_pr_curves", "binary_calibration", "local_perturbation_explanations",
+            "shap_global_local", "partial_dependence", "counterfactual_search",
+            "root_cause_decomposition", "distribution_shift_analysis", "decision_scenario_optimization",
             "ai_analyst_orchestrator", "natural_language_intent_routing", "analytic_tool_registry", "critic_validation", "analysis_provenance",
             "analytical_dashboard", "deterministic_insight_feed", "saved_visualizations", "report_visualization_assets",
             "dashboard_builder", "dashboard_global_filters", "dashboard_cross_filtering", "dashboard_persistence",
@@ -286,7 +288,7 @@ def capabilities():
             "proactive_metric_watches", "analytical_inbox", "deterministic_change_detection", "semantic_metric_monitoring",
             "alert_acknowledgement", "investigation_recommendations",
             "collaboration_reviews", "review_workflows", "review_comments", "review_mentions", "review_notifications", "review_decision_history",
-            "postgresql_connectors", "mysql_connectors", "encrypted_connector_credentials", "source_discovery", "manual_refresh",
+            "postgresql_connectors", "mysql_connectors", "mariadb_connectors", "sqlite_connectors", "sqlserver_connectors", "oracle_connectors", "mongodb_connectors", "bigquery_connectors", "snowflake_connectors", "databricks_connectors", "redshift_connectors", "connector_runtime_catalog", "connector_driver_health", "encrypted_connector_credentials", "source_discovery", "manual_refresh",
             "scheduled_refresh", "incremental_refresh", "refresh_watermarks", "freshness_sla", "schema_drift_detection", "connector_observability",
             "data_contracts", "contract_rule_engine", "distribution_drift_detection", "reliability_events", "end_to_end_lineage",
             "impact_analysis", "publication_reliability_gate", "contract_aware_report_export", "contract_aware_certification", "automatic_contract_checks_on_derived_versions",
@@ -303,6 +305,9 @@ def capabilities():
             "floating_voice_assistant", "semantic_context_engine", "assistant_tool_registry",
             "assistant_action_lifecycle", "assistant_plan_validation", "assistant_turn_resume",
             "assistant_model_gateway", "assistant_privacy_routing",
+            "governed_plugin_registry", "mcp_http_plugins", "http_json_plugins",
+            "dynamic_json_schema_tools", "tenant_scoped_plugin_tools", "plugin_secret_vault_references",
+            "plugin_ssrf_guard", "plugin_execution_audit", "plugin_response_size_limits",
         ],
         "partial": [
             "scheduled_proactive_scans", "shap", "fairness", "nlq", "running_job_preemptive_cancellation",

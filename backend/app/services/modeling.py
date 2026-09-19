@@ -12,6 +12,7 @@ from typing import Any
 import joblib
 import numpy as np
 import pandas as pd
+from sklearn.base import BaseEstimator, ClassifierMixin, clone
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import (
     ExtraTreesClassifier,
@@ -39,9 +40,63 @@ from sklearn.metrics import (
 )
 from sklearn.model_selection import GridSearchCV, StratifiedKFold, KFold, cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
+from sklearn.svm import SVC, SVR
 
 from app.core.config import get_settings
+
+
+try:
+    from xgboost import XGBClassifier, XGBRegressor
+    HAS_XGBOOST = True
+except Exception:
+    XGBClassifier = XGBRegressor = None
+    HAS_XGBOOST = False
+
+try:
+    from lightgbm import LGBMClassifier, LGBMRegressor
+    HAS_LIGHTGBM = True
+except Exception:
+    LGBMClassifier = LGBMRegressor = None
+    HAS_LIGHTGBM = False
+
+try:
+    from catboost import CatBoostClassifier, CatBoostRegressor
+    HAS_CATBOOST = True
+except Exception:
+    CatBoostClassifier = CatBoostRegressor = None
+    HAS_CATBOOST = False
+
+
+class LabelEncodedClassifier(BaseEstimator, ClassifierMixin):
+    """
+    Adapter for classifiers that require integer encoded class labels.
+
+    The external estimator still participates in sklearn cloning/CV while
+    DataVision preserves the original user-facing class labels.
+    """
+
+    def __init__(self, estimator):
+        self.estimator = estimator
+
+    def fit(self, X, y):
+        self.encoder_ = LabelEncoder().fit(y)
+        self.estimator_ = clone(self.estimator)
+        encoded = self.encoder_.transform(y)
+        self.estimator_.fit(X, encoded)
+        self.classes_ = self.encoder_.classes_
+        return self
+
+    def predict(self, X):
+        encoded = np.asarray(
+            self.estimator_.predict(X),
+            dtype=int,
+        )
+        return self.encoder_.inverse_transform(encoded)
+
+    def predict_proba(self, X):
+        return self.estimator_.predict_proba(X)
+
 
 
 @dataclass
@@ -65,6 +120,10 @@ CLASSIFICATION_ALGORITHMS = {
     "extra_trees": "Extra Trees",
     "gradient_boosting": "Gradient Boosting",
     "hist_gradient_boosting": "Histogram Gradient Boosting",
+    "svm": "SVM",
+    "xgboost": "XGBoost",
+    "lightgbm": "LightGBM",
+    "catboost": "CatBoost",
 }
 
 REGRESSION_ALGORITHMS = {
@@ -74,6 +133,10 @@ REGRESSION_ALGORITHMS = {
     "extra_trees": "Extra Trees",
     "gradient_boosting": "Gradient Boosting",
     "hist_gradient_boosting": "Histogram Gradient Boosting",
+    "svm": "SVM",
+    "xgboost": "XGBoost",
+    "lightgbm": "LightGBM",
+    "catboost": "CatBoost",
 }
 
 
@@ -108,38 +171,184 @@ def _build_preprocessor(X: pd.DataFrame) -> tuple[ColumnTransformer, list[str], 
     return ColumnTransformer(transformers=transformers, remainder="drop"), numeric, categorical
 
 
+def algorithm_availability() -> dict[str, dict[str, Any]]:
+    return {
+        "logistic_regression": {"available": True, "engine": "scikit-learn"},
+        "linear_regression": {"available": True, "engine": "scikit-learn"},
+        "ridge": {"available": True, "engine": "scikit-learn"},
+        "random_forest": {"available": True, "engine": "scikit-learn"},
+        "extra_trees": {"available": True, "engine": "scikit-learn"},
+        "gradient_boosting": {"available": True, "engine": "scikit-learn"},
+        "hist_gradient_boosting": {"available": True, "engine": "scikit-learn"},
+        "svm": {"available": True, "engine": "scikit-learn"},
+        "xgboost": {"available": HAS_XGBOOST, "engine": "xgboost"},
+        "lightgbm": {"available": HAS_LIGHTGBM, "engine": "lightgbm"},
+        "catboost": {"available": HAS_CATBOOST, "engine": "catboost"},
+    }
+
+
+def available_algorithms(task: str) -> list[str]:
+    catalog = (
+        CLASSIFICATION_ALGORITHMS
+        if task == "classification"
+        else REGRESSION_ALGORITHMS
+    )
+    availability = algorithm_availability()
+    return [
+        name
+        for name in catalog
+        if availability.get(name, {}).get("available", False)
+    ]
+
+
 def _estimator(task: str, algorithm: str):
     if task == "classification":
         if algorithm == "logistic_regression":
-            return LogisticRegression(max_iter=2500, class_weight="balanced", random_state=42)
+            return LogisticRegression(
+                max_iter=2500,
+                class_weight="balanced",
+                random_state=42,
+            )
         if algorithm == "random_forest":
-            return RandomForestClassifier(n_estimators=300, random_state=42, class_weight="balanced", n_jobs=-1)
+            return RandomForestClassifier(
+                n_estimators=300,
+                random_state=42,
+                class_weight="balanced",
+                n_jobs=-1,
+            )
         if algorithm == "extra_trees":
-            return ExtraTreesClassifier(n_estimators=300, random_state=42, class_weight="balanced", n_jobs=-1)
+            return ExtraTreesClassifier(
+                n_estimators=300,
+                random_state=42,
+                class_weight="balanced",
+                n_jobs=-1,
+            )
         if algorithm == "gradient_boosting":
             return GradientBoostingClassifier(random_state=42)
         if algorithm == "hist_gradient_boosting":
             return HistGradientBoostingClassifier(random_state=42)
-        raise ValueError(f"Algorithme de classification non supporté: {algorithm}")
+        if algorithm == "svm":
+            return SVC(
+                C=1.0,
+                kernel="rbf",
+                probability=True,
+                class_weight="balanced",
+                random_state=42,
+            )
+        if algorithm == "xgboost":
+            if not HAS_XGBOOST:
+                raise RuntimeError("XGBoost n'est pas installé.")
+            return LabelEncodedClassifier(
+                XGBClassifier(
+                    n_estimators=300,
+                    max_depth=6,
+                    learning_rate=0.05,
+                    subsample=0.9,
+                    colsample_bytree=0.9,
+                    random_state=42,
+                    n_jobs=1,
+                    tree_method="hist",
+                    eval_metric="logloss",
+                )
+            )
+        if algorithm == "lightgbm":
+            if not HAS_LIGHTGBM:
+                raise RuntimeError("LightGBM n'est pas installé.")
+            return LGBMClassifier(
+                n_estimators=300,
+                learning_rate=0.05,
+                num_leaves=31,
+                random_state=42,
+                n_jobs=1,
+                class_weight="balanced",
+                verbosity=-1,
+            )
+        if algorithm == "catboost":
+            if not HAS_CATBOOST:
+                raise RuntimeError("CatBoost n'est pas installé.")
+            return CatBoostClassifier(
+                iterations=300,
+                depth=6,
+                learning_rate=0.05,
+                random_seed=42,
+                verbose=False,
+                allow_writing_files=False,
+                thread_count=1,
+            )
+        raise ValueError(
+            f"Algorithme de classification non supporté: {algorithm}"
+        )
+
     if algorithm == "linear_regression":
         return LinearRegression()
     if algorithm == "ridge":
         return Ridge(alpha=1.0)
     if algorithm == "random_forest":
-        return RandomForestRegressor(n_estimators=300, random_state=42, n_jobs=-1)
+        return RandomForestRegressor(
+            n_estimators=300,
+            random_state=42,
+            n_jobs=-1,
+        )
     if algorithm == "extra_trees":
-        return ExtraTreesRegressor(n_estimators=300, random_state=42, n_jobs=-1)
+        return ExtraTreesRegressor(
+            n_estimators=300,
+            random_state=42,
+            n_jobs=-1,
+        )
     if algorithm == "gradient_boosting":
         return GradientBoostingRegressor(random_state=42)
     if algorithm == "hist_gradient_boosting":
         return HistGradientBoostingRegressor(random_state=42)
-    raise ValueError(f"Algorithme de régression non supporté: {algorithm}")
+    if algorithm == "svm":
+        return SVR(C=1.0, epsilon=0.1, kernel="rbf")
+    if algorithm == "xgboost":
+        if not HAS_XGBOOST:
+            raise RuntimeError("XGBoost n'est pas installé.")
+        return XGBRegressor(
+            n_estimators=300,
+            max_depth=6,
+            learning_rate=0.05,
+            subsample=0.9,
+            colsample_bytree=0.9,
+            random_state=42,
+            n_jobs=1,
+            tree_method="hist",
+            objective="reg:squarederror",
+        )
+    if algorithm == "lightgbm":
+        if not HAS_LIGHTGBM:
+            raise RuntimeError("LightGBM n'est pas installé.")
+        return LGBMRegressor(
+            n_estimators=300,
+            learning_rate=0.05,
+            num_leaves=31,
+            random_state=42,
+            n_jobs=1,
+            verbosity=-1,
+        )
+    if algorithm == "catboost":
+        if not HAS_CATBOOST:
+            raise RuntimeError("CatBoost n'est pas installé.")
+        return CatBoostRegressor(
+            iterations=300,
+            depth=6,
+            learning_rate=0.05,
+            random_seed=42,
+            verbose=False,
+            allow_writing_files=False,
+            thread_count=1,
+        )
+    raise ValueError(
+        f"Algorithme de régression non supporté: {algorithm}"
+    )
 
 
-def _candidate_algorithms(task: str, max_candidates: int = 5) -> list[str]:
-    values = list(CLASSIFICATION_ALGORITHMS if task == "classification" else REGRESSION_ALGORITHMS)
+def _candidate_algorithms(
+    task: str,
+    max_candidates: int = 10,
+) -> list[str]:
+    values = available_algorithms(task)
     return values[: max(1, min(max_candidates, len(values)))]
-
 
 def _primary_metric(task: str, y: pd.Series, requested: str) -> str:
     allowed_class = {"accuracy", "balanced_accuracy", "f1_weighted", "roc_auc"}
@@ -337,11 +546,19 @@ def _tuning_grid(task: str, algorithm: str) -> dict[str, list[Any]]:
         ("classification", "extra_trees"): {prefix + "max_depth": [None, 10, 20], prefix + "min_samples_leaf": [1, 2]},
         ("classification", "gradient_boosting"): {prefix + "learning_rate": [0.05, 0.1], prefix + "n_estimators": [100, 200]},
         ("classification", "hist_gradient_boosting"): {prefix + "learning_rate": [0.05, 0.1], prefix + "max_leaf_nodes": [15, 31]},
+        ("classification", "svm"): {prefix + "C": [0.5, 1.0, 2.0], prefix + "gamma": ["scale", "auto"]},
+        ("classification", "xgboost"): {prefix + "estimator__max_depth": [4, 6], prefix + "estimator__learning_rate": [0.03, 0.08]},
+        ("classification", "lightgbm"): {prefix + "num_leaves": [15, 31], prefix + "learning_rate": [0.03, 0.08]},
+        ("classification", "catboost"): {prefix + "depth": [4, 6], prefix + "learning_rate": [0.03, 0.08]},
         ("regression", "ridge"): {prefix + "alpha": [0.1, 1.0, 10.0]},
         ("regression", "random_forest"): {prefix + "max_depth": [None, 8, 16], prefix + "min_samples_leaf": [1, 3]},
         ("regression", "extra_trees"): {prefix + "max_depth": [None, 10, 20], prefix + "min_samples_leaf": [1, 2]},
         ("regression", "gradient_boosting"): {prefix + "learning_rate": [0.05, 0.1], prefix + "n_estimators": [100, 200]},
         ("regression", "hist_gradient_boosting"): {prefix + "learning_rate": [0.05, 0.1], prefix + "max_leaf_nodes": [15, 31]},
+        ("regression", "svm"): {prefix + "C": [0.5, 1.0, 2.0], prefix + "epsilon": [0.05, 0.1, 0.2]},
+        ("regression", "xgboost"): {prefix + "max_depth": [4, 6], prefix + "learning_rate": [0.03, 0.08]},
+        ("regression", "lightgbm"): {prefix + "num_leaves": [15, 31], prefix + "learning_rate": [0.03, 0.08]},
+        ("regression", "catboost"): {prefix + "depth": [4, 6], prefix + "learning_rate": [0.03, 0.08]},
     }
     return grids.get((task, algorithm), {})
 
@@ -402,7 +619,7 @@ def _model_card(
             "Fairness avancée reste prévue dans une version ultérieure; la calibration binaire est disponible dans les diagnostics XAI.",
         ],
         "fairness": {"status": "planned"},
-        "explainability": {"permutation_importance": bool(importance), "local_perturbation": True, "diagnostics": True, "shap": "optional"},
+        "explainability": {"permutation_importance": bool(importance), "local_perturbation": True, "diagnostics": True, "partial_dependence": True, "counterfactual_search": True, "shap": "optional_runtime"},
     }
 
 
@@ -495,31 +712,117 @@ def automl_train(
     benchmark: list[dict[str, Any]] = []
 
     for algorithm in candidates:
-        prep, _, _ = _build_preprocessor(X_train)
-        pipe = Pipeline([("preprocess", prep), ("model", _estimator(resolved_task, algorithm))])
-        cv_mean = None
-        cv_std = None
-        if cv is not None:
-            scores = cross_val_score(pipe, X_train, y_train, scoring=scoring, cv=cv, n_jobs=1, error_score="raise")
-            # sklearn losses are negative; expose positive values for MAE/RMSE.
-            display_scores = -scores if primary in {"rmse", "mae"} else scores
-            cv_mean = float(np.mean(display_scores))
-            cv_std = float(np.std(display_scores))
-        pipe.fit(X_train, y_train)
-        val_metrics = _evaluate(pipe, X_val, y_val, resolved_task)
-        benchmark.append({
+        row: dict[str, Any] = {
             "algorithm": algorithm,
-            "label": (CLASSIFICATION_ALGORITHMS if resolved_task == "classification" else REGRESSION_ALGORITHMS)[algorithm],
+            "label": (
+                CLASSIFICATION_ALGORITHMS
+                if resolved_task == "classification"
+                else REGRESSION_ALGORITHMS
+            )[algorithm],
             "primary_metric": primary,
-            "validation_score": val_metrics.get(primary),
-            "validation_metrics": val_metrics,
-            "cv_mean": round(cv_mean, 6) if cv_mean is not None else None,
-            "cv_std": round(cv_std, 6) if cv_std is not None else None,
             "cv_folds": actual_folds,
-        })
+            "status": "ok",
+            "engine": algorithm_availability().get(
+                algorithm,
+                {},
+            ).get("engine", "unknown"),
+        }
+        try:
+            prep, _, _ = _build_preprocessor(X_train)
+            pipe = Pipeline(
+                [
+                    ("preprocess", prep),
+                    (
+                        "model",
+                        _estimator(
+                            resolved_task,
+                            algorithm,
+                        ),
+                    ),
+                ]
+            )
+            cv_mean = None
+            cv_std = None
+            if cv is not None:
+                scores = cross_val_score(
+                    pipe,
+                    X_train,
+                    y_train,
+                    scoring=scoring,
+                    cv=cv,
+                    n_jobs=1,
+                    error_score="raise",
+                )
+                display_scores = (
+                    -scores
+                    if primary in {"rmse", "mae"}
+                    else scores
+                )
+                cv_mean = float(
+                    np.mean(display_scores)
+                )
+                cv_std = float(
+                    np.std(display_scores)
+                )
 
-    benchmark.sort(key=lambda row: _metric_value(row["validation_metrics"], primary), reverse=True)
-    best_algorithm = benchmark[0]["algorithm"]
+            pipe.fit(X_train, y_train)
+            val_metrics = _evaluate(
+                pipe,
+                X_val,
+                y_val,
+                resolved_task,
+            )
+            row.update(
+                {
+                    "validation_score": val_metrics.get(
+                        primary
+                    ),
+                    "validation_metrics": val_metrics,
+                    "cv_mean": (
+                        round(cv_mean, 6)
+                        if cv_mean is not None
+                        else None
+                    ),
+                    "cv_std": (
+                        round(cv_std, 6)
+                        if cv_std is not None
+                        else None
+                    ),
+                }
+            )
+        except Exception as exc:
+            row.update(
+                {
+                    "status": "error",
+                    "validation_score": None,
+                    "validation_metrics": {},
+                    "cv_mean": None,
+                    "cv_std": None,
+                    "error": (
+                        f"{type(exc).__name__}: "
+                        f"{str(exc)[:400]}"
+                    ),
+                }
+            )
+        benchmark.append(row)
+
+    benchmark.sort(
+        key=lambda row: _metric_value(
+            row.get("validation_metrics") or {},
+            primary,
+        ),
+        reverse=True,
+    )
+    successful = [
+        row
+        for row in benchmark
+        if row.get("status") == "ok"
+    ]
+    if not successful:
+        raise RuntimeError(
+            "Aucun candidat AutoML n'a pu être entraîné."
+        )
+    best_algorithm = successful[0]["algorithm"]
 
     # Controlled tuning uses train only and never sees validation/test.
     prep, _, _ = _build_preprocessor(X_train)
@@ -583,6 +886,151 @@ def automl_train(
         "model_card": card,
     }
 
+
+
+def benchmark_models(
+    df: pd.DataFrame,
+    target: str,
+    task: str = "auto",
+    primary_metric: str = "auto",
+    cv_folds: int = 5,
+    max_candidates: int = 10,
+) -> dict[str, Any]:
+    if target not in df.columns:
+        raise ValueError("Variable cible inconnue")
+
+    work = df.dropna(subset=[target]).copy()
+    if len(work) < 40:
+        raise ValueError(
+            "Le benchmark requiert au moins 40 lignes complètes sur la cible."
+        )
+
+    y = work[target]
+    X = work.drop(columns=[target])
+    resolved_task = _task_for_target(y, task)
+    primary = _primary_metric(resolved_task, y, primary_metric)
+    scoring = _scoring_name(resolved_task, primary)
+
+    excluded_features = _auto_exclusions(X)
+    if excluded_features:
+        X = X.drop(columns=excluded_features)
+    if X.shape[1] == 0:
+        raise ValueError(
+            "Toutes les variables explicatives ont été exclues."
+        )
+
+    X_train, X_val, _X_test, y_train, y_val, _y_test = _safe_split(
+        X, y, resolved_task
+    )
+    cv, actual_folds = _cv_strategy(
+        resolved_task,
+        y_train,
+        cv_folds,
+    )
+    algorithms = _candidate_algorithms(
+        resolved_task,
+        max_candidates,
+    )
+    catalog = (
+        CLASSIFICATION_ALGORITHMS
+        if resolved_task == "classification"
+        else REGRESSION_ALGORITHMS
+    )
+    availability = algorithm_availability()
+    rows: list[dict[str, Any]] = []
+
+    for algorithm in algorithms:
+        row: dict[str, Any] = {
+            "algorithm": algorithm,
+            "label": catalog[algorithm],
+            "engine": availability[algorithm]["engine"],
+            "status": "ok",
+            "primary_metric": primary,
+            "cv_folds": actual_folds,
+        }
+        try:
+            prep, _, _ = _build_preprocessor(X_train)
+            pipe = Pipeline(
+                [
+                    ("preprocess", prep),
+                    ("model", _estimator(resolved_task, algorithm)),
+                ]
+            )
+
+            if cv is not None:
+                scores = cross_val_score(
+                    pipe,
+                    X_train,
+                    y_train,
+                    scoring=scoring,
+                    cv=cv,
+                    n_jobs=1,
+                    error_score="raise",
+                )
+                display_scores = (
+                    -scores if primary in {"rmse", "mae"} else scores
+                )
+                row["cv_mean"] = round(
+                    float(np.mean(display_scores)), 6
+                )
+                row["cv_std"] = round(
+                    float(np.std(display_scores)), 6
+                )
+            else:
+                row["cv_mean"] = None
+                row["cv_std"] = None
+
+            pipe.fit(X_train, y_train)
+            metrics = _evaluate(
+                pipe,
+                X_val,
+                y_val,
+                resolved_task,
+            )
+            row["validation_metrics"] = metrics
+            row["validation_score"] = metrics.get(primary)
+            row["selection_value"] = _metric_value(
+                metrics,
+                primary,
+            )
+        except Exception as exc:
+            row.update(
+                {
+                    "status": "error",
+                    "error": (
+                        f"{type(exc).__name__}: {str(exc)[:400]}"
+                    ),
+                    "validation_metrics": {},
+                    "validation_score": None,
+                    "selection_value": -float("inf"),
+                }
+            )
+        rows.append(row)
+
+    rows.sort(
+        key=lambda item: float(
+            item.get("selection_value", -float("inf"))
+        ),
+        reverse=True,
+    )
+    successful = [item for item in rows if item["status"] == "ok"]
+
+    return {
+        "task": resolved_task,
+        "target": target,
+        "primary_metric": primary,
+        "rows": len(work),
+        "features": list(X.columns),
+        "excluded_features": excluded_features,
+        "cv_folds": actual_folds,
+        "availability": availability,
+        "benchmark": rows,
+        "best": successful[0] if successful else None,
+        "selection_policy": (
+            "Classement sur validation; cross-validation exécutée "
+            "uniquement sur le sous-ensemble d'entraînement."
+        ),
+    }
 
 def predict(model_id: str, rows: list[dict]) -> dict:
     path = get_settings().model_dir / f"{model_id}.joblib"

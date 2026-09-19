@@ -69,7 +69,7 @@ class GatewayPlannerProvider(PlannerProvider):
             )
 
         catalog = []
-        for spec in self.registry.list():
+        for spec in self.registry.list_for_context(context):
             catalog.append(
                 {
                     "name": spec.name,
@@ -78,7 +78,7 @@ class GatewayPlannerProvider(PlannerProvider):
                     "risk": spec.risk,
                     "requires_dataset": spec.requires_dataset,
                     "requires_model": spec.requires_model,
-                    "input_schema": tool_json_schema(spec.name),
+                    "input_schema": spec.input_schema or tool_json_schema(spec.name),
                 }
             )
 

@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, model_validator
+from jsonschema import Draft202012Validator
+from jsonschema.exceptions import ValidationError as JsonSchemaValidationError
 
 
 class ProfileDatasetArgs(BaseModel):
@@ -215,12 +217,23 @@ TOOL_CONTRACTS: dict[str, type[BaseModel]] = {
 }
 
 
-def validate_tool_arguments(tool_name: str, args: dict[str, Any]) -> dict[str, Any]:
+def validate_tool_arguments(
+    tool_name: str,
+    args: dict[str, Any],
+    input_schema: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     model = TOOL_CONTRACTS.get(tool_name)
-    if model is None:
-        return dict(args)
-    value = model.model_validate(args)
-    return value.model_dump(mode="json")
+    if model is not None:
+        value = model.model_validate(args)
+        return value.model_dump(mode="json")
+    if input_schema is not None:
+        try:
+            Draft202012Validator(input_schema).validate(args)
+        except JsonSchemaValidationError as exc:
+            path = ".".join(str(item) for item in exc.absolute_path)
+            prefix = f"{path}: " if path else ""
+            raise ValueError(prefix + exc.message) from exc
+    return dict(args)
 
 
 def tool_json_schema(tool_name: str) -> dict[str, Any] | None:

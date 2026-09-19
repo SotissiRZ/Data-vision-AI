@@ -127,6 +127,51 @@ class DeterministicPlanner:
                 ),
             ]
 
+
+        if name == "root_cause_analysis":
+            target = intent.entities.get("target")
+            comparison = (
+                intent.entities.get("comparison_column")
+                or intent.entities.get("group")
+                or intent.entities.get("date_column")
+            )
+            if not target or not comparison:
+                return []
+            return [
+                AgentPlanStep(
+                    tool="run_root_cause_analysis",
+                    label=f"Décomposer l'écart de {target}",
+                    args={
+                        "target": target,
+                        "comparison_column": comparison,
+                        "metric": intent.entities.get("metric", "mean"),
+                        "baseline_value": intent.entities.get("baseline_value"),
+                        "current_value": intent.entities.get("current_value"),
+                        "dimensions": intent.entities.get("dimensions"),
+                    },
+                )
+            ]
+
+        if name == "optimize_scenarios":
+            if not context.activeModelId:
+                return []
+            controls = intent.entities.get("controls")
+            base_row = intent.entities.get("base_row")
+            if not isinstance(controls, dict) or not isinstance(base_row, dict):
+                return []
+            return [
+                AgentPlanStep(
+                    tool="optimize_decision_scenarios",
+                    label="Optimiser les scénarios de décision",
+                    args={
+                        "base_row": base_row,
+                        "controls": controls,
+                        "objective": intent.entities.get("objective", "maximize"),
+                        "target_value": intent.entities.get("target_value"),
+                        "desired_class": intent.entities.get("desired_class"),
+                    },
+                )
+            ]
         if name == "explain_model":
             if not context.activeModelId:
                 return []

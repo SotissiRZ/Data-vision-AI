@@ -17,6 +17,7 @@ from app.services.forecasting import forecast_series
 from app.services.modeling import automl_train
 from app.services.profiling import profile_dataframe
 from app.services.quality import quality_report
+from app.services.root_cause import root_cause_analysis
 from app.services.statistics_engine import correlation_analysis
 from app.services.semantic_nlq import plan_semantic_question, execute_semantic_question
 
@@ -187,12 +188,30 @@ def _requested_k(question: str) -> int:
 
 def detect_intent(question: str) -> str:
     q = _norm(question)
+
+    if (
+        "root cause" in q
+        or "cause racine" in q
+        or "analyse des causes" in q
+        or "analyse les causes" in q
+        or re.search(
+            r"\bpourquoi\b.*\b(?:baiss|augment|chang|vari)",
+            q,
+        )
+        or re.search(
+            r"\b(?:explique|expliquer)\b.*\b(?:baisse|hausse|variation|chute)",
+            q,
+        )
+    ):
+        return "root_cause"
+
     intents: list[tuple[str, tuple[str, ...]]] = [
         ("forecast", ("prevision", "prevoir", "forecast", "projection", "prochain mois", "next month", "future")),
         ("automl", ("automl", "modele predictif", "predire", "prediction", "classifier", "classification", "machine learning", "meilleur modele")),
         ("clustering", ("cluster", "segmentation", "segmenter", "regrouper", "k-means", "kmeans")),
         ("anomaly", ("anomal", "aberrant", "outlier", "atypique", "isolation forest")),
         ("anova", ("anova", "compare les groupes", "comparer les groupes", "difference entre les groupes", "moyennes entre")),
+        ("root_cause", ("root cause", "cause racine", "analyse des causes", "explique la baisse", "explique la hausse", "pourquoi a baisse", "pourquoi a augmente", "quels facteurs expliquent la variation")),
         ("regression", ("regression", "facteurs associes", "facteurs qui expliquent", "influence de", "relation avec")),
         ("correlation", ("correlation", "correle", "association entre", "relations entre les variables")),
         ("quality", ("qualite", "nettoyage", "manquante", "doublon", "problemes de donnees", "data quality")),
@@ -216,6 +235,7 @@ def tool_registry() -> list[dict[str, Any]]:
         {"name": "automl", "status": "implemented", "purpose": "Benchmark de modèles avec validation train/validation/test"},
         {"name": "forecast", "status": "implemented", "purpose": "Forecasting chronologique avec benchmark"},
         {"name": "anomalies", "status": "implemented", "purpose": "IQR, z-score robuste et Isolation Forest"},
+        {"name": "root_cause", "status": "implemented", "purpose": "Décomposition descriptive des écarts et changements de distribution"},
         {"name": "decision_support", "status": "implemented", "purpose": "Priorisation d'actions basée sur les résultats calculés"},
         {"name": "semantic_query", "status": "implemented", "purpose": "Requête métier multi-table via la couche sémantique gouvernée"},
     ]
@@ -407,6 +427,143 @@ def analyze_dataset(df: pd.DataFrame, ctx: AnalystContext) -> dict[str, Any]:
             first = forecast["forecast"][0]
             last = forecast["forecast"][-1]
             findings.append(_finding("info", "Prévision", f"La méthode retenue est {forecast['method']}. La prévision passe de {first['prediction']:.3f} à {last['prediction']:.3f} sur {forecast['horizon']} période(s).", "forecast", {"method": forecast["method"], "horizon": forecast["horizon"], "first_prediction": first["prediction"], "last_prediction": last["prediction"]}))
+
+    elif intent == "root_cause":
+        target = _select_target(df, ctx, numeric_required=True)
+        if not target:
+            raise ValueError(
+                "La Root Cause Analysis nécessite une cible numérique identifiable."
+            )
+
+        mentioned = _resolved_columns(
+            question,
+            df,
+            ctx.semantic_model,
+        )
+        date_columns = _date_columns(df)
+        categorical = _categorical_columns(df)
+
+        comparison = None
+        for column in mentioned:
+            if column != target and (
+                column in date_columns
+                or column in categorical
+            ):
+                comparison = column
+                break
+        if comparison is None:
+            comparison = (
+                date_columns[0]
+                if date_columns
+                else _select_group(df, ctx, {target})
+            )
+        if not comparison:
+            raise ValueError(
+                "Précisez une dimension de comparaison (date, période ou groupe)."
+            )
+
+        dimensions = [
+            column
+            for column in categorical
+            if column not in {target, comparison}
+        ][:8]
+
+        root = execute(
+            f"Décomposer la variation de {target} selon {comparison}",
+            "root_cause",
+            lambda: root_cause_analysis(
+                df,
+                target=target,
+                comparison_column=comparison,
+                metric="mean",
+                dimensions=dimensions,
+                time_grain="auto",
+                min_segment_size=3,
+                top_n=8,
+            ),
+        )
+        if root:
+            delta_pct = root.get("delta_pct")
+            delta_text = (
+                f"{float(delta_pct):+.1f}%"
+                if delta_pct is not None
+                else f"{float(root['delta']):+.3f}"
+            )
+            findings.append(
+                _finding(
+                    "high",
+                    "Variation observée",
+                    (
+                        f"{target} passe de "
+                        f"{root['baseline']['metric']:.3f} à "
+                        f"{root['current']['metric']:.3f} "
+                        f"({delta_text})."
+                    ),
+                    "root_cause",
+                    {
+                        "target": target,
+                        "comparison_column": comparison,
+                        "baseline": root["baseline"],
+                        "current": root["current"],
+                        "delta": root["delta"],
+                        "delta_pct": root.get("delta_pct"),
+                    },
+                )
+            )
+
+            decompositions = root.get(
+                "dimension_decompositions",
+                [],
+            )
+            if decompositions:
+                strongest = decompositions[0]
+                top_segments = strongest.get(
+                    "top_segments",
+                    [],
+                )
+                if top_segments:
+                    top = top_segments[0]
+                    findings.append(
+                        _finding(
+                            "high",
+                            "Segment prioritaire à examiner",
+                            (
+                                f"{strongest['dimension']} = "
+                                f"{top['segment']} représente une des "
+                                f"plus fortes contributions descriptives "
+                                f"à l'écart ({top['contribution']:+.3f})."
+                            ),
+                            "root_cause",
+                            {
+                                "dimension": strongest["dimension"],
+                                "segment": top["segment"],
+                                "contribution": top["contribution"],
+                                "mix_effect": top.get("mix_effect"),
+                                "rate_effect": top.get("rate_effect"),
+                            },
+                        )
+                    )
+
+            shifts = root.get("feature_shifts", [])
+            if shifts:
+                shift = shifts[0]
+                findings.append(
+                    _finding(
+                        "info",
+                        "Changement de distribution",
+                        (
+                            f"{shift['feature']} présente le changement "
+                            f"de distribution le plus marqué "
+                            f"(score={shift['score']:.3f})."
+                        ),
+                        "root_cause",
+                        {
+                            "feature": shift["feature"],
+                            "type": shift["type"],
+                            "score": shift["score"],
+                        },
+                    )
+                )
 
     elif intent == "regression":
         target = _select_target(df, ctx, numeric_required=True)

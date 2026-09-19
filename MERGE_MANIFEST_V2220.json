@@ -1,0 +1,47 @@
+{
+  "version": "2.22.0",
+  "base": "2.21.0 cumulative",
+  "focus": "Governed Plugin System and MCP HTTP extensibility",
+  "validation": {
+    "python_ast": "OK",
+    "pytest": "208 passed in 26.44s",
+    "typescript_transpile_syntax": "OK",
+    "next_build": "not run: npm install timed out in this execution environment",
+    "docker_compose": "not run: Docker CLI unavailable in this execution environment",
+    "base_files_preserved": 260,
+    "missing_base_files": [],
+    "checks": {
+      "plugin_service": true,
+      "plugin_runtime": true,
+      "metadata_tables": true,
+      "mcp_http": true,
+      "http_json": true,
+      "secret_vault_refs": true,
+      "ssrf_guard": true,
+      "external_risk_floor": true,
+      "tenant_scoping": true,
+      "dynamic_json_schema": true,
+      "frontend_plugin_center": true,
+      "plugin_permissions": true,
+      "version": true,
+      "base_files_preserved": true
+    }
+  },
+  "security_boundaries": [
+    "no arbitrary local plugin code loading",
+    "remote tools canonicalized to external risk",
+    "human confirmation required by assistant policy",
+    "workspace-scoped dynamic tool catalog",
+    "Secret Vault references instead of raw credentials",
+    "public HTTPS and SSRF protections",
+    "request/response size caps and no redirects",
+    "argument values not persisted in plugin_runs"
+  ],
+  "explicit_limits": [
+    "no MCP stdio",
+    "no public marketplace/package signatures yet",
+    "no MCP resources/prompts/sampling surface yet",
+    "no OAuth dynamic client registration for MCP yet",
+    "no arbitrary plugin Python package execution"
+  ]
+}

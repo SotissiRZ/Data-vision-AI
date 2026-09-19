@@ -92,3 +92,53 @@ docker compose ps
 ```
 
 Le service `sandbox` ne publie aucun port sur la machine hôte.
+
+
+## v2.21 — Connecteurs avancés
+
+Le backend installe de nouveaux drivers de base de données et cloud warehouse.
+
+Après remplacement du dossier :
+
+```powershell
+docker compose down
+docker compose build --no-cache api worker web
+docker compose up -d
+docker compose ps
+```
+
+Pour SQLite, déposer les fichiers `.db` dans :
+
+```text
+data/connectors/sqlite
+```
+
+Ne placez jamais de mot de passe, token ou JSON de service account dans le
+champ `options`. Utilisez le champ secret du connecteur.
+
+
+## v2.22 — Plugin System & MCP
+
+La v2.22 ajoute les tables metadata :
+
+- `plugin_installations` ;
+- `plugin_tools` ;
+- `plugin_runs`.
+
+Elles sont créées automatiquement par le Metadata Store au démarrage.
+
+Le backend ajoute aussi `jsonschema` pour valider les contrats dynamiques des
+extensions.
+
+Après remplacement du dossier :
+
+```powershell
+docker compose down
+docker compose build --no-cache api worker web
+docker compose up -d
+docker compose ps
+```
+
+Les credentials de plugin doivent être créés dans **Identité & Secrets**, puis
+référencés par `secret_id` dans **Plugins & MCP**. Ne placez aucun token dans
+l'endpoint, le manifest ou les options JSON.
