@@ -31,6 +31,7 @@ jobs:
       - run: python ../scripts/workspace_acceptance.py --root .. --check
       - run: python ../scripts/assistant_acceptance.py --root .. --check
       - run: python ../scripts/assistant_multimodal_acceptance.py --root .. --check
+      - run: python ../scripts/multi_agent_acceptance.py --root .. --check
       - run: python ../scripts/cdc_audit.py --check
 
   frontend:

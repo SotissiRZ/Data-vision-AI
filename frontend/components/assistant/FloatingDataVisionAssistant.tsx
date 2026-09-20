@@ -862,6 +862,9 @@ useEffect(() => {
                           </span>
                           <span className={styles.planLabel}>
                             {step.label}
+                            {step.agent_role && (
+                              <small className={styles.planAgent}>{agentLabel(step.agent_role)}</small>
+                            )}
                           </span>
                           <span className={styles.planStatus}>
                             {step.status}
@@ -1162,7 +1165,20 @@ type PlanStepView = {
   id: string;
   label: string;
   status: string;
+  agent_role?: string;
 };
+
+function agentLabel(role: string) {
+  const labels: Record<string, string> = {
+    data_agent: "Data Agent",
+    statistics_agent: "Statistics Agent",
+    ml_agent: "ML Agent",
+    visualization_agent: "Visualization Agent",
+    report_agent: "Report Agent",
+    critic_agent: "Critic Agent",
+  };
+  return labels[role] ?? role;
+}
 
 function getPlanSteps(
   metadata?: Record<string, unknown>,

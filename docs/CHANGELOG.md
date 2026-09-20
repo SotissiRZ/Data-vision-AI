@@ -1,3 +1,13 @@
+## 2.46.0 — AI Orchestrator multi-agent réel
+
+- Six rôles runtime : Data, Statistics, ML, Visualization, Report et Critic.
+- Routage déterministe tool → spécialiste avec overrides contrôlés.
+- Prévalidation de délégation avant tout tool-call.
+- Validation spécialiste des résultats et arrêt sur sortie vide/invalide.
+- Critic Agent vérifiant exécution et cohérence du routage.
+- Trace `agent_trace` et endpoint `/api/v1/ai/assistant/agents`.
+- Gate `MULTI_AGENT_ACCEPTANCE` 8/8 intégré à CI/release/preflight.
+
 # Changelog
 
 ## 2.45.0 — Assistant multimodal et proactif

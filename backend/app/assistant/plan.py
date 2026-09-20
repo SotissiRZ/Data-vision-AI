@@ -11,6 +11,7 @@ from .models import (
 )
 from .policy import evaluate_action_policy
 from .tools import AssistantToolRegistry
+from .agents import role_for_spec
 
 
 def validate_agent_plan(
@@ -33,6 +34,7 @@ def validate_agent_plan(
                     status="deny",
                     reason="Outil inconnu ou non enregistré.",
                     risk=None,
+                    agent_role=None,
                 )
             )
             continue
@@ -45,6 +47,7 @@ def validate_agent_plan(
                     status="deny",
                     reason="Outil déclaré mais non raccordé au runtime DataVision.",
                     risk=spec.risk,
+                    agent_role=role_for_spec(spec),
                 )
             )
             continue
@@ -71,6 +74,7 @@ def validate_agent_plan(
                     status="deny",
                     reason="Dataset actif requis.",
                     risk=spec.risk,
+                    agent_role=role_for_spec(spec),
                 )
             )
             continue
@@ -83,6 +87,7 @@ def validate_agent_plan(
                     status="deny",
                     reason="Modèle actif requis.",
                     risk=spec.risk,
+                    agent_role=role_for_spec(spec),
                 )
             )
             continue
@@ -130,6 +135,7 @@ def validate_agent_plan(
                     status="deny",
                     reason=policy.reason,
                     risk=spec.risk,
+                    agent_role=role_for_spec(spec),
                 )
             )
             continue
@@ -143,6 +149,7 @@ def validate_agent_plan(
                     status="deny",
                     reason=f"Permission refusée : {auth_reason}",
                     risk=spec.risk,
+                    agent_role=role_for_spec(spec),
                 )
             )
             continue

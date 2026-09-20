@@ -11,6 +11,7 @@ from .models import AgentIntent, AgentPlanStep, AssistantContext
 from .planner_runtime import PlannerProvider
 from .privacy import AIDataPolicy, project_context_for_model
 from .tools import AssistantToolRegistry
+from .agents import role_for_spec
 
 
 class PlannedStepPayload(BaseModel):
@@ -79,6 +80,7 @@ class GatewayPlannerProvider(PlannerProvider):
                     "requires_dataset": spec.requires_dataset,
                     "requires_model": spec.requires_model,
                     "input_schema": spec.input_schema or tool_json_schema(spec.name),
+                    "agent_role": role_for_spec(spec),
                 }
             )
 
@@ -94,7 +96,8 @@ class GatewayPlannerProvider(PlannerProvider):
             "Vous construisez uniquement un plan utilisant les outils fournis. "
             "N'inventez jamais de colonne, cible, couche, fichier ou modèle absent du contexte. "
             "Si les informations sont insuffisantes, retournez une liste steps vide. "
-            "Les opérations destructives ne doivent jamais être déguisées en opérations sûres."
+            "Les opérations destructives ne doivent jamais être déguisées en opérations sûres. "
+            "Respectez le propriétaire agent_role indiqué pour chaque outil; le runtime vérifiera ce routage."
         )
 
         user_payload = {

@@ -6,7 +6,7 @@ function Assert-LastExit([string]$Step) {
   }
 }
 
-$expectedVersion = "2.45.0"
+$expectedVersion = "2.46.0"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 
@@ -27,7 +27,7 @@ if ($cryptoLine -ne "cryptography==46.0.5") {
   throw "Dépendance cryptography incorrecte: '$cryptoLine'. Attendu: cryptography==46.0.5. N'exécutez pas Docker depuis ce dossier."
 }
 if ($requirements -contains "cryptography==46.0.4") {
-  throw "Ancienne dépendance cryptography==46.0.4 détectée. Ce dossier n'est pas une copie v2.45.0 valide."
+  throw "Ancienne dépendance cryptography==46.0.4 détectée. Ce dossier n'est pas une copie v2.46.0 valide."
 }
 
 Write-Host "VERSION: $version" -ForegroundColor Green
@@ -35,16 +35,16 @@ Write-Host "Dependency: $cryptoLine" -ForegroundColor Green
 
 $composeText = Get-Content "docker-compose.yml" -Raw
 if ($composeText -notmatch 'NEXT_PUBLIC_API_URL:\s*/api/backend') {
-  throw "Proxy API same-origin absent du docker-compose.yml. Cette copie ne contient pas le baseline de production v2.45.0."
+  throw "Proxy API same-origin absent du docker-compose.yml. Cette copie ne contient pas le baseline de production v2.46.0."
 }
 $dockerfileText = Get-Content "backend/Dockerfile" -Raw
 if ($dockerfileText -notmatch 'COPY compliance ./compliance') {
-  throw "Le Dockerfile backend n'embarque pas compliance/. Cette copie ne contient pas le baseline de production v2.45.0."
+  throw "Le Dockerfile backend n'embarque pas compliance/. Cette copie ne contient pas le baseline de production v2.46.0."
 }
 Write-Host "CDC assets/proxy: OK" -ForegroundColor Green
 
-foreach ($requiredBaseline in @("frontend/lib/assistant/orchestrator-adapter.ts", "scripts/production_baseline.py", "scripts/mvp_acceptance.py", "scripts/preparation_acceptance.py", "scripts/workspace_acceptance.py", "scripts/assistant_acceptance.py", "scripts/assistant_multimodal_acceptance.py", "scripts/verify_release.py", "backend/tests/test_mvp_workflow_v241.py", "backend/tests/test_data_preparation_v242.py", "backend/tests/test_pipelines_v242.py", "backend/tests/test_data_workspace_v243.py", "backend/tests/test_frontend_workspace_v243.py", "backend/tests/assistant/test_assistant_v244.py", "backend/tests/test_frontend_assistant_v244.py", "backend/tests/assistant/test_assistant_v245.py", "backend/tests/test_frontend_assistant_v245.py", "frontend/lib/assistant/effects.ts", "frontend/e2e/mvp.spec.ts")) {
-  if (-not (Test-Path $requiredBaseline)) { throw "Baseline v2.45.0 incomplet: $requiredBaseline absent" }
+foreach ($requiredBaseline in @("frontend/lib/assistant/orchestrator-adapter.ts", "scripts/production_baseline.py", "scripts/mvp_acceptance.py", "scripts/preparation_acceptance.py", "scripts/workspace_acceptance.py", "scripts/assistant_acceptance.py", "scripts/assistant_multimodal_acceptance.py", "scripts/multi_agent_acceptance.py", "scripts/verify_release.py", "backend/tests/test_mvp_workflow_v241.py", "backend/tests/test_data_preparation_v242.py", "backend/tests/test_pipelines_v242.py", "backend/tests/test_data_workspace_v243.py", "backend/tests/test_frontend_workspace_v243.py", "backend/tests/assistant/test_assistant_v244.py", "backend/tests/test_frontend_assistant_v244.py", "backend/tests/assistant/test_assistant_v245.py", "backend/tests/test_frontend_assistant_v245.py", "backend/tests/assistant/test_multi_agent_v246.py", "backend/tests/test_frontend_assistant_v246.py", "backend/app/assistant/agents.py", "frontend/lib/assistant/effects.ts", "frontend/e2e/mvp.spec.ts")) {
+  if (-not (Test-Path $requiredBaseline)) { throw "Baseline v2.46.0 incomplet: $requiredBaseline absent" }
 }
 python scripts/production_baseline.py --check
 Assert-LastExit "production baseline"
@@ -66,9 +66,13 @@ python scripts/assistant_acceptance.py --root .
 Assert-LastExit "Assistant V1 acceptance manifest"
 Write-Host "Assistant V1 acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/assistant_multimodal_acceptance.py --root .
+python scripts/assistant_multimodal_acceptance.py --root . --check
 Assert-LastExit "Assistant multimodal acceptance manifest"
 Write-Host "Assistant multimodal acceptance manifest: OK" -ForegroundColor Green
+
+python scripts/multi_agent_acceptance.py --root . --check
+Assert-LastExit "Multi-agent acceptance manifest"
+Write-Host "Multi-agent acceptance manifest: OK" -ForegroundColor Green
 
 python scripts/repository_hygiene.py --check
 Assert-LastExit "repository hygiene"

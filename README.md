@@ -1,4 +1,8 @@
-# DataVision AI — v2.45.0
+# DataVision AI — v2.46.0
+
+## Nouveau dans v2.46.0 — AI Orchestrator multi-agent réel
+
+La v2.46.0 matérialise les six agents du CDC dans le runtime : Data Agent, Statistics Agent, ML Agent, Visualization Agent, Report Agent et Critic Agent. Chaque outil possède un spécialiste déterministe, chaque handoff est prévalidé, chaque résultat est contrôlé avant progression et la réponse expose une trace agent/tool/status vérifiable. Le planner LLM peut proposer un plan mais ne peut pas contourner la propriété des outils ni les contrôles de sécurité DataVision.
 
 ## Nouveau dans v2.45.0 — Assistant multimodal et proactif
 

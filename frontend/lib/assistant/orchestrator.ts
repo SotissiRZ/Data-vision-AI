@@ -32,6 +32,8 @@ export type AgentIntent = {
   rationale?: string;
 };
 
+export type AgentRole = "data_agent" | "statistics_agent" | "ml_agent" | "visualization_agent" | "report_agent" | "critic_agent";
+
 export type AgentTurnStep = {
   id: string;
   tool: string;
@@ -39,6 +41,8 @@ export type AgentTurnStep = {
   args: Record<string, unknown>;
   reason?: string;
   risk?: "read" | "reversible" | "destructive" | "external";
+  agent_role?: AgentRole;
+  specialist_checks?: string[];
   status:
     | "planned"
     | "ready"
@@ -79,6 +83,8 @@ export type AgentTurnResponse = {
   attachments?: AgentTurnAttachment[];
   critic?: {
     status: "pass" | "warning" | "fail";
+    reviewed_by?: AgentRole;
+    checked_step_count?: number;
     findings: Array<{
       severity: "info" | "suggestion" | "warning" | "critical";
       code: string;

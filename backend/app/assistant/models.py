@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 Severity = Literal["info", "suggestion", "warning", "critical"]
 ActionRisk = Literal["read", "reversible", "destructive", "external"]
+AgentRole = Literal["data_agent", "statistics_agent", "ml_agent", "visualization_agent", "report_agent", "critic_agent"]
 
 
 class SelectedEntity(BaseModel):
@@ -96,6 +97,7 @@ class ToolCatalogItem(BaseModel):
     requires_dataset: bool = False
     requires_model: bool = False
     deterministic: bool = True
+    agent_role: AgentRole | None = None
 
 
 class AgentPlanStep(BaseModel):
@@ -117,6 +119,7 @@ class AgentPlanStepValidation(BaseModel):
     status: Literal["ready", "confirmation_required", "deny"]
     reason: str
     risk: ActionRisk | None = None
+    agent_role: AgentRole | None = None
 
 
 class AgentPlanValidationResponse(BaseModel):
@@ -218,6 +221,8 @@ class AgentTurnStep(BaseModel):
     args: dict[str, Any] = Field(default_factory=dict)
     reason: str | None = None
     risk: ActionRisk | None = None
+    agent_role: AgentRole | None = None
+    specialist_checks: list[str] = Field(default_factory=list)
     status: Literal[
         "planned",
         "ready",
@@ -242,6 +247,8 @@ class CriticFinding(BaseModel):
 class CriticReport(BaseModel):
     status: Literal["pass", "warning", "fail"]
     findings: list[CriticFinding] = Field(default_factory=list)
+    reviewed_by: AgentRole | None = None
+    checked_step_count: int = 0
 
 
 

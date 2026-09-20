@@ -9,6 +9,7 @@ from datetime import datetime, timezone
 
 from .action_runs import ActionLifecycleManager
 from .critic import DeterministicCritic
+from .agents import MultiAgentCoordinator
 from .conversation import ConversationalResponder
 from .result_composer import compose_run_results, compact_results
 from .settings_intent import SettingsAwareIntentResolver
@@ -51,6 +52,7 @@ class AgentOrchestrator:
     memory: SessionMemoryStore
     planner: PlannerProvider
     critic: DeterministicCritic
+    coordinator: MultiAgentCoordinator
     recovery: RecoveryPolicy
     turn_store: AgentTurnRunStore
 
@@ -360,6 +362,7 @@ class AgentOrchestrator:
 
         turn_steps: list[AgentTurnStep] = []
         for source, validation in zip(plan, validated.steps):
+            agent_role = self.coordinator.role_for_tool(source.tool)
             turn_steps.append(
                 AgentTurnStep(
                     id=source.id,
@@ -368,6 +371,7 @@ class AgentOrchestrator:
                     reason=source.reason,
                     args=source.args,
                     risk=validation.risk,
+                    agent_role=agent_role,
                     status=(
                         "ready"
                         if validation.status == "ready"
@@ -455,6 +459,15 @@ class AgentOrchestrator:
             if executed.status == "succeeded":
                 step.status = "succeeded"
                 step.result = executed.result
+                step.specialist_checks = self.coordinator.validate_result(step, executed.result)
+                if any(check.startswith("failed:") for check in step.specialist_checks):
+                    step.status = "failed"
+                    step.error = "Le spécialiste a rejeté un résultat vide ou invalide."
+                    run.status = "failed"
+                    run.final_message = self._failure_message(run.steps)
+                    run.critic = self.critic.review(run.steps)
+                    self.turn_store.save(run)
+                    return self._response_from_run(run)
                 self._record_success(run.session_id, step, executed.reversible)
                 run.current_step_index += 1
             else:
@@ -509,6 +522,14 @@ class AgentOrchestrator:
             if step.status == "succeeded":
                 run.current_step_index += 1
                 continue
+
+            delegation_findings = self.coordinator.preflight(step, run.context)
+            if delegation_findings:
+                step.status = "failed"
+                step.error = "Délégation multi-agent refusée : " + ", ".join(delegation_findings)
+                step.specialist_checks = [f"failed:{item}" for item in delegation_findings]
+                run.status = "failed"
+                break
 
             action = AssistantAction(
                 tool=step.tool,
@@ -569,6 +590,15 @@ class AgentOrchestrator:
             if executed.status == "succeeded":
                 step.status = "succeeded"
                 step.result = executed.result
+                step.specialist_checks = self.coordinator.validate_result(step, executed.result)
+                if any(check.startswith("failed:") for check in step.specialist_checks):
+                    step.status = "failed"
+                    step.error = "Le spécialiste a rejeté un résultat vide ou invalide."
+                    run.status = "failed"
+                    run.final_message = self._failure_message(run.steps)
+                    run.critic = self.critic.review(run.steps)
+                    self.turn_store.save(run)
+                    return self._response_from_run(run)
                 self._record_success(run.session_id, step, executed.reversible)
                 run.current_step_index += 1
                 self.turn_store.save(run)
@@ -590,6 +620,12 @@ class AgentOrchestrator:
                     if retry_result.status == "succeeded":
                         step.status = "succeeded"
                         step.result = retry_result.result
+                        step.specialist_checks = self.coordinator.validate_result(step, retry_result.result)
+                        if any(check.startswith("failed:") for check in step.specialist_checks):
+                            step.status = "failed"
+                            step.error = "Le spécialiste a rejeté un résultat vide ou invalide."
+                            run.status = "failed"
+                            break
                         step.error = None
                         self._record_success(
                             run.session_id,
@@ -724,6 +760,8 @@ class AgentOrchestrator:
                 **self._memory_metadata(run.session_id),
                 "planner": self.planner.__class__.__name__,
                 "critic": self.critic.__class__.__name__,
+                "multi_agent": True,
+                "agent_trace": self.coordinator.trace(run.steps),
                 "current_step_index": run.current_step_index,
             },
         )

@@ -36,6 +36,7 @@ from .plan import validate_agent_plan
 from .proactive import evaluate_proactive_event, decorate_proactive_alerts, ProactiveAlertGate
 from .realtime import AssistantRealtimeHub, RealtimeMessage
 from .runtime import build_orchestrator
+from .agents import MultiAgentCoordinator, role_for_spec
 from .persistent_memory import PersistentSessionMemoryStore
 from .turn_runs import AgentTurnRunStore
 from .model_gateway_config import build_model_gateway_from_env
@@ -96,6 +97,7 @@ persistent_memory = PersistentSessionMemoryStore()
 # v2.16: settings are resolved per local/workspace context at runtime.
 # No server restart is required after changing Model Gateway settings.
 configured_planner = SettingsAwarePlanner(tool_registry)
+multi_agent_coordinator = MultiAgentCoordinator(tool_registry)
 
 agent_orchestrator = build_orchestrator(
     registry=tool_registry,
@@ -104,6 +106,7 @@ agent_orchestrator = build_orchestrator(
     turn_store=turn_run_store,
     planner=configured_planner,
     memory=persistent_memory,
+    coordinator=multi_agent_coordinator,
 )
 
 
@@ -115,7 +118,7 @@ def assistant_health():
     return {
         "status": "ok",
         "component": "conversational_voice_agent",
-        "version": "2.45.0",
+        "version": "2.46.0",
         "tool_count": len(executable),
         "declared_tool_count": len(declared),
         "unavailable_tools": unavailable,
@@ -223,6 +226,17 @@ def clear_project_memory():
     return {"deleted": count, "pinned_preserved": True, "scope": scope_id}
 
 
+@router.get("/agents")
+def list_agents():
+    """Expose the deterministic multi-agent topology and executable ownership."""
+    safe_refresh_runtime_plugins()
+    return {
+        "orchestration": "multi_agent_deterministic_delegation",
+        "agents": multi_agent_coordinator.topology(executable_only=True),
+        "critic": "critic_agent",
+    }
+
+
 @router.get("/tools", response_model=list[ToolCatalogItem])
 def list_tools():
     safe_refresh_runtime_plugins()
@@ -246,6 +260,7 @@ def list_tools():
             requires_dataset=spec.requires_dataset,
             requires_model=spec.requires_model,
             deterministic=spec.deterministic,
+            agent_role=role_for_spec(spec),
         )
         for spec in visible_tools
     ]

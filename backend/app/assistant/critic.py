@@ -1,15 +1,22 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from .models import AgentTurnStep, CriticFinding, CriticReport
+
+if TYPE_CHECKING:
+    from .agents import MultiAgentCoordinator
 
 
 class DeterministicCritic:
     """
-    First-pass critic over execution traces.
+    Deterministic critic over execution traces.
 
-    A future AI critic may enrich explanations, but deterministic invariants
-    remain authoritative.
+    Numerical results remain authoritative in the underlying DataVision tools;
+    this critic validates execution invariants and never recomputes metrics.
     """
+
+    reviewed_by = "critic_agent"
 
     def review(self, steps: list[AgentTurnStep]) -> CriticReport:
         findings: list[CriticFinding] = []
@@ -52,4 +59,32 @@ class DeterministicCritic:
         else:
             status = "pass"
 
-        return CriticReport(status=status, findings=findings)
+        return CriticReport(
+            status=status,
+            findings=findings,
+            reviewed_by="critic_agent",
+            checked_step_count=len(steps),
+        )
+
+
+class MultiAgentCritic(DeterministicCritic):
+    """Critic Agent that also verifies deterministic specialist delegation."""
+
+    def __init__(self, coordinator: "MultiAgentCoordinator") -> None:
+        self.coordinator = coordinator
+
+    def review(self, steps: list[AgentTurnStep]) -> CriticReport:
+        base = super().review(steps)
+        findings = [*base.findings, *self.coordinator.review_execution(steps)]
+        if any(item.severity == "critical" for item in findings):
+            status = "fail"
+        elif findings:
+            status = "warning"
+        else:
+            status = "pass"
+        return CriticReport(
+            status=status,
+            findings=findings,
+            reviewed_by="critic_agent",
+            checked_step_count=len(steps),
+        )

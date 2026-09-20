@@ -17,13 +17,13 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "4985049491d0d7a1821e968e77cf6be17d102de72f674be27ba067d1cc86eae3",
-      "size": 2878
+      "sha256": "cbba040e3c97ef55a3a7a1d6791f5ba0a4f51ceb35265c794d9504fbe2163b21",
+      "size": 2953
     },
     {
       "path": ".github/workflows/release.yml",
-      "sha256": "0ba6f79811dd8341340094e780c8e5f993894c79472e1d20f64e9da7ffba66d3",
-      "size": 1938
+      "sha256": "242a43730b28b4b8840a04e0b317e9ec4825ce42ce93eda5420d4c5bcf3375b8",
+      "size": 2009
     },
     {
       "path": ".github/workflows/security.yml",
@@ -42,8 +42,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "6110dbb41fdc4fc72fdbd217de821f05467dbcd4f58b9ebb3018a80b8e08141d",
-      "size": 76790
+      "sha256": "db5fdf2b79bf211ad568ee9fbee87e0b925a67ee4cdaf7bd7e9d61cb9fbe8e3c",
+      "size": 77342
     },
     {
       "path": "SECURITY.md",
@@ -52,7 +52,7 @@
     },
     {
       "path": "VERSION",
-      "sha256": "d01166f28c890e9f4fc2c19ec5c0e8e3e8980c702e6cc23d9e11b51f4460f177",
+      "sha256": "1c976b82097fd7a26cdf4e4aed3c37d27ec75ddeb012978600659cadcbea4b17",
       "size": 7
     },
     {
@@ -111,6 +111,11 @@
       "size": 5008
     },
     {
+      "path": "backend/app/assistant/agents.py",
+      "sha256": "e4a5352cd4d253f82da2113a05cbe2e5f3cfd6074ff6bc90c3c9a940ad8355fd",
+      "size": 7147
+    },
+    {
       "path": "backend/app/assistant/ai_settings.py",
       "sha256": "dfcec1adc2dc11c6256a27eac34b28a7049cb2a472b0789857c36c8fce0c7273",
       "size": 26464
@@ -137,8 +142,8 @@
     },
     {
       "path": "backend/app/assistant/critic.py",
-      "sha256": "c2a8c5bce4295f93f81189b541749a04970a5cf4bf260b9bbcb001a498d5a264",
-      "size": 1858
+      "sha256": "95f0d63df86cbf9868502a9beaa2a046dba0bbb8f670b68c953a24ed5d96eae0",
+      "size": 2954
     },
     {
       "path": "backend/app/assistant/executor.py",
@@ -172,8 +177,8 @@
     },
     {
       "path": "backend/app/assistant/llm_planner.py",
-      "sha256": "ae9da3ab2fc290f8f296731778d85b85b1809e0233e32877b0400225c77d4f35",
-      "size": 4685
+      "sha256": "543a4bec27a4ad28ac11b896a7e95fc5ac1959851e22973101262605b1c57fe2",
+      "size": 4889
     },
     {
       "path": "backend/app/assistant/memory.py",
@@ -197,13 +202,13 @@
     },
     {
       "path": "backend/app/assistant/models.py",
-      "sha256": "f433a0a40218a36afceeb6b2ac5aaed9ad115a33a531385f0c6f46c87f4c9733",
-      "size": 8018
+      "sha256": "2fd7f6d0abdaea22b0e579886c38fbbc4c31c9ef3493410fc9455e999fcd656d",
+      "size": 8395
     },
     {
       "path": "backend/app/assistant/orchestrator.py",
-      "sha256": "f4f2f4df86eb2be37291ca41ab8865239ae9048e9de9073462f0332797923dd8",
-      "size": 31401
+      "sha256": "63bbb166fed70aeb94dbb898c44e4cc4db243b281fa52ab7868d7c3ad3a5ffdf",
+      "size": 33749
     },
     {
       "path": "backend/app/assistant/persistent_memory.py",
@@ -212,8 +217,8 @@
     },
     {
       "path": "backend/app/assistant/plan.py",
-      "sha256": "6106b1f489f9a669b8bfbcb201d36964e88658a87af895bfadbfafcb1621a81b",
-      "size": 5558
+      "sha256": "5d62fca2f22f055a3bc8aebcf131aad33250fa1e632bb8c91c4d009f98b429a6",
+      "size": 5889
     },
     {
       "path": "backend/app/assistant/planner_config.py",
@@ -292,13 +297,13 @@
     },
     {
       "path": "backend/app/assistant/router.py",
-      "sha256": "5e994ce7e6df0f2c59be95fdd48c6c5d3c470bcf210b1a31d4deda0ffce0ca1f",
-      "size": 28152
+      "sha256": "1d157ac847aa5a6f04d1c1d9d70590c3b12d070ab22f212e2ec1499a35e2e2ef",
+      "size": 28710
     },
     {
       "path": "backend/app/assistant/runtime.py",
-      "sha256": "62c75ce2a5c89d9e22e5e9d967f7540093dbbe92ba747cea17cbc11c848a479d",
-      "size": 1491
+      "sha256": "d659dddcc860bbbe5436550a97a37b0c49c455671b72e786f42b63d11b582abb",
+      "size": 1723
     },
     {
       "path": "backend/app/assistant/settings_intent.py",
@@ -337,7 +342,7 @@
     },
     {
       "path": "backend/app/main.py",
-      "sha256": "a6c296e6a0cf3367b529c588975129b5da00cba3abbd7d1a6be790e1688cd9b7",
+      "sha256": "0e8fbc3bff76c498383232dca79077ab2423ae6ba6a62a7c320001cb194a5362",
       "size": 22118
     },
     {
@@ -751,6 +756,11 @@
       "size": 2767
     },
     {
+      "path": "backend/tests/assistant/test_multi_agent_v246.py",
+      "sha256": "a1385fbd93704a127744cd2a3bfa0ff507e057d4e45d7918d9ec967f3a5639d3",
+      "size": 5747
+    },
+    {
       "path": "backend/tests/assistant/test_orchestrator.py",
       "sha256": "1afc1a0a846bf5aa3ca7a363335debc56ffc20fb85d223244a9774c65e7c0e97",
       "size": 2526
@@ -891,6 +901,11 @@
       "size": 1366
     },
     {
+      "path": "backend/tests/test_frontend_assistant_v246.py",
+      "sha256": "3e424812fe9a2483be9d75fe1964b37d33ece95425f2adefebeba1d8b1120d69",
+      "size": 1164
+    },
+    {
       "path": "backend/tests/test_frontend_feature_serving_types_v2404.py",
       "sha256": "31fa5205f1ac5a967994daaaba37fdd46eaa5dd031ba0b0c56a9ab0c16a69b8e",
       "size": 469
@@ -1022,17 +1037,17 @@
     },
     {
       "path": "compliance/ASSISTANT_ACCEPTANCE.json",
-      "sha256": "5eac7a0fd9f88bd4fa684dc46cbab5686d0e3d8a093bc6055938381a07a6cd74",
+      "sha256": "6110e56d950b89f6446ac485e2553d599d7aa3f52fd21b4e58350d5d25ec7f1d",
       "size": 3293
     },
     {
       "path": "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json",
-      "sha256": "dd98977bef37238794b34fe198f33ca35a6cf2e94927a21c6adba1c86adebb95",
+      "sha256": "45397c647613093967e33273c2a1f37e8ddf6d06642caba277a2b73a9442fd05",
       "size": 3057
     },
     {
       "path": "compliance/CDC_COVERAGE_MATRIX.json",
-      "sha256": "c532876feb63362ad686cbd915f5e96ba1eb545bbae06dc6c4185b664b728e84",
+      "sha256": "f37420171db5db94ceaf983c7dac01eb2163c68ffb31dfa7b20519a767beecd5",
       "size": 24494
     },
     {
@@ -1041,23 +1056,28 @@
       "size": 135
     },
     {
+      "path": "compliance/MULTI_AGENT_ACCEPTANCE.json",
+      "sha256": "cf08ad863e8136bc3602d272f2cae7b5d233e633e3c0f22929da4acb3ab3991c",
+      "size": 2916
+    },
+    {
       "path": "compliance/MVP_ACCEPTANCE.json",
-      "sha256": "9d17fa6cc865813c0628d44b6084ebaa22b40fc5656878b20f556220539a5586",
+      "sha256": "7e0813e6a5deb0bc5d1c926445d8d40f28d19ab4330dd83456f4d7031f15b097",
       "size": 3977
     },
     {
       "path": "compliance/PREPARATION_ACCEPTANCE.json",
-      "sha256": "dc921638b312b529f0f26954e79e28ebb428abcdbe43db64de97bf166d52e42f",
+      "sha256": "05f4dd60e630663c98de3b1fa7516dfc1829a391b441467eac35d09fc623848b",
       "size": 2616
     },
     {
       "path": "compliance/PRODUCTION_ACCEPTANCE.json",
-      "sha256": "516bf90b119e9bd2b36231848dc9d80a65f7e7aa4525af1424994b977b828fb4",
+      "sha256": "40ab258630d26fe2cd7f813081f7587f00ecb31a94c4ffb64dd0ea79ac5ac2ca",
       "size": 3131
     },
     {
       "path": "compliance/WORKSPACE_ACCEPTANCE.json",
-      "sha256": "b945d4c26194965169920ffef17c2dfec23011a73c1644fa02e2d03d1207d8aa",
+      "sha256": "933554182cf739204e5563f818e0b7b68083972f8f57bf88ae7c1383941951cc",
       "size": 2882
     },
     {
@@ -1137,8 +1157,8 @@
     },
     {
       "path": "docs/CHANGELOG.md",
-      "sha256": "f876830b0f59c94b5b33524f07654cb7efc73ead347e9ba3d861f05d01b75936",
-      "size": 22081
+      "sha256": "caf9e311764ceda7d5d99f10427e97b73f0e8b7925387d1ffdfb31b88ce77433",
+      "size": 22614
     },
     {
       "path": "docs/COLLABORATION_REVIEW_V260.md",
@@ -1601,6 +1621,11 @@
       "size": 616
     },
     {
+      "path": "docs/VALIDATION_V2460.md",
+      "sha256": "cb2c5d4c7ccdf8fdc20791032b0b10a942e1a3de4aa01b78f31686c7fa119ecd",
+      "size": 1268
+    },
+    {
       "path": "docs/VALIDATION_V250.md",
       "sha256": "85c671708ed7442663082e213acf2cfb98e7bbaa85a832c08d9d2dfe68a1d32f",
       "size": 774
@@ -1876,6 +1901,11 @@
       "size": 606
     },
     {
+      "path": "docs/history/migrations/MIGRATION_FROM_V2450_TO_V2460.md",
+      "sha256": "441b03c3ab961ad5604a4b6251d38034f68c26b79e1761e757dda5efccdc2df9",
+      "size": 282
+    },
+    {
       "path": "frontend/.dockerignore",
       "sha256": "717ef88a64b71bae3a95b5590e5e7b7f2b4a3ea23f1e010734fd0a22d76e6730",
       "size": 75
@@ -1972,13 +2002,13 @@
     },
     {
       "path": "frontend/components/assistant/FloatingDataVisionAssistant.module.css",
-      "sha256": "d6e5bc42bc0978806c9beb563aabcb1cf4fc78623e59bf16aa204f2677218672",
-      "size": 16335
+      "sha256": "e86d1329581911a4f67d12c88ecc703b5bfb22d6a6d0c988df05b8fdda7efe81",
+      "size": 16444
     },
     {
       "path": "frontend/components/assistant/FloatingDataVisionAssistant.tsx",
-      "sha256": "e31175852efcbb9022ed37c17f6a088c19e9f1e1a2a416dc527c763ec8d4a225",
-      "size": 44642
+      "sha256": "3d1e31d66c0e7ff5f8922e36cd0bb32fb69b76deeae118be8b05923e442a20d9",
+      "size": 45182
     },
     {
       "path": "frontend/e2e/mvp.spec.ts",
@@ -2032,8 +2062,8 @@
     },
     {
       "path": "frontend/lib/assistant/orchestrator.ts",
-      "sha256": "ece6a3bb55fe370305f6fd70f619ee8aee83f140458d87066a37ef10e3a7374f",
-      "size": 4002
+      "sha256": "798ada5a5c6efb6991f7ec28daada35421819258b95323e2c0031f6d417567d2",
+      "size": 4253
     },
     {
       "path": "frontend/lib/assistant/plan.ts",
@@ -2112,8 +2142,8 @@
     },
     {
       "path": "preflight-windows.ps1",
-      "sha256": "b2cfa22f13799b31f7acef480603b159b789d2a14fbd6dcfc2ee43bfc392d2b8",
-      "size": 4892
+      "sha256": "92079180a2a70b47c6f4d589be2cd22f5fa1e42f07f6a74c742e0849bbbdb43a",
+      "size": 5254
     },
     {
       "path": "rebuild-windows.ps1",
@@ -2171,6 +2201,11 @@
       "size": 3607
     },
     {
+      "path": "scripts/multi_agent_acceptance.py",
+      "sha256": "9795ebc62245accf2ce2401a8402e33ad27653d38a840d77cb0fcef7975919e0",
+      "size": 3759
+    },
+    {
       "path": "scripts/mvp_acceptance.py",
       "sha256": "6cdc0d14602d79ee234206f1ec4680e5b333e6a0155da6ad416541a8e9bfdc28",
       "size": 4411
@@ -2182,8 +2217,8 @@
     },
     {
       "path": "scripts/production_baseline.py",
-      "sha256": "e49b5b6981a2f524ece45ee3857dadb2fcba9eba132675a4c9e52fe347015440",
-      "size": 5604
+      "sha256": "8b36095af4651d42164d679513236573905502621181009fe40c49d1ddf30aaf",
+      "size": 5881
     },
     {
       "path": "scripts/release.py",
@@ -2218,5 +2253,5 @@
   ],
   "format": "reproducible-source-archive-v1",
   "product": "DataVision AI",
-  "version": "2.45.0"
+  "version": "2.46.0"
 }

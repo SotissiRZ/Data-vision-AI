@@ -288,6 +288,14 @@
   white-space: nowrap;
 }
 
+
+.planAgent {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  opacity: 0.72;
+}
 .planStatus {
   color: #8999a2;
   font-size: 8px;
