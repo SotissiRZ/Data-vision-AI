@@ -7,13 +7,16 @@ from pydantic import BaseModel, Field
 from app.services.notebook_service import (
     add_cell,
     artifact_path,
+    bind_notebook_dataset,
     create_notebook,
     delete_cell,
     delete_notebook,
     get_notebook,
     list_notebooks,
     list_runs,
+    promote_artifact_to_dataset,
     run_cell,
+    run_notebook,
     runtime_status,
     update_cell,
     update_notebook,
@@ -31,6 +34,16 @@ class NotebookCreateRequest(BaseModel):
 class NotebookUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=180)
     description: str | None = Field(default=None, max_length=1000)
+
+
+
+
+class NotebookBindRequest(BaseModel):
+    dataset_id: str | None = None
+
+
+class NotebookRunRequest(BaseModel):
+    continue_on_error: bool = False
 
 
 class CellCreateRequest(BaseModel):
@@ -117,6 +130,25 @@ def notebook_delete(notebook_id: str):
         _error(exc)
 
 
+@router.post("/{notebook_id}/bind")
+def notebook_bind(notebook_id: str, payload: NotebookBindRequest):
+    try:
+        return bind_notebook_dataset(notebook_id, payload.dataset_id)
+    except Exception as exc:
+        _error(exc)
+
+
+@router.post("/{notebook_id}/run")
+def notebook_run_all(notebook_id: str, payload: NotebookRunRequest | None = None):
+    try:
+        return run_notebook(
+            notebook_id,
+            continue_on_error=bool(payload and payload.continue_on_error),
+        )
+    except Exception as exc:
+        _error(exc)
+
+
 @router.post("/{notebook_id}/cells")
 def cell_create(
     notebook_id: str,
@@ -171,6 +203,24 @@ def cell_run(notebook_id: str, cell_id: str):
 def notebook_runs(notebook_id: str, limit: int = 100):
     try:
         return {"items": list_runs(notebook_id, limit)}
+    except Exception as exc:
+        _error(exc)
+
+
+@router.post(
+    "/{notebook_id}/runs/{run_id}/artifacts/{filename}/promote"
+)
+def notebook_artifact_promote(
+    notebook_id: str,
+    run_id: str,
+    filename: str,
+):
+    try:
+        return promote_artifact_to_dataset(
+            notebook_id,
+            run_id,
+            filename,
+        )
     except Exception as exc:
         _error(exc)
 

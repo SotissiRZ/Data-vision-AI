@@ -1,5 +1,18 @@
 # Roadmap d'exécution
 
+## Livré — v2.43 Data Workspace reproductible
+
+- SQL local read-only ;
+- notebooks Python / SQL / R ;
+- sandbox Python/R isolé ;
+- liaison explicite aux versions immuables de datasets ;
+- exécution ordonnée de tout le notebook ;
+- provenance renforcée et fingerprints SHA-256 ;
+- artefacts persistés et promotion contrôlée vers une nouvelle version de dataset ;
+- gate `WORKSPACE_ACCEPTANCE` 8/8.
+
+La prochaine priorité produit est **v2.44 — Assistant V1 contextuel et réellement tool-connected**.
+
 ## Livré — v2.12 Identity, SSO & Secret Management
 
 Sessions persistantes révocables, refresh tokens rotatifs, SSO OIDC Authorization Code + PKCE, vérification RS256/JWKS, provisioning JIT et coffre de secrets versionné sont maintenant implémentés. Le coffre supporte stockage local chiffré, références environnement et HashiCorp Vault KV v2.

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.43.0 — Data Workspace reproductible
+- Notebooks liés explicitement à une version immuable du dataset et visibles sur toute sa lignée.
+- Rebinding d'un notebook vers une version précise sans réécriture de l'historique des runs.
+- Exécution ordonnée « Tout exécuter » avec arrêt contrôlé sur erreur.
+- Provenance enrichie de chaque run : root/version/lignée/dimensions/fingerprint SHA-256 + hash du code.
+- Artefacts Python/R persistés, téléchargeables et promouvables en nouvelle version gouvernée CSV/JSON.
+- SQL local maintenu strictement read-only ; Python/R restent confinés dans le sandbox interne.
+- Nouveau gate `WORKSPACE_ACCEPTANCE` 8/8 intégré à la CI et au préflight.
+- Ajout des tests backend et frontend de non-régression v2.43.
+
 ## 2.42.0 — Data Preparation Completion
 - Pipelines multi-datasets désormais enregistrables et rejouables avec dépendances explicites.
 - Ajout des bindings de remplacement pour datasets secondaires au replay.

@@ -1,5 +1,5 @@
 {
-  "product_version": "2.42.0",
+  "product_version": "2.43.0",
   "acceptance": "conditional",
   "coverage_percent": 84.7,
   "gates": [
@@ -67,5 +67,14 @@
     ],
     "frontend_contract_test": "backend/tests/test_frontend_preparation_v242.py",
     "ci_gate": "scripts/preparation_acceptance.py --check"
+  },
+  "workspace_runtime_evidence": {
+    "manifest": "compliance/WORKSPACE_ACCEPTANCE.json",
+    "backend_tests": [
+      "backend/tests/test_notebook_v218.py",
+      "backend/tests/test_data_workspace_v243.py"
+    ],
+    "frontend_contract_test": "backend/tests/test_frontend_workspace_v243.py",
+    "ci_gate": "scripts/workspace_acceptance.py --check"
   }
 }

@@ -5,13 +5,17 @@ import { useEffect, useMemo, useState } from "react";
 import { assistantEventBus } from "../lib/assistant/event-bus";
 import {
   addNotebookCell,
+  bindNotebookDataset,
   createNotebook,
   deleteNotebook,
   deleteNotebookCell,
   downloadNotebookArtifact,
   getNotebook,
+  getNotebookDatasetVersions,
   getNotebookRuntime,
   listNotebooks,
+  promoteNotebookArtifact,
+  runNotebook,
   runNotebookCell,
   updateNotebook,
   updateNotebookCell,
@@ -19,6 +23,7 @@ import {
   type NotebookDocument,
   type NotebookLanguage,
   type NotebookRun,
+  type DatasetVersionRef,
 } from "../lib/notebook-client";
 
 import styles from "./NotebookStudio.module.css";
@@ -41,7 +46,10 @@ export function NotebookStudio({
   const [runtime, setRuntime] = useState<Record<string, any> | null>(null);
   const [busy, setBusy] = useState(false);
   const [runningCell, setRunningCell] = useState<string | null>(null);
+  const [runningAll, setRunningAll] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const [versions, setVersions] = useState<DatasetVersionRef[]>([]);
+  const [message, setMessage] = useState("");
 
   async function loadList(selectId?: string) {
     try {
@@ -69,13 +77,32 @@ export function NotebookStudio({
     }
   }
 
+  async function loadVersions(datasetId?: string | null) {
+    if (!datasetId) {
+      setVersions([]);
+      return;
+    }
+    try {
+      const response = await getNotebookDatasetVersions(datasetId);
+      setVersions(response.versions ?? []);
+    } catch {
+      setVersions([]);
+    }
+  }
+
   useEffect(() => {
     void loadList();
+    void loadVersions(dataset?.id);
     getNotebookRuntime()
       .then(setRuntime)
       .catch(() => setRuntime(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataset?.id]);
+
+  useEffect(() => {
+    void loadVersions(active?.dataset_id ?? dataset?.id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active?.dataset_id, dataset?.id]);
 
   useEffect(() => {
     if (!active) return;
@@ -228,6 +255,101 @@ export function NotebookStudio({
     }
   }
 
+  async function bindVersion(datasetId: string) {
+    if (!active) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      const notebook = await bindNotebookDataset(
+        active.id,
+        datasetId || null,
+      );
+      setActive(notebook);
+      setMessage(
+        datasetId
+          ? `Notebook lié au dataset v${notebook.dataset_version ?? "—"}.`
+          : "Notebook détaché du dataset.",
+      );
+      await loadList(notebook.id);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runAll() {
+    if (!active) return;
+    setRunningAll(true);
+    setMessage("");
+    try {
+      for (const cell of cells) {
+        const source = drafts[cell.id] ?? cell.source;
+        if (source !== cell.source) {
+          await updateNotebookCell(active.id, cell.id, { source });
+        }
+      }
+      const summary = await runNotebook(active.id, false);
+      const notebook = await getNotebook(active.id);
+      setActive(notebook);
+      setMessage(
+        summary.failed
+          ? `${summary.succeeded} cellule(s) réussie(s), ${summary.failed} en échec.`
+          : `${summary.succeeded} cellule(s) exécutée(s) avec succès.`,
+      );
+      assistantEventBus.emit({
+        type: summary.failed ? "notebook.run.failed" : "notebook.run.succeeded",
+        severity: summary.failed ? "warning" : "info",
+        payload: {
+          notebookId: active.id,
+          datasetId: active.dataset_id,
+          datasetVersion: active.dataset_version,
+          executed: summary.executed,
+          failed: summary.failed,
+        },
+      });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRunningAll(false);
+    }
+  }
+
+  async function promoteArtifact(run: NotebookRun, filename: string) {
+    if (!active) return;
+    if (!window.confirm(`Créer une nouvelle version du dataset depuis « ${filename} » ?`)) {
+      return;
+    }
+    setBusy(true);
+    setMessage("");
+    try {
+      const promoted = await promoteNotebookArtifact(
+        active.id,
+        run.id,
+        filename,
+      );
+      setMessage(
+        `Artefact promu en dataset v${promoted.dataset.version} · ${promoted.dataset.id.slice(0, 8)}…`,
+      );
+      await loadVersions(promoted.dataset.id);
+      assistantEventBus.emit({
+        type: "notebook.artifact.promoted",
+        severity: "info",
+        payload: {
+          notebookId: active.id,
+          runId: run.id,
+          artifact: filename,
+          datasetId: promoted.dataset.id,
+          datasetVersion: promoted.dataset.version,
+        },
+      });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function removeCell(cell: NotebookCell) {
     if (!active) return;
     if (!window.confirm("Supprimer cette cellule ?")) return;
@@ -270,6 +392,8 @@ export function NotebookStudio({
           mais les cellules Python, SQL et R nécessitent un dataset lié.
         </div>
       )}
+
+      {message && <div className={styles.successNotice}>{message}</div>}
 
       <div className={styles.layout}>
         <aside className={styles.sidebar}>
@@ -329,7 +453,31 @@ export function NotebookStudio({
                       : "Notebook sans dataset"}
                   </p>
                 </div>
-                <div>
+                <div className={styles.headerActions}>
+                  {!!versions.length && (
+                    <label className={styles.bindingSelect}>
+                      <span>Version liée</span>
+                      <select
+                        value={active.dataset_id ?? ""}
+                        disabled={busy || runningAll}
+                        onChange={(event) => void bindVersion(event.target.value)}
+                      >
+                        <option value="">Sans dataset</option>
+                        {versions.map((version) => (
+                          <option key={version.id} value={version.id}>
+                            v{version.version} · {version.name ?? version.id.slice(0, 8)}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => void runAll()}
+                    disabled={runningAll || busy || !active.dataset_id}
+                  >
+                    {runningAll ? "Exécution…" : "▶ Tout exécuter"}
+                  </button>
                   <button type="button" onClick={() => void rename()}>
                     Renommer
                   </button>
@@ -393,6 +541,7 @@ export function NotebookStudio({
                           ),
                       )
                     }
+                    onPromote={(run, name) => void promoteArtifact(run, name)}
                   />
                 ))}
               </div>
@@ -414,6 +563,7 @@ function CellEditor({
   onRun,
   onDelete,
   onDownload,
+  onPromote,
 }: {
   index: number;
   cell: NotebookCell;
@@ -424,6 +574,7 @@ function CellEditor({
   onRun: () => void;
   onDelete: () => void;
   onDownload: (path: string, name: string) => void;
+  onPromote: (run: NotebookRun, name: string) => void;
 }) {
   const run = cell.last_run;
 
@@ -474,6 +625,7 @@ function CellEditor({
         <RunOutput
           run={run}
           onDownload={onDownload}
+          onPromote={onPromote}
         />
       )}
     </article>
@@ -483,9 +635,11 @@ function CellEditor({
 function RunOutput({
   run,
   onDownload,
+  onPromote,
 }: {
   run: NotebookRun;
   onDownload: (path: string, name: string) => void;
+  onPromote: (run: NotebookRun, name: string) => void;
 }) {
   const result = run.result;
   return (
@@ -558,18 +712,28 @@ function RunOutput({
       {!!run.artifacts?.length && (
         <div className={styles.artifacts}>
           {run.artifacts.map((artifact) => (
-            <button
-              type="button"
-              key={artifact.name}
-              onClick={() =>
-                onDownload(
-                  artifact.download_path,
-                  artifact.name,
-                )
-              }
-            >
-              ↓ {artifact.name}
-            </button>
+            <div className={styles.artifactActions} key={artifact.name}>
+              <button
+                type="button"
+                onClick={() =>
+                  onDownload(
+                    artifact.download_path,
+                    artifact.name,
+                  )
+                }
+              >
+                ↓ {artifact.name}
+              </button>
+              {[".csv", ".json"].includes(artifact.extension) && (
+                <button
+                  type="button"
+                  className={styles.promoteArtifact}
+                  onClick={() => onPromote(run, artifact.name)}
+                >
+                  ↗ Promouvoir en dataset
+                </button>
+              )}
+            </div>
           ))}
         </div>
       )}

@@ -1,6 +1,24 @@
-# DataVision AI — v2.42.0
+# DataVision AI — v2.43.0
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
+
+
+## Nouveau dans v2.43.0 — Data Workspace reproductible
+
+La v2.43.0 transforme le notebook existant en **Data Workspace relié aux versions immuables du dataset** :
+
+- SQL local strictement read-only via DuckDB/SQLite fallback ;
+- Python et R exécutés dans le sandbox interne isolé ;
+- notebooks visibles sur toute la lignée d'un dataset ;
+- rebinding explicite vers une version précise ;
+- exécution ordonnée de toutes les cellules avec arrêt contrôlé sur erreur ;
+- provenance de run enrichie : version, root, lignée, dimensions, hash du code et fingerprint SHA-256 des données ;
+- artefacts persistés et téléchargeables ;
+- promotion contrôlée d'un artefact CSV/JSON en nouvelle version gouvernée du dataset ;
+- gate exécutable `python scripts/workspace_acceptance.py --root . --check` ;
+- manifest de preuve `compliance/WORKSPACE_ACCEPTANCE.json`.
+
+Aucun volume Docker n'a besoin d'être supprimé pour passer de v2.42.0 à v2.43.0. Les notebooks historiques restent compatibles.
 
 
 ## Nouveau dans v2.42.0 — Data Preparation Completion

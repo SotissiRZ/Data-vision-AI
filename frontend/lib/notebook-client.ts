@@ -50,10 +50,27 @@ export type NotebookCell = {
   last_run?: NotebookRun | null;
 };
 
+export type DatasetVersionRef = {
+  id: string;
+  version: number;
+  name?: string | null;
+  parent_id?: string | null;
+  created_at?: string | null;
+};
+
 export type NotebookDocument = {
   id: string;
   dataset_id?: string | null;
   dataset_version?: string | null;
+  dataset_binding?: {
+    id: string;
+    root_id: string;
+    parent_id?: string | null;
+    version: number;
+    name?: string | null;
+    created_at?: string | null;
+    operation?: Record<string, unknown> | null;
+  } | null;
   name: string;
   description: string;
   created_at: string;
@@ -148,6 +165,87 @@ export async function updateNotebook(
       body: JSON.stringify(input),
     }),
     "Mise à jour du notebook impossible.",
+  );
+}
+
+export async function bindNotebookDataset(
+  notebookId: string,
+  datasetId: string | null,
+) {
+  return parse<NotebookDocument>(
+    await fetch(`${API}/notebooks/${encodeURIComponent(notebookId)}/bind`, {
+      method: "POST",
+      credentials: "include",
+      headers: headers(true),
+      body: JSON.stringify({ dataset_id: datasetId }),
+    }),
+    "Liaison du notebook au dataset impossible.",
+  );
+}
+
+export async function runNotebook(
+  notebookId: string,
+  continueOnError = false,
+) {
+  return parse<{
+    notebook_id: string;
+    dataset_id?: string | null;
+    dataset_version?: string | null;
+    status: "succeeded" | "failed";
+    executed: number;
+    succeeded: number;
+    failed: number;
+    stopped_early: boolean;
+    runs: NotebookRun[];
+  }>(
+    await fetch(`${API}/notebooks/${encodeURIComponent(notebookId)}/run`, {
+      method: "POST",
+      credentials: "include",
+      headers: headers(true),
+      body: JSON.stringify({ continue_on_error: continueOnError }),
+    }),
+    "Exécution du notebook impossible.",
+  );
+}
+
+export async function getNotebookDatasetVersions(datasetId: string) {
+  return parse<{
+    current_id: string;
+    root_id: string;
+    versions: DatasetVersionRef[];
+  }>(
+    await fetch(`${API}/datasets/${encodeURIComponent(datasetId)}/versions`, {
+      credentials: "include",
+      headers: headers(),
+    }),
+    "Historique des versions indisponible.",
+  );
+}
+
+export async function promoteNotebookArtifact(
+  notebookId: string,
+  runId: string,
+  filename: string,
+) {
+  return parse<{
+    dataset: {
+      id: string;
+      root_id: string;
+      parent_id?: string | null;
+      version: number;
+      name?: string | null;
+      operation?: Record<string, unknown> | null;
+    };
+  }>(
+    await fetch(
+      `${API}/notebooks/${encodeURIComponent(notebookId)}/runs/${encodeURIComponent(runId)}/artifacts/${encodeURIComponent(filename)}/promote`,
+      {
+        method: "POST",
+        credentials: "include",
+        headers: headers(),
+      },
+    ),
+    "Promotion de l'artefact impossible.",
   );
 }
 

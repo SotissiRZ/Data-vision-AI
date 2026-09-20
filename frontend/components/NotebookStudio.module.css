@@ -500,3 +500,51 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+.successNotice {
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid #bfe4d4;
+  border-radius: 6px;
+  color: #286c50;
+  background: #f0faf5;
+  font-size: 10px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.bindingSelect {
+  display: grid;
+  gap: 3px;
+  color: #7f909a;
+  font-size: 8px;
+  font-weight: 800;
+}
+
+.bindingSelect select {
+  max-width: 220px;
+  border: 1px solid #d2dde3;
+  border-radius: 4px;
+  padding: 5px 7px;
+  color: #405b67;
+  background: #fff;
+  font-size: 9px;
+}
+
+.artifactActions {
+  display: inline-flex;
+  gap: 4px;
+  align-items: center;
+}
+
+.promoteArtifact {
+  color: #287252 !important;
+  border-color: #bedfce !important;
+  background: #f1faf5 !important;
+}

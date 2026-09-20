@@ -8,6 +8,8 @@ import uuid
 from pathlib import Path
 from typing import Any, Literal
 
+import pandas as pd
+
 from app.core.config import get_settings
 from app.services.audit_service import record_event
 from app.services.auth_service import has_permission
@@ -25,7 +27,13 @@ from app.services.notebook_sandbox import (
     execute_sandboxed,
     sandbox_health,
 )
-from app.services.storage import get_meta, load_dataframe
+from app.services.storage import (
+    get_lineage,
+    get_meta,
+    list_versions,
+    load_dataframe,
+    save_dataframe_version,
+)
 from app.services.tenant_access import (
     authorize_dataset,
     current_access_context,
@@ -110,6 +118,48 @@ def _authorize_dataset(dataset_id: str | None, permission: str = "dataset:read")
     access = current_access_context()
     if access is not None:
         authorize_dataset(dataset_id, permission, access)
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _dataset_binding(dataset_id: str | None) -> dict[str, Any] | None:
+    if not dataset_id:
+        return None
+    meta = get_meta(dataset_id)
+    return {
+        "id": meta["id"],
+        "root_id": meta.get("root_id") or meta["id"],
+        "parent_id": meta.get("parent_id"),
+        "version": int(meta.get("version") or 1),
+        "name": meta.get("original_name"),
+        "created_at": meta.get("created_at"),
+        "operation": meta.get("operation"),
+    }
+
+
+def _dataset_run_provenance(dataset_id: str, frame) -> dict[str, Any]:
+    meta = get_meta(dataset_id)
+    path = Path(meta["path"])
+    lineage = get_lineage(dataset_id)
+    return {
+        "dataset_id": dataset_id,
+        "dataset_root_id": meta.get("root_id") or dataset_id,
+        "dataset_version": str(meta.get("version") or "1"),
+        "dataset_name": meta.get("original_name"),
+        "dataset_parent_id": meta.get("parent_id"),
+        "dataset_created_at": meta.get("created_at"),
+        "dataset_operation": meta.get("operation"),
+        "dataset_rows": int(len(frame)),
+        "dataset_columns": int(len(frame.columns)),
+        "dataset_lineage_ids": [item.get("id") for item in lineage],
+        "dataset_fingerprint_sha256": _file_sha256(path),
+    }
 
 
 def _notebook_row(notebook_id: str) -> dict[str, Any]:
@@ -242,6 +292,7 @@ def _notebook_payload(row: dict[str, Any], *, include_cells: bool = True) -> dic
         "scope_id": row["scope_id"],
         "dataset_id": row.get("dataset_id"),
         "dataset_version": row.get("dataset_version"),
+        "dataset_binding": _dataset_binding(row.get("dataset_id")),
         "name": row["name"],
         "description": row.get("description") or "",
         "created_by": row.get("created_by"),
@@ -285,8 +336,17 @@ def list_notebooks(dataset_id: str | None = None) -> list[dict[str, Any]]:
 
     if dataset_id:
         _authorize_dataset(dataset_id)
-        where += " AND dataset_id=:dataset_id"
-        params["dataset_id"] = dataset_id
+        version_ids = [str(item["id"]) for item in list_versions(dataset_id)]
+        if version_ids:
+            placeholders = []
+            for index, version_id in enumerate(version_ids):
+                key = f"dataset_{index}"
+                placeholders.append(f":{key}")
+                params[key] = version_id
+            where += f" AND dataset_id IN ({','.join(placeholders)})"
+        else:
+            where += " AND dataset_id=:dataset_id"
+            params["dataset_id"] = dataset_id
 
     rows = fetch_all(
         f"""SELECT * FROM notebook_documents
@@ -402,6 +462,44 @@ def update_notebook(
                 description if description is not None else row.get("description", "")
             ).strip()[:1000],
             "updated": utcnow(),
+        },
+    )
+    return get_notebook(notebook_id)
+
+
+def bind_notebook_dataset(
+    notebook_id: str,
+    dataset_id: str | None,
+) -> dict[str, Any]:
+    row = _notebook_row(notebook_id)
+    scope_type, scope_id, actor = _scope(require_run=True)
+    dataset_version = None
+    if dataset_id:
+        _authorize_dataset(dataset_id, "dataset:read")
+        meta = get_meta(dataset_id)
+        dataset_version = str(meta.get("version") or "1")
+
+    execute(
+        """UPDATE notebook_documents
+           SET dataset_id=:dataset_id,dataset_version=:dataset_version,updated_at=:updated
+           WHERE id=:id""",
+        {
+            "dataset_id": dataset_id,
+            "dataset_version": dataset_version,
+            "updated": utcnow(),
+            "id": notebook_id,
+        },
+    )
+    record_event(
+        "notebook.dataset_bind",
+        user_id=actor,
+        workspace_id=scope_id if scope_type == "workspace" else None,
+        resource_type="notebook",
+        resource_id=notebook_id,
+        payload={
+            "previous_dataset_id": row.get("dataset_id"),
+            "dataset_id": dataset_id,
+            "dataset_version": dataset_version,
         },
     )
     return get_notebook(notebook_id)
@@ -576,6 +674,8 @@ def run_cell(notebook_id: str, cell_id: str) -> dict[str, Any]:
             )
         _authorize_dataset(dataset_id)
         frame = load_dataframe(dataset_id)
+        dataset_meta = get_meta(dataset_id)
+        dataset_version = str(dataset_meta.get("version") or dataset_version or "1")
 
         if language == "sql":
             try:
@@ -639,13 +739,19 @@ def run_cell(notebook_id: str, cell_id: str) -> dict[str, Any]:
     )
 
     finished = utcnow()
+    dataset_provenance = {}
+    if dataset_id and language != "markdown":
+        dataset_provenance = _dataset_run_provenance(dataset_id, frame)
+
     provenance = {
+        **dataset_provenance,
         "dataset_id": dataset_id,
         "dataset_version": dataset_version,
         "notebook_id": notebook_id,
         "cell_id": cell_id,
         "language": language,
         "source_hash": hashlib.sha256(source.encode("utf-8")).hexdigest(),
+        "artifact_count": len(artifacts),
         "execution_boundary": (
             "read-only SQL engine"
             if language == "sql"
@@ -725,6 +831,113 @@ def run_cell(notebook_id: str, cell_id: str) -> dict[str, Any]:
     )
     assert row is not None
     return _run_payload(row)
+
+
+def run_notebook(
+    notebook_id: str,
+    *,
+    continue_on_error: bool = False,
+) -> dict[str, Any]:
+    notebook = _notebook_row(notebook_id)
+    _scope(require_run=True)
+    cells = fetch_all(
+        """SELECT id,language FROM notebook_cells
+           WHERE notebook_id=:id ORDER BY position,id""",
+        {"id": notebook_id},
+    )
+    runs: list[dict[str, Any]] = []
+    for cell in cells:
+        result = run_cell(notebook_id, str(cell["id"]))
+        runs.append(result)
+        if result.get("status") == "failed" and not continue_on_error:
+            break
+    succeeded = sum(1 for item in runs if item.get("status") == "succeeded")
+    failed = sum(1 for item in runs if item.get("status") == "failed")
+    return {
+        "notebook_id": notebook_id,
+        "dataset_id": notebook.get("dataset_id"),
+        "dataset_version": notebook.get("dataset_version"),
+        "status": "failed" if failed else "succeeded",
+        "executed": len(runs),
+        "succeeded": succeeded,
+        "failed": failed,
+        "stopped_early": len(runs) < len(cells),
+        "runs": runs,
+    }
+
+
+def promote_artifact_to_dataset(
+    notebook_id: str,
+    run_id: str,
+    filename: str,
+) -> dict[str, Any]:
+    notebook = _notebook_row(notebook_id)
+    scope_type, scope_id, actor = _scope(require_run=True)
+    row = fetch_one(
+        """SELECT * FROM notebook_runs
+           WHERE id=:run AND notebook_id=:notebook""",
+        {"run": run_id, "notebook": notebook_id},
+    )
+    if not row:
+        raise KeyError("Run introuvable.")
+
+    parent_id = row.get("dataset_id") or notebook.get("dataset_id")
+    if not parent_id:
+        raise ValueError("Aucun dataset source n'est lié à ce run.")
+    _authorize_dataset(str(parent_id), "dataset:write")
+
+    path = artifact_path(notebook_id, run_id, filename)
+    extension = path.suffix.lower()
+    if extension == ".csv":
+        frame = pd.read_csv(path)
+    elif extension == ".json":
+        try:
+            frame = pd.read_json(path)
+        except ValueError:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+            frame = pd.DataFrame(payload)
+    else:
+        raise ValueError("Seuls les artefacts CSV ou JSON peuvent devenir une version de dataset.")
+    if frame.empty and len(frame.columns) == 0:
+        raise ValueError("L'artefact ne contient aucune donnée tabulaire.")
+
+    meta = save_dataframe_version(
+        str(parent_id),
+        frame,
+        {
+            "type": "notebook_artifact",
+            "label": f"Artefact notebook · {path.name}",
+            "notebook_id": notebook_id,
+            "run_id": run_id,
+            "cell_id": row.get("cell_id"),
+            "artifact_name": path.name,
+            "source_hash": row.get("source_hash"),
+        },
+    )
+    record_event(
+        "notebook.artifact_promote",
+        user_id=actor,
+        workspace_id=scope_id if scope_type == "workspace" else None,
+        resource_type="dataset",
+        resource_id=meta["id"],
+        payload={
+            "notebook_id": notebook_id,
+            "run_id": run_id,
+            "parent_dataset_id": parent_id,
+            "artifact_name": path.name,
+            "dataset_version": meta.get("version"),
+        },
+    )
+    return {
+        "dataset": {
+            "id": meta["id"],
+            "root_id": meta.get("root_id") or meta["id"],
+            "parent_id": meta.get("parent_id"),
+            "version": int(meta.get("version") or 1),
+            "name": meta.get("original_name"),
+            "operation": meta.get("operation"),
+        }
+    }
 
 
 def artifact_path(

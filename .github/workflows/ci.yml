@@ -28,6 +28,7 @@ jobs:
       - run: pytest -q
       - run: python ../scripts/mvp_acceptance.py --root .. --check
       - run: python ../scripts/preparation_acceptance.py --root .. --check
+      - run: python ../scripts/workspace_acceptance.py --root .. --check
       - run: python ../scripts/cdc_audit.py --check
 
   frontend:
