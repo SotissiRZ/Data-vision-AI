@@ -1,0 +1,15 @@
+.git
+.github
+.env
+.env.*
+!.env.example
+data
+frontend
+sandbox
+node_modules
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
+**/*.pyo
+**/*.log
+*.zip

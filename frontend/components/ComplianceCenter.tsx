@@ -14,9 +14,10 @@ export function ComplianceCenter({ setError }: { setError: (message: string) => 
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [query, setQuery] = useState('');
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   async function load() {
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setLoadError('');
     try {
       const [matrix, production] = await Promise.all([
         getCdcCompliance(),
@@ -25,7 +26,8 @@ export function ComplianceCenter({ setError }: { setError: (message: string) => 
       setReport(matrix);
       setAcceptance(production);
     } catch (error: unknown) {
-      setError(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setLoadError(message); setError(message);
     } finally { setBusy(false); }
   }
 
@@ -42,8 +44,9 @@ export function ComplianceCenter({ setError }: { setError: (message: string) => 
     });
   }, [report, statusFilter, priorityFilter, query]);
 
-  if (!report) return <div className={styles.loading}>{busy ? 'Audit CDC en cours…' : 'Matrice CDC indisponible.'}</div>;
+  if (!report) return <div className={styles.loading}>{busy ? 'Audit CDC en cours…' : <div><b>Matrice CDC indisponible.</b>{loadError&&<p>{loadError}</p>}<button onClick={()=>void load()}>↻ Réessayer</button></div>}</div>;
   const summary = report.summary;
+  const signoffRequired = acceptance?.signoff_required ?? [];
 
   return <div className={styles.page}>
     <div className={styles.title}>
@@ -67,7 +70,7 @@ export function ComplianceCenter({ setError }: { setError: (message: string) => 
       <div className={styles.gates}>
         {(acceptance?.gates ?? []).map((gate:AnyObj)=><div key={gate.id}><span className={`${styles.status} ${styles[gate.status]}`}>{gate.status}</span><b>{gate.label}</b><small>{gate.blocking ? 'bloquant pour une signature complète' : 'non bloquant'}</small></div>)}
       </div>
-      {(acceptance?.signoff_required ?? []).length>0&&<div className={styles.signoff}><b>Sign-off encore requis</b>{acceptance.signoff_required.map((item:string)=><span key={item}>• {item}</span>)}</div>}
+      {signoffRequired.length>0&&<div className={styles.signoff}><b>Sign-off encore requis</b>{signoffRequired.map((item:string)=><span key={item}>• {item}</span>)}</div>}
     </section>
 
     <section className={styles.panel}>

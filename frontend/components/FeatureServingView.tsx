@@ -62,8 +62,8 @@ export function FeatureServingView({
   const [scoreText, setScoreText] = useState('[\n  {}\n]');
   const [scoreResult, setScoreResult] = useState<AnyObj | null>(null);
 
-  const columns = activeDataset?.profile?.columns ?? activeDataset?.columns ?? [];
-  const columnNames = columns.map((item: AnyObj) => String(item.name));
+  const columns: AnyObj[] = (activeDataset?.profile?.columns ?? activeDataset?.columns ?? []) as AnyObj[];
+  const columnNames: string[] = columns.map((item: AnyObj) => String(item.name));
   const selected = useMemo(
     () => deployments.find(item => item.id === selectedDeployment) ?? null,
     [deployments, selectedDeployment],
@@ -290,15 +290,15 @@ export function FeatureServingView({
         : <>
           <div className={styles.formGrid}>
             <label>Nom<input value={featureName} onChange={e => setFeatureName(e.target.value)}/></label>
-            <label>Event time<select value={eventTime} onChange={e => setEventTime(e.target.value)}><option value="">Aucun</option>{columnNames.map(name => <option key={name}>{name}</option>)}</select></label>
+            <label>Event time<select value={eventTime} onChange={e => setEventTime(e.target.value)}><option value="">Aucun</option>{columnNames.map((name: string) => <option key={name}>{name}</option>)}</select></label>
           </div>
           <div className={styles.selectorBlock}>
             <b>Features</b>
-            <div className={styles.checks}>{columnNames.map(name => <label key={name}><input type="checkbox" checked={featureColumns.includes(name)} onChange={e => setFeatureColumns(e.target.checked ? [...featureColumns, name] : featureColumns.filter(x => x !== name))}/>{name}</label>)}</div>
+            <div className={styles.checks}>{columnNames.map((name: string) => <label key={name}><input type="checkbox" checked={featureColumns.includes(name)} onChange={e => setFeatureColumns(e.target.checked ? [...featureColumns, name] : featureColumns.filter(x => x !== name))}/>{name}</label>)}</div>
           </div>
           <div className={styles.selectorBlock}>
             <b>Entity keys</b>
-            <div className={styles.checks}>{columnNames.map(name => <label key={name}><input type="checkbox" checked={entityKeys.includes(name)} onChange={e => setEntityKeys(e.target.checked ? [...entityKeys, name] : entityKeys.filter(x => x !== name))}/>{name}</label>)}</div>
+            <div className={styles.checks}>{columnNames.map((name: string) => <label key={name}><input type="checkbox" checked={entityKeys.includes(name)} onChange={e => setEntityKeys(e.target.checked ? [...entityKeys, name] : entityKeys.filter(x => x !== name))}/>{name}</label>)}</div>
           </div>
           <button className={styles.primary} disabled={busy === 'feature-create'} onClick={() => void createFeatures()}>{busy === 'feature-create' ? 'Création…' : 'Créer le Feature Set'}</button>
         </>}

@@ -1,5 +1,46 @@
 # Changelog
 
+## 2.42.0 — Data Preparation Completion
+- Pipelines multi-datasets désormais enregistrables et rejouables avec dépendances explicites.
+- Ajout des bindings de remplacement pour datasets secondaires au replay.
+- Prévalidation complète en mémoire avant persistance afin d'éviter les branches partielles.
+- Jointures multi-clés exposées dans le Studio de préparation.
+- GroupBy multi-agrégations exposé dans l'UI.
+- Nouveau feature engineering : binning numérique, lag et rolling features.
+- Nouveau gate `PREPARATION_ACCEPTANCE` 8/8 intégré à la CI et au préflight.
+- Ajout de tests backend et frontend de non-régression v2.42.
+
+## 2.41.0 — Executable MVP Acceptance
+- Remplacement du gate MVP purement structurel par une matrice exécutable de 16 exigences.
+- Ajout du workflow intégré import → profiling → quality → preparation → statistics → visualization → history → export.
+- Ajout d’un E2E déployé via le proxy frontend `/api/backend`.
+- Correction P0 de l’import JSON : séparation données `<id>.json` / métadonnées `<id>.meta.json`.
+- Compatibilité maintenue avec les sidecars legacy valides.
+- CI renforcée avec `scripts/mvp_acceptance.py --check`.
+
+## 2.40.4 — Feature Store strict typing
+- Correction du build Next.js dans `FeatureServingView.tsx` : `columnNames.map(name => ...)` n’utilise plus un paramètre implicitement `any`.
+- Normalisation explicite de `columns` en `AnyObj[]` et de `columnNames` en `string[]`.
+- Typage explicite `name: string` sur les trois callbacks du sélecteur de features.
+- Ajout d’un test de non-régression dédié.
+
+## 2.40.3 — Frontend null-safety consolidation
+- Correction du build Next.js dans Sources & Refresh : `connectorSpec.options` n’est plus accédé directement depuis un JSX où `connectorSpec` peut être nul.
+- Capture stable de `connectorOptions` avant le rendu.
+- Capture null-safe de `signoff_required` dans ComplianceCenter.
+- Capture stable `activeModel` dans les callbacks async de ResponsibleAIView.
+- Ajout de tests de non-régression couvrant ces trois zones.
+
+## 2.40.2 — Frontend XAI counterfactual payload typing
+- Correction du build Next.js : le payload de `runModelCounterfactuals()` possède désormais le type exact attendu par l’API.
+- `row` est explicitement traité comme `Record<string, unknown>`.
+- Le modèle XAI non nul reste capturé via `activeModel`.
+- Ajout d’un test de non-régression dédié au contrat de payload contre-factuel.
+
+## 2.40.1 — Frontend XAI nullable-model hotfix
+- Correction du build Next.js : les callbacks XAI capturent une référence `activeModel` non nulle après la garde de rendu.
+- Ajout d’un test de non-régression empêchant le retour de `model.task` non sécurisé.
+
 
 ## 2.39.0 — Repository Cleanup & Professional Structure
 - Racine du dépôt réduite aux fichiers opérationnels.

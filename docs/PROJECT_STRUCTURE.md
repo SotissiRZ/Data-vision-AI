@@ -16,6 +16,7 @@ datavision/
 ├── sandbox/                 # Exécution notebook isolée
 ├── sbom/                    # Software Bill of Materials
 ├── scripts/                 # Outils CI, release et audit
+├── .dockerignore             # contexte Docker backend propre
 ├── .env.example
 ├── docker-compose.yml
 ├── Makefile

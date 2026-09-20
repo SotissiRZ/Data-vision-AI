@@ -21,6 +21,8 @@ jobs:
         with:
           node-version: '22'
       - run: cp .env.example .env
+      - run: python scripts/production_baseline.py --check
+      - run: python scripts/preparation_acceptance.py --root . --check
       - run: docker compose config -q
       - run: docker compose build api web sandbox
       - working-directory: frontend

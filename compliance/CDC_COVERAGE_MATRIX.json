@@ -1,6 +1,6 @@
 {
   "cdc_version": "1.0 — August 2026",
-  "product_version": "2.31.0",
+  "product_version": "2.42.0",
   "status_model": {
     "implemented": 1.0,
     "partial": 0.5,
@@ -166,9 +166,15 @@
       "priority": "P2",
       "evidence": [
         "backend/app/services/preparation.py",
+        "backend/app/services/pipelines.py",
+        "backend/app/api/routes/datasets.py",
         "frontend/app/page.tsx"
       ],
-      "tests": [],
+      "tests": [
+        "backend/tests/test_data_preparation_v242.py",
+        "backend/tests/test_pipelines_v242.py",
+        "backend/tests/test_frontend_preparation_v242.py"
+      ],
       "gaps": []
     },
     {
@@ -876,11 +882,15 @@
       "status": "implemented",
       "priority": "P0",
       "evidence": [
-        "README.md",
-        "backend/app/main.py",
+        "compliance/MVP_ACCEPTANCE.json",
+        "scripts/mvp_acceptance.py",
+        "backend/app/api/routes/datasets.py",
         "docker-compose.yml"
       ],
-      "tests": [],
+      "tests": [
+        "backend/tests/test_mvp_workflow_v241.py",
+        "frontend/e2e/mvp.spec.ts"
+      ],
       "gaps": []
     },
     {

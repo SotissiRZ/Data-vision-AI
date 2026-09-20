@@ -395,4 +395,102 @@ def apply_operation(df: pd.DataFrame, op: dict[str, Any]) -> tuple[pd.DataFrame,
             elif part == "hour": out[name] = dates.dt.hour.astype("Int64")
         return out, {"type": kind, "label": f"Extraire {len(parts)} composante(s) de {column}", "params": {"column": column, "parts": parts}}
 
+    if kind == "bin_numeric":
+        column = str(op.get("column", ""))
+        new_name = str(op.get("new_name") or f"{column}__bin").strip()
+        method = str(op.get("method", "quantile")).strip()
+        bins = int(op.get("bins", 4))
+        _require_column(out, column)
+        if not new_name:
+            raise ValueError("Le nom de la variable discrétisée est requis.")
+        if new_name != column and new_name in out.columns:
+            raise ValueError(f"La colonne '{new_name}' existe déjà.")
+        if method not in {"quantile", "width"}:
+            raise ValueError("Méthode de discrétisation non supportée: utilisez 'quantile' ou 'width'.")
+        if bins < 2 or bins > 100:
+            raise ValueError("Le nombre de classes doit être compris entre 2 et 100.")
+        values = _numeric(out[column], column)
+        try:
+            if method == "quantile":
+                bucketed = pd.qcut(values, q=bins, duplicates="drop")
+            else:
+                bucketed = pd.cut(values, bins=bins, duplicates="drop")
+        except ValueError as exc:
+            raise ValueError(f"Discrétisation impossible pour '{column}': {exc}") from exc
+        categories = [str(x) for x in getattr(bucketed.dtype, "categories", [])]
+        if len(categories) < 2:
+            raise ValueError(f"La colonne '{column}' ne permet pas de créer au moins deux classes.")
+        out[new_name] = bucketed.astype("string")
+        return out, {"type": kind, "label": f"Discrétiser {column} ({method}, {len(categories)} classes)", "params": {"column": column, "new_name": new_name, "method": method, "bins": bins, "categories": categories}}
+
+    if kind == "lag_feature":
+        column = str(op.get("column", ""))
+        periods = int(op.get("periods", 1))
+        new_name = str(op.get("new_name") or f"{column}__lag{periods}").strip()
+        group_by = [str(x) for x in op.get("group_by", [])]
+        order_by = str(op.get("order_by") or "").strip() or None
+        _require_column(out, column)
+        for name in group_by:
+            _require_column(out, name)
+        if order_by:
+            _require_column(out, order_by)
+        if periods < 1 or periods > 10000:
+            raise ValueError("Le décalage doit être compris entre 1 et 10000 périodes.")
+        if not new_name or (new_name != column and new_name in out.columns):
+            raise ValueError(f"Nom de variable de lag invalide ou déjà utilisé: '{new_name}'.")
+        work = out.copy()
+        marker = "__dv_original_order__"
+        while marker in work.columns:
+            marker += "_"
+        work[marker] = np.arange(len(work))
+        sort_cols = [*group_by, *([order_by] if order_by else [])]
+        if sort_cols:
+            work = work.sort_values(sort_cols, kind="mergesort", na_position="last")
+        if group_by:
+            work[new_name] = work.groupby(group_by, dropna=False, observed=True)[column].shift(periods)
+        else:
+            work[new_name] = work[column].shift(periods)
+        out = work.sort_values(marker, kind="mergesort").drop(columns=[marker]).reset_index(drop=True)
+        return out, {"type": kind, "label": f"Lag {periods} de {column}", "params": {"column": column, "new_name": new_name, "periods": periods, "group_by": group_by, "order_by": order_by}}
+
+    if kind == "rolling_feature":
+        column = str(op.get("column", ""))
+        window = int(op.get("window", 3))
+        function = str(op.get("function", "mean"))
+        min_periods = int(op.get("min_periods", 1))
+        new_name = str(op.get("new_name") or f"{column}__rolling_{function}_{window}").strip()
+        group_by = [str(x) for x in op.get("group_by", [])]
+        order_by = str(op.get("order_by") or "").strip() or None
+        _require_column(out, column)
+        for name in group_by:
+            _require_column(out, name)
+        if order_by:
+            _require_column(out, order_by)
+        allowed = {"mean", "sum", "min", "max", "median", "std"}
+        if function not in allowed:
+            raise ValueError(f"Agrégation rolling non supportée: {function}")
+        if window < 2 or window > 10000:
+            raise ValueError("La fenêtre rolling doit être comprise entre 2 et 10000 lignes.")
+        if min_periods < 1 or min_periods > window:
+            raise ValueError("min_periods doit être compris entre 1 et la taille de fenêtre.")
+        if not new_name or (new_name != column and new_name in out.columns):
+            raise ValueError(f"Nom de variable rolling invalide ou déjà utilisé: '{new_name}'.")
+        work = out.copy()
+        work[column] = _numeric(work[column], column)
+        marker = "__dv_original_order__"
+        while marker in work.columns:
+            marker += "_"
+        work[marker] = np.arange(len(work))
+        sort_cols = [*group_by, *([order_by] if order_by else [])]
+        if sort_cols:
+            work = work.sort_values(sort_cols, kind="mergesort", na_position="last")
+        if group_by:
+            work[new_name] = work.groupby(group_by, dropna=False, observed=True)[column].transform(
+                lambda series: series.rolling(window=window, min_periods=min_periods).agg(function)
+            )
+        else:
+            work[new_name] = work[column].rolling(window=window, min_periods=min_periods).agg(function)
+        out = work.sort_values(marker, kind="mergesort").drop(columns=[marker]).reset_index(drop=True)
+        return out, {"type": kind, "label": f"Rolling {function}({window}) de {column}", "params": {"column": column, "new_name": new_name, "window": window, "function": function, "min_periods": min_periods, "group_by": group_by, "order_by": order_by}}
+
     raise ValueError(f"Transformation non supportée: {kind}")

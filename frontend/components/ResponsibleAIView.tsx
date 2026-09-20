@@ -70,6 +70,7 @@ export function ResponsibleAIView({ result, model, setError }: { result: AnyObj 
 
   if (!model) return <div className={styles.empty}><h3>Responsible AI</h3><p>Entraînez ou sélectionnez d’abord un modèle.</p></div>;
   if (!result) return <div className={styles.empty}><h3>Responsible AI</h3><p>Activez le dataset lié au modèle.</p></div>;
+  const activeModel = model;
 
   function payloadBase() {
     return {
@@ -84,7 +85,7 @@ export function ResponsibleAIView({ result, model, setError }: { result: AnyObj 
     if (!selected.length) return setError('Sélectionnez au moins une variable de groupe à auditer.');
     setBusy('audit'); setError('');
     try {
-      const value = await runModelFairnessAudit(model.model_id, { ...payloadBase(), persist_summary: false });
+      const value = await runModelFairnessAudit(activeModel.model_id, { ...payloadBase(), persist_summary: false });
       setFairness(value); setGate(null);
     } catch (error: unknown) { setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(''); }
@@ -93,7 +94,7 @@ export function ResponsibleAIView({ result, model, setError }: { result: AnyObj 
   async function assessRisk() {
     setBusy('risk'); setError('');
     try {
-      const value = await runModelResponsibleAIRisk(model.model_id, { ...payloadBase(), protected_columns: selected, persist_summary: false });
+      const value = await runModelResponsibleAIRisk(activeModel.model_id, { ...payloadBase(), protected_columns: selected, persist_summary: false });
       setRisk(value.risk); if (value.fairness) setFairness(value.fairness);
     } catch (error: unknown) { setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(''); }
@@ -103,7 +104,7 @@ export function ResponsibleAIView({ result, model, setError }: { result: AnyObj 
     if (!selected.length) return setError('Sélectionnez au moins une variable de groupe avant le gate de publication.');
     setBusy('gate'); setError('');
     try {
-      const value = await runModelResponsibleAIGate(model.model_id, { ...payloadBase(), policy, persist_summary: true });
+      const value = await runModelResponsibleAIGate(activeModel.model_id, { ...payloadBase(), policy, persist_summary: true });
       setGate(value); setFairness(value.fairness); setRisk(value.risk);
     } catch (error: unknown) { setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(''); }
@@ -113,7 +114,7 @@ export function ResponsibleAIView({ result, model, setError }: { result: AnyObj 
     if (!driftPossible || !selected.length) return;
     setBusy('drift'); setError('');
     try {
-      setDrift(await runModelPopulationDrift(model.model_id, { ...payloadBase(), current_dataset_id: currentDatasetId }));
+      setDrift(await runModelPopulationDrift(activeModel.model_id, { ...payloadBase(), current_dataset_id: currentDatasetId }));
     } catch (error: unknown) { setError(error instanceof Error ? error.message : String(error)); }
     finally { setBusy(''); }
   }

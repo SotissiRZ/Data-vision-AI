@@ -16,7 +16,7 @@ from app.services.decision import decision_support
 from app.services.exploration import analyze_column, preview_dataframe
 from app.services.advanced_analysis import regression_analysis, anova_analysis, pca_analysis, clustering_analysis
 from app.services.preparation import apply_operation, combine_dataframes
-from app.services.pipelines import list_pipelines, save_lineage_as_pipeline, run_pipeline
+from app.services.pipelines import list_pipelines, save_lineage_as_pipeline, run_pipeline, validate_pipeline
 from app.services.statistics_engine import correlation_analysis, statistical_test, test_advisor
 from app.services.data_workspace import engine_info, run_sql
 from app.services.visualization import build_visualization, recommend_visualizations
@@ -163,6 +163,10 @@ class CombineRequest(BaseModel):
 
 class PipelineSaveRequest(BaseModel):
     name: str
+
+
+class PipelineRunRequest(BaseModel):
+    bindings: dict[str, str] = Field(default_factory=dict)
 
 
 class CorrelationRequest(BaseModel):
@@ -2049,10 +2053,23 @@ def dataset_save_pipeline(dataset_id: str, request: PipelineSaveRequest):
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
-@router.post("/{dataset_id}/pipelines/{pipeline_id}/run")
-def dataset_run_pipeline(dataset_id: str, pipeline_id: str):
+@router.post("/{dataset_id}/pipelines/{pipeline_id}/validate")
+def dataset_validate_pipeline(dataset_id: str, pipeline_id: str, request: PipelineRunRequest | None = None):
     try:
-        result = run_pipeline(dataset_id, pipeline_id)
+        get_meta(dataset_id)
+        return validate_pipeline(dataset_id, pipeline_id, (request.bindings if request else {}))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset ou pipeline introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Validation du pipeline impossible: {exc}") from exc
+
+
+@router.post("/{dataset_id}/pipelines/{pipeline_id}/run")
+def dataset_run_pipeline(dataset_id: str, pipeline_id: str, request: PipelineRunRequest | None = None):
+    try:
+        result = run_pipeline(dataset_id, pipeline_id, (request.bindings if request else {}))
         meta = get_meta(result["dataset_id"])
         return {**_bundle(meta), "pipeline_run": result}
     except FileNotFoundError as exc:

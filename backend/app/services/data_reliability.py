@@ -14,7 +14,7 @@ import pandas as pd
 
 from app.core.config import get_settings
 from app.services.metadata_store import execute, fetch_all, fetch_one, json_dumps, json_loads, utcnow
-from app.services.storage import get_meta, load_dataframe_raw
+from app.services.storage import get_meta, iter_dataset_metadata, load_dataframe_raw
 
 SEVERITY_WEIGHT = {"low": 1.0, "medium": 2.0, "high": 3.0, "critical": 4.0}
 BLOCKING_DEFAULT = {"high", "critical"}
@@ -222,9 +222,7 @@ def _evaluate_rule(df: pd.DataFrame, rule: dict[str, Any], baseline: pd.DataFram
 def _latest_prior_version(dataset_id: str) -> str | None:
     meta=get_meta(dataset_id); root=str(meta.get("root_id") or meta["id"]); version=int(meta.get("version",1))
     candidates=[]
-    for path in get_settings().upload_dir.glob("*.json"):
-        try: m=json.loads(path.read_text(encoding="utf-8"))
-        except Exception: continue
+    for m in iter_dataset_metadata():
         if str(m.get("root_id") or m.get("id"))==root and int(m.get("version",1))<version:
             candidates.append(m)
     candidates.sort(key=lambda x:int(x.get("version",1)),reverse=True)
@@ -299,9 +297,7 @@ def _workspace_dataset_ids(workspace_id: str) -> set[str]:
     rows=fetch_all("SELECT dataset_id FROM workspace_datasets WHERE workspace_id=:ws",{"ws":workspace_id})
     roots={str(r["dataset_id"]) for r in rows}
     ids=set()
-    for path in get_settings().upload_dir.glob("*.json"):
-        try: meta=json.loads(path.read_text(encoding="utf-8"))
-        except Exception: continue
+    for meta in iter_dataset_metadata():
         if str(meta.get("root_id") or meta.get("id")) in roots or str(meta.get("id")) in roots: ids.add(str(meta.get("id")))
     return ids
 

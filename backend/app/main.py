@@ -28,7 +28,7 @@ settings = get_settings()
 from app.services.upload_security import antivirus_status
 from app.services.secret_crypto import kms_status
 
-app = FastAPI(title=settings.app_name, version="2.39.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.42.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -264,7 +264,7 @@ def health_live():
     return {
         "status": "alive",
         "product": settings.app_name,
-        "version": "2.39.0",
+        "version": "2.42.0",
     }
 
 
@@ -330,7 +330,7 @@ def health_ready():
         "status": "ready" if ready else "not_ready",
         "ready": ready,
         "product": settings.app_name,
-        "version": "2.39.0",
+        "version": "2.42.0",
         "components": components,
     }
     if ready:
@@ -343,7 +343,7 @@ def health():
     return {
         "status": "ok",
         "product": settings.app_name,
-        "version": "2.39.0",
+        "version": "2.42.0",
     }
 
 
@@ -364,8 +364,10 @@ def capabilities():
             "file_upload", "dataset_preview", "profiling", "column_descriptive_analysis",
             "quality_rules", "decision_support", "data_preparation", "dataset_versioning",
             "rollback_by_version", "visual_preparation_pipeline", "saved_replayable_pipelines",
-            "dataset_join_concat", "groupby_aggregation", "pivot_unpivot", "feature_engineering",
-            "one_hot_encoding", "statistical_test_advisor", "parametric_tests", "nonparametric_tests",
+            "dataset_join_concat", "multi_key_join", "groupby_aggregation", "multi_aggregation_groupby",
+            "pivot_unpivot", "feature_engineering", "advanced_feature_engineering", "numeric_binning",
+            "lag_features", "rolling_features", "multi_dataset_pipeline_replay",
+            "pipeline_preflight_validation", "pipeline_dependency_bindings", "one_hot_encoding", "statistical_test_advisor", "parametric_tests", "nonparametric_tests",
             "correlations", "visualization_studio", "sql_workspace_readonly", "duckdb_polars_layer",
             "notebook_workspace", "sandboxed_python_cells", "sandboxed_r_cells",
             "notebook_sql_cells", "notebook_run_provenance", "notebook_artifacts",

@@ -1,0 +1,16 @@
+{
+  "version": "2.39.1",
+  "base": "2.39.0",
+  "type": "hotfix",
+  "scope": [
+    "CDC & Acceptance",
+    "Docker API packaging",
+    "same-origin API proxy"
+  ],
+  "fixes": [
+    "bundle compliance matrices into API image",
+    "robust project root resolution in cdc_compliance service",
+    "proxy browser API calls through Next.js same origin",
+    "add CDC retry diagnostics"
+  ]
+}

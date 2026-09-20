@@ -1,7 +1,104 @@
-# DataVision AI — v2.39.0
+# DataVision AI — v2.42.0
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
 
+
+## Nouveau dans v2.42.0 — Data Preparation Completion
+
+La v2.42.0 ferme le lot **Data Preparation** avec des transformations déterministes, versionnées et réellement rejouables :
+
+- jointures multi-clés et concaténations lignes/colonnes ;
+- GroupBy avec plusieurs agrégations ;
+- pivot / unpivot ;
+- feature engineering avancé : binning, lag et rolling ;
+- pipelines multi-datasets avec dépendances et bindings de remplacement ;
+- validation en mémoire de l'intégralité du pipeline avant persistance ;
+- gate exécutable `python scripts/preparation_acceptance.py --root . --check` ;
+- manifest de preuve `compliance/PREPARATION_ACCEPTANCE.json`.
+
+Les pipelines historiques restent compatibles. Aucun volume Docker ni dataset existant n'a besoin d'être supprimé pour passer de v2.41.0 à v2.42.0.
+
+
+## Nouveau dans v2.41.0 — MVP Acceptance exécutable
+
+La v2.41.0 transforme le MVP en **workflow vérifiable**, et non plus en simple présence de modules. Le gate couvre explicitement les 16 exigences obligatoires et exécute le parcours prioritaire `import → profiling → quality → preparation → statistics → visualization → history → export`.
+
+- nouvelle matrice `compliance/MVP_ACCEPTANCE.json` ;
+- nouveau gate `python scripts/mvp_acceptance.py --root . --check` ;
+- test backend intégré de l’API publique ;
+- E2E Docker via le proxy same-origin `/api/backend` ;
+- correction P0 de l’import JSON : les données restent dans `<id>.json` et les métadonnées utilisent désormais `<id>.meta.json` ;
+- compatibilité de lecture conservée pour les anciens sidecars metadata valides ;
+- les anciens uploads JSON déjà écrasés avant v2.41.0 doivent être réimportés depuis leur source.
+
+
+
+## Correctif v2.40.4 — Feature Store strict typing
+
+La v2.40.4 corrige le blocage TypeScript observé pendant le build Docker/Next de la v2.40.3 dans `FeatureServingView.tsx`.
+
+- la collection `columns` issue du dataset actif est explicitement normalisée en `AnyObj[]` ;
+- `columnNames` est explicitement typé `string[]` ;
+- les trois callbacks `columnNames.map(...)` utilisent un paramètre `name: string`, supprimant toute inférence implicite `any` ;
+- ajout d’un test de non-régression dédié au Feature Store ;
+- aucun changement des contrats API, des données persistées ou des moteurs statistiques/ML.
+
+Le build Docker/Next complet reste à confirmer sur la machine cible ; les avertissements Autoprefixer restent non bloquants.
+
+
+## Correctif v2.40.3 — Null-safety frontend consolidée
+
+La v2.40.3 corrige le blocage TypeScript suivant observé pendant le build Docker/Next de la v2.40.2 et consolide les mêmes risques dans les autres vues concernées.
+
+- le formulaire **Sources & Refresh** capture désormais `connectorSpec?.options` dans `connectorOptions` avant le JSX, évitant tout accès direct à un connecteur potentiellement nul ;
+- `ComplianceCenter` capture la liste `signoff_required` dans une référence non nulle avant le rendu ;
+- `ResponsibleAIView` capture le modèle sélectionné dans `activeModel` avant les callbacks asynchrones d’audit, de risque, de publication et de drift ;
+- ajout de tests de non-régression dédiés à ces trois gardes de nullabilité ;
+- aucune modification des contrats API, des schémas de données ou des moteurs statistiques/ML.
+
+Les avertissements Autoprefixer restent non bloquants et sont indépendants de ces erreurs TypeScript.
+
+## Correctif v2.40.2 — Typage strict du payload contre-factuel
+
+La v2.40.2 corrige le second blocage TypeScript observé pendant le build Docker/Next de la v2.40.1 : le payload transmis à `runModelCounterfactuals()` était typé comme `AnyObj`, ce qui ne garantissait pas la présence de la propriété obligatoire `row`. Le payload est désormais dérivé directement de la signature de l’API avec `Parameters<typeof runModelCounterfactuals>[1]`, et la ligne JSON est explicitement typée `Record<string, unknown>`.
+
+## Correctif v2.40.1 — Build frontend / XAI
+
+La v2.40.1 corrige le blocage TypeScript observé pendant le build Docker/Next de la v2.40.0 dans `XaiView.runCf()`.
+
+- capture explicite du modèle non nul via `activeModel` après la garde de rendu ;
+- les callbacks XAI (`diagnostics`, explication locale, SHAP, PDP et contre-factuels) utilisent cette référence stable ;
+- suppression de l'accès non protégé `model.task` qui faisait échouer `next build` avec `model is possibly null` ;
+- ajout d'un test de non-régression frontend ciblé ;
+- aucune modification des contrats API, schémas de données ou moteurs statistiques/ML.
+
+Les avertissements Autoprefixer observés pendant le build restent non bloquants et sont distincts de cette erreur TypeScript.
+
+## Nouveau dans v2.40.0 — Production Baseline & Release Integrity
+
+La v2.40.0 transforme la v2.39.1 stabilisée en **baseline de production vérifiable**.
+
+- ajout de `scripts/production_baseline.py`, contrôle structurel sans dépendance réseau ;
+- validation explicite de `VERSION`, des dépendances critiques, du proxy API same-origin, de `compliance/` et de l'adapter assistant ;
+- le préflight Windows exécute désormais ce baseline avant tout build Docker ;
+- `scripts/verify_release.py` vérifie maintenant le manifest embarqué, la liste exacte des fichiers, leurs tailles et leurs SHA-256 ;
+- les chemins dangereux, doublons ZIP et fichiers non déclarés sont rejetés ;
+- `scripts/release.py` auto-vérifie le ZIP produit avant de déclarer la release terminée ;
+- ajout de tests de non-régression dédiés à l'intégrité des releases v2.40.0.
+
+Cette version n'invente pas une validation Docker lorsqu'elle n'a pas été exécutée : les builds Docker/Next restent validés par la CI et par le préflight sur la machine cible.
+
+## Correctif v2.39.1 — Gouverner / CDC & Acceptance
+
+Le centre **Gouverner → CDC & Acceptance** est corrigé pour fonctionner dans la
+distribution Docker, et non uniquement depuis l'arborescence source.
+
+- `compliance/` est réellement embarqué dans l'image API ;
+- le service CDC résout explicitement la racine `/app` dans Docker ;
+- les appels frontend passent désormais par le proxy same-origin `/api/backend` ;
+- le navigateur n'a plus à joindre directement `localhost:8005` pour les appels applicatifs ;
+- l'écran CDC affiche une erreur exploitable et un bouton **Réessayer** si l'API est indisponible ;
+- le préflight Windows vérifie la présence du correctif avant reconstruction.
 
 ## Nouveau dans v2.39.0 — Repository Cleanup & Professional Structure
 

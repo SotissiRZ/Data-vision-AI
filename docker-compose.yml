@@ -42,7 +42,9 @@ services:
     restart: unless-stopped
 
   api:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     env_file: .env
     volumes:
       - ./data:/app/data
@@ -95,7 +97,9 @@ services:
     restart: unless-stopped
 
   worker:
-    build: ./backend
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
     env_file: .env
     command: ["python", "-m", "app.worker"]
     volumes:
@@ -122,9 +126,11 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_URL: http://localhost:8005/api/v1
+        NEXT_PUBLIC_API_URL: /api/backend
+        INTERNAL_API_URL: http://api:8005/api/v1
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8005/api/v1
+      NEXT_PUBLIC_API_URL: /api/backend
+      INTERNAL_API_URL: http://api:8005/api/v1
       PORT: 3005
     ports:
       - "3005:3005"

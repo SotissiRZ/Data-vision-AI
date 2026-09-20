@@ -1,5 +1,5 @@
 {
-  "product_version": "2.31.0",
+  "product_version": "2.42.0",
   "acceptance": "conditional",
   "coverage_percent": 84.7,
   "gates": [
@@ -52,5 +52,20 @@
     "Tests de charge/SLO sur infrastructure cible.",
     "Configurer ANTIVIRUS_MODE=required et SECRET_KMS_KEY dédié dans l’environnement de production.",
     "Acceptance utilisateur métier sur les workflows prioritaires."
-  ]
+  ],
+  "mvp_runtime_evidence": {
+    "manifest": "compliance/MVP_ACCEPTANCE.json",
+    "backend_test": "backend/tests/test_mvp_workflow_v241.py",
+    "deployed_test": "frontend/e2e/mvp.spec.ts",
+    "ci_gate": "scripts/mvp_acceptance.py --check"
+  },
+  "preparation_runtime_evidence": {
+    "manifest": "compliance/PREPARATION_ACCEPTANCE.json",
+    "backend_tests": [
+      "backend/tests/test_data_preparation_v242.py",
+      "backend/tests/test_pipelines_v242.py"
+    ],
+    "frontend_contract_test": "backend/tests/test_frontend_preparation_v242.py",
+    "ci_gate": "scripts/preparation_acceptance.py --check"
+  }
 }

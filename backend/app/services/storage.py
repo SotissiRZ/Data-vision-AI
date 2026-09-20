@@ -17,7 +17,48 @@ def _now() -> str:
 
 
 def _meta_path(dataset_id: str) -> Path:
+    # Metadata must never share the raw dataset filename. In particular, JSON
+    # datasets are stored as <id>.json, so their sidecar uses <id>.meta.json.
+    return get_settings().upload_dir / f"{dataset_id}.meta.json"
+
+
+def _legacy_meta_path(dataset_id: str) -> Path:
     return get_settings().upload_dir / f"{dataset_id}.json"
+
+
+def _is_dataset_meta(value: object) -> bool:
+    return (
+        isinstance(value, dict)
+        and bool(value.get("id"))
+        and bool(value.get("path"))
+        and bool(value.get("extension"))
+    )
+
+
+def iter_dataset_metadata() -> list[dict]:
+    """Return persisted dataset metadata, including legacy sidecars when valid.
+
+    v2.41+ metadata uses ``*.meta.json``. Legacy ``<id>.json`` files remain
+    readable for non-JSON datasets. Raw JSON datasets are ignored because they
+    do not match the metadata contract.
+    """
+    upload_dir = get_settings().upload_dir
+    rows: list[dict] = []
+    seen: set[str] = set()
+    candidates = [*sorted(upload_dir.glob("*.meta.json")), *sorted(upload_dir.glob("*.json"))]
+    for path in candidates:
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+        if not _is_dataset_meta(value):
+            continue
+        dataset_id = str(value["id"])
+        if dataset_id in seen:
+            continue
+        seen.add(dataset_id)
+        rows.append(value)
+    return rows
 
 
 def _write_meta(meta: dict) -> None:
@@ -60,11 +101,7 @@ def save_dataframe_version(parent_id: str, df: pd.DataFrame, operation: dict, *,
     schema = {str(col): str(dtype) for col, dtype in df.dtypes.items()}
     root_id = parent.get("root_id") or parent["id"]
     existing_versions = []
-    for meta_path in settings.upload_dir.glob("*.json"):
-        try:
-            existing = json.loads(meta_path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
+    for existing in iter_dataset_metadata():
         if (existing.get("root_id") or existing.get("id")) == root_id:
             existing_versions.append(int(existing.get("version", 1)))
     version = max(existing_versions or [int(parent.get("version", 1))]) + 1
@@ -154,9 +191,19 @@ def save_dataframe_source(df: pd.DataFrame, source_name: str, source_metadata: d
 
 def get_meta(dataset_id: str) -> dict:
     meta_path = _meta_path(dataset_id)
-    if not meta_path.exists():
-        raise FileNotFoundError(dataset_id)
-    return json.loads(meta_path.read_text(encoding="utf-8"))
+    if meta_path.exists():
+        value = json.loads(meta_path.read_text(encoding="utf-8"))
+        if _is_dataset_meta(value):
+            return value
+    legacy_path = _legacy_meta_path(dataset_id)
+    if legacy_path.exists():
+        try:
+            value = json.loads(legacy_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise FileNotFoundError(dataset_id) from exc
+        if _is_dataset_meta(value):
+            return value
+    raise FileNotFoundError(dataset_id)
 
 
 def get_lineage(dataset_id: str) -> list[dict]:
@@ -179,11 +226,7 @@ def list_versions(dataset_id: str) -> list[dict]:
     """Return all persisted versions belonging to the same root dataset."""
     root_id = get_meta(dataset_id).get("root_id") or dataset_id
     versions: list[dict] = []
-    for meta_path in get_settings().upload_dir.glob("*.json"):
-        try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
+    for meta in iter_dataset_metadata():
         if (meta.get("root_id") or meta.get("id")) == root_id:
             versions.append(meta)
     versions.sort(key=lambda x: (int(x.get("version", 1)), x.get("created_at", "")))
@@ -194,11 +237,7 @@ def list_versions(dataset_id: str) -> list[dict]:
 def list_dataset_catalog() -> list[dict]:
     """List persisted dataset versions, newest first, for local workspace selection."""
     rows: list[dict] = []
-    for meta_path in get_settings().upload_dir.glob("*.json"):
-        try:
-            meta = json.loads(meta_path.read_text(encoding="utf-8"))
-        except Exception:
-            continue
+    for meta in iter_dataset_metadata():
         rows.append({
             "id": meta.get("id"),
             "root_id": meta.get("root_id") or meta.get("id"),

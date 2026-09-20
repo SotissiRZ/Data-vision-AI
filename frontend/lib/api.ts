@@ -1,4 +1,4 @@
-const API = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8005/api/v1';
+const API = process.env.NEXT_PUBLIC_API_URL ?? '/api/backend';
 
 function enterpriseContextHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers ?? {});
@@ -178,9 +178,17 @@ export async function savePipeline(id: string, name: string) {
   }), 'Enregistrement du pipeline impossible');
 }
 
-export async function runPipeline(id: string, pipelineId: string) {
+export async function validatePipeline(id: string, pipelineId: string, bindings: Record<string,string> = {}) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/pipelines/${pipelineId}/validate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bindings }),
+  }), 'Validation du pipeline impossible');
+}
+
+export async function runPipeline(id: string, pipelineId: string, bindings: Record<string,string> = {}) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/pipelines/${pipelineId}/run`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ bindings }),
   }), 'Exécution du pipeline impossible');
 }
 

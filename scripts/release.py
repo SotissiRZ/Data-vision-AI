@@ -8,6 +8,8 @@ import os
 from pathlib import Path
 import zipfile
 
+from verify_release import verify_archive
+
 EXCLUDED_DIRS = {
     '.git', '.pytest_cache', '__pycache__',
     'node_modules', '.next', 'playwright-report', 'test-results',
@@ -85,6 +87,7 @@ def main() -> None:
         f'{digest}  {archive.name}\n', encoding='utf-8'
     )
     (out / 'release-manifest.json').write_bytes(manifest_bytes)
+    verify_archive(archive, out / f'{archive.name}.sha256')
     print(archive)
     print(digest)
 

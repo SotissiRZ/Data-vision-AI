@@ -1,11 +1,45 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
-ROOT = Path(__file__).resolve().parents[3]
+
+def _resolve_project_root() -> Path:
+    """Resolve the DataVision project root in source and packaged Docker layouts.
+
+    Source tree: <repo>/backend/app/services/...
+    Docker image: /app/app/services/... with compliance copied to /app/compliance.
+    """
+    candidates: list[Path] = []
+    configured = os.getenv("DATAVISION_PROJECT_ROOT", "").strip()
+    if configured:
+        candidates.append(Path(configured).expanduser())
+    candidates.extend([
+        Path("/app"),
+        Path(__file__).resolve().parents[3],
+        Path.cwd(),
+    ])
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except Exception:
+            resolved = candidate
+        key = str(resolved)
+        if key in seen:
+            continue
+        seen.add(key)
+        if (resolved / "compliance" / "CDC_COVERAGE_MATRIX.json").is_file():
+            return resolved
+    # Keep a deterministic fallback so callers receive a precise FileNotFoundError.
+    return Path("/app") if Path("/app").exists() else Path(__file__).resolve().parents[3]
+
+
+ROOT = _resolve_project_root()
 MATRIX_PATH = ROOT / "compliance" / "CDC_COVERAGE_MATRIX.json"
+MVP_PATH = ROOT / "compliance" / "MVP_ACCEPTANCE.json"
 WEIGHTS = {"implemented": 1.0, "partial": 0.5, "missing": 0.0}
 
 
@@ -70,27 +104,30 @@ def get_cdc_report() -> dict[str, Any]:
         if not row["evidence_ok"]
     ]
 
-    mvp_items = [
-        {"name": "auth", "evidence": ["backend/app/services/auth_service.py"]},
-        {"name": "workspace", "evidence": ["backend/app/services/workspace_service.py"]},
-        {"name": "upload_csv_xlsx_json_parquet", "evidence": ["backend/app/services/storage.py"]},
-        {"name": "profiling", "evidence": ["backend/app/services/profiling.py"]},
-        {"name": "quality", "evidence": ["backend/app/services/quality.py"]},
-        {"name": "preparation", "evidence": ["backend/app/services/preparation.py"]},
-        {"name": "statistics", "evidence": ["backend/app/services/statistics_engine.py"]},
-        {"name": "visualization", "evidence": ["backend/app/services/visualization.py"]},
-        {"name": "local_sql", "evidence": ["backend/app/services/data_workspace.py"]},
-        {"name": "ai_analyst", "evidence": ["backend/app/services/ai_analyst.py"]},
-        {"name": "nlq", "evidence": ["backend/app/services/nlq_sql.py"]},
-        {"name": "insights", "evidence": ["backend/app/services/proactive_intelligence.py"]},
-        {"name": "pdf_html_export", "evidence": ["backend/app/services/report_builder.py"]},
-        {"name": "history", "evidence": ["backend/app/services/analysis_history.py"]},
-        {"name": "docker", "evidence": ["docker-compose.yml"]},
-        {"name": "tests", "evidence": ["backend/tests"]},
-    ]
-    for item in mvp_items:
-        item["pass"] = all((ROOT / value).exists() for value in item["evidence"])
-    mvp_pass = all(item["pass"] for item in mvp_items)
+    mvp_payload = json.loads(MVP_PATH.read_text(encoding="utf-8"))
+    mvp_items = []
+    for declared in mvp_payload.get("items") or []:
+        evidence = list(declared.get("evidence") or [])
+        tests = list(declared.get("tests") or [])
+        missing = [value for value in [*evidence, *tests] if not (ROOT / value).exists()]
+        mvp_items.append({
+            "id": declared.get("id"),
+            "name": declared.get("name"),
+            "evidence": evidence,
+            "tests": tests,
+            "missing": missing,
+            "pass": bool(evidence) and bool(tests) and not missing,
+        })
+    workflow = mvp_payload.get("workflow_gate") or {}
+    workflow_paths = [workflow.get("integration_test"), workflow.get("deployed_test")]
+    workflow_missing = [value for value in workflow_paths if not value or not (ROOT / value).is_file()]
+    mvp_manifest_ok = (
+        mvp_payload.get("product_version") == payload.get("product_version")
+        and mvp_payload.get("mandatory_count") == 16
+        and len(mvp_items) == 16
+        and not workflow_missing
+    )
+    mvp_pass = mvp_manifest_ok and all(item["pass"] for item in mvp_items)
 
     blockers = priority_gaps["P0"]
     overall = "accepted" if not blockers and counts["partial"] == 0 and counts["missing"] == 0 else (
@@ -110,6 +147,14 @@ def get_cdc_report() -> dict[str, Any]:
             "mvp_acceptance": "pass" if mvp_pass else "conditional",
             "overall_acceptance": overall,
             "mvp_items": mvp_items,
+            "mvp_workflow": {
+                "name": workflow.get("name"),
+                "stages": workflow.get("stages") or [],
+                "integration_test": workflow.get("integration_test"),
+                "deployed_test": workflow.get("deployed_test"),
+                "missing": workflow_missing,
+                "pass": mvp_manifest_ok and not workflow_missing,
+            },
         },
         "priority_gaps": priority_gaps,
         "missing_evidence": missing_evidence,

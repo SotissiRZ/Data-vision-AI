@@ -8,6 +8,7 @@ ALLOWED_ROOT_FILES = {
     '.env.example',
     '.editorconfig',
     '.gitignore',
+    '.dockerignore',
     'Makefile',
     'README.md',
     'RELEASE_MANIFEST.json',
