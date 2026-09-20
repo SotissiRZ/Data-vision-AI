@@ -1,3 +1,49 @@
+# v2.51.0
+
+- ML Safety pré-entraînement et endpoint `/models/safety-audit`.
+- Leakage direct bloquant, proxies/corrélations dangereuses détectés.
+- IDs/quasi-identifiants/constantes exclus automatiquement.
+- Gouvernance de métrique sur classes déséquilibrées.
+- Split temporel réel + TimeSeriesSplit et timestamp brut exclu des features.
+- Empreintes des partitions et preuve d'isolation du test final.
+- Détection du surapprentissage train/validation.
+- Studio ML et ML Agent alignés sur les mêmes garde-fous.
+
+# v2.50.0
+- AutoML unifié pour classification, régression et clustering.
+- Leaderboard normalisé avec sens de métrique explicite (maximize/minimize).
+- Historique persistant des expériences (`experiment_id`) par dataset/version.
+- Clustering AutoML : K-Means, MiniBatch K-Means, BIRCH, Silhouette, Calinski-Harabasz, Davies-Bouldin.
+- Garde-fous de fuite cible et isolation stricte du test final supervisé.
+- ML Agent et planner alignés sur le même moteur AutoML réel.
+- Studio AutoML enrichi + sidebar dynamique compacte/hover.
+- Gate `AUTOML_ACCEPTANCE 8/8` intégré à CI/release/préflight.
+
+# v2.49.0
+- Report Builder composable par blocs professionnels.
+- Provenance de chaque bloc et hash SHA-256 du rapport.
+- Endpoint de validation d’intégrité des rapports.
+- Exports PDF/DOCX/HTML/Markdown enrichis pour les nouveaux blocs.
+- Gate REPORT_ACCEPTANCE 8/8 intégré à CI/release/préflight.
+
+## 2.48.0 — Insight Engine vérifiable
+
+- Nouveau moteur déterministe multi-signal : qualité, anomalies, tendances, segments, corrélations et changements de version.
+- Ranking explicite par sévérité, confiance, impact et score 0–100.
+- Fingerprints stables, déduplication et historique des scans.
+- Preuve/provenance structurée pour chaque insight ; aucun calcul numérique par LLM.
+- Vue Insights dédiée, feed de l'accueil et outil `generate_dataset_insights` du Statistics Agent.
+- Gate `INSIGHT_ACCEPTANCE 8/8` intégré à CI, release et préflight.
+
+## 2.47.0 — NLQ gouverné & Semantic Layer métier
+
+- Définitions métier, unités, synonymes et permissions par rôle sur les objets sémantiques.
+- Glossaire métier lié à des métriques/dimensions et utilisé par le résolveur NLQ.
+- Traçabilité des tables et relations réellement utilisées.
+- Refus explicite des tentatives de contournement d'un objet sémantique restreint via NLQ/SQL.
+- Validation read-only et provenance de la résolution Text-to-SQL / Semantic Query.
+- Gate `SEMANTIC_ACCEPTANCE 8/8` intégré à CI, release et préflight.
+
 ## 2.46.0 — AI Orchestrator multi-agent réel
 
 - Six rôles runtime : Data, Statistics, ML, Visualization, Report et Critic.

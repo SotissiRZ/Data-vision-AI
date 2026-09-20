@@ -1,6 +1,6 @@
 {
   "cdc_version": "1.0 — August 2026",
-  "product_version": "2.42.0",
+  "product_version": "2.52.0",
   "status_model": {
     "implemented": 1.0,
     "partial": 0.5,
@@ -323,13 +323,17 @@
       "status": "partial",
       "priority": "P1",
       "evidence": [
-        "backend/app/services/modeling.py"
+        "backend/app/services/modeling.py",
+        "backend/app/services/automl_engine.py",
+        "backend/app/api/routes/datasets.py",
+        "frontend/app/page.tsx"
       ],
       "tests": [
-        "backend/tests/test_xai_v219.py"
+        "backend/tests/test_automl_v2500.py",
+        "backend/tests/test_frontend_automl_v2500.py"
       ],
       "gaps": [
-        "Classification/régression solides; clustering et forecasting ne sont pas unifiés dans le même pipeline AutoML."
+        "Classification, régression et clustering sont unifiés et gouvernés; le forecasting reste volontairement dans son moteur dédié jusqu’au lot forecasting/anomaly."
       ]
     },
     {
@@ -352,10 +356,14 @@
       "status": "implemented",
       "priority": "P2",
       "evidence": [
+        "backend/app/services/ml_guardrails.py",
         "backend/app/services/modeling.py",
-        "backend/app/services/responsible_ai.py"
+        "backend/app/services/automl_engine.py",
+        "frontend/app/page.tsx"
       ],
-      "tests": [],
+      "tests": [
+        "backend/tests/test_ml_safety_v2510.py"
+      ],
       "gaps": []
     },
     {
@@ -466,9 +474,14 @@
       "priority": "P2",
       "evidence": [
         "backend/app/services/report_builder.py",
-        "docs/REPORT_STUDIO.md"
+        "docs/REPORT_STUDIO.md",
+        "frontend/app/page.tsx",
+        "compliance/REPORT_ACCEPTANCE.json"
       ],
-      "tests": [],
+      "tests": [
+        "backend/tests/test_reporting_v249.py",
+        "backend/tests/test_frontend_reporting_v249.py"
+      ],
       "gaps": []
     },
     {

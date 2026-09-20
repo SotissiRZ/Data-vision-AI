@@ -1,5 +1,5 @@
 {
-  "product_version": "2.44.0",
+  "product_version": "2.52.0",
   "acceptance": "conditional",
   "coverage_percent": 84.7,
   "gates": [
@@ -92,5 +92,11 @@
     ],
     "frontend_contract_test": "backend/tests/test_frontend_assistant_v244.py",
     "ci_gate": "scripts/assistant_acceptance.py --check"
+  },
+  "ml_safety_runtime_evidence": {
+    "manifest": "compliance/ML_SAFETY_ACCEPTANCE.json",
+    "backend_test": "backend/tests/test_ml_safety_v2510.py",
+    "service": "backend/app/services/ml_guardrails.py",
+    "ci_gate": "scripts/ml_safety_acceptance.py --check"
   }
 }

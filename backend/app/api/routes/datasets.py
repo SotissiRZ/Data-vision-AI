@@ -11,7 +11,8 @@ from app.services.storage import (
 )
 from app.services.profiling import profile_dataframe
 from app.services.quality import quality_report
-from app.services.modeling import train_model, automl_train, benchmark_models, algorithm_availability, predict, get_model_card, list_model_cards
+from app.services.modeling import train_model, algorithm_availability, predict, get_model_card, list_model_cards
+from app.services.automl_engine import run_automl_experiment, run_automl_benchmark, list_automl_experiments, get_automl_experiment, audit_automl_safety
 from app.services.decision import decision_support
 from app.services.exploration import analyze_column, preview_dataframe
 from app.services.advanced_analysis import regression_analysis, anova_analysis, pca_analysis, clustering_analysis
@@ -22,7 +23,7 @@ from app.services.data_workspace import engine_info, run_sql
 from app.services.visualization import build_visualization, recommend_visualizations
 from app.services.forecasting import forecast_series
 from app.services.anomaly_detection import detect_anomalies
-from app.services.xai import model_diagnostics, local_explanation, xai_capabilities, partial_dependence, shap_explanation, generate_counterfactuals
+from app.services.xai import model_diagnostics, local_explanation, xai_capabilities, partial_dependence, shap_explanation, generate_counterfactuals, xai_audit
 from app.services.ai_analyst import AnalystContext, analyze_dataset, tool_registry
 from app.services.analysis_history import save_analysis, list_analyses, get_analysis
 from app.services.ai_analysis_runtime import (
@@ -30,8 +31,9 @@ from app.services.ai_analysis_runtime import (
     stream_analysis_events, submit_analysis_run,
 )
 from app.services.nlq_sql import run_nlq
-from app.services.report_builder import build_report, list_reports, get_report, export_report
+from app.services.report_builder import build_report, list_reports, get_report, export_report, validate_report
 from app.services.dashboard import dashboard_overview
+from app.services.insight_engine import generate_insights, insight_history
 from app.services.saved_visualizations import save_visualization, list_visualizations
 from app.services.dashboard_builder import save_dashboard, list_dashboards, get_dashboard_definition, delete_dashboard, preview_dashboard
 from app.services.semantic_layer import (
@@ -101,6 +103,10 @@ def _registry_error(exc: Exception):
 
 
 
+class InsightScanRequest(BaseModel):
+    max_insights: int = Field(default=20, ge=1, le=100)
+
+
 class TrainRequest(BaseModel):
     target: str
     task: str = Field(default="auto", pattern="^(auto|classification|regression)$")
@@ -111,20 +117,35 @@ class TrainRequest(BaseModel):
 
 
 class AutoMLRequest(BaseModel):
-    target: str
-    task: str = Field(default="auto", pattern="^(auto|classification|regression)$")
-    primary_metric: str = Field(default="auto", pattern="^(auto|accuracy|balanced_accuracy|f1_weighted|roc_auc|rmse|mae|r2)$")
+    target: str | None = None
+    task: str = Field(default="auto", pattern="^(auto|classification|regression|clustering)$")
+    features: list[str] | None = None
+    primary_metric: str = Field(default="auto", pattern="^(auto|accuracy|balanced_accuracy|f1_weighted|roc_auc|rmse|mae|r2|silhouette|calinski_harabasz|davies_bouldin)$")
     cv_folds: int = Field(default=5, ge=2, le=10)
     tune: bool = True
-    max_candidates: int = Field(default=7, ge=2, le=10)
+    max_candidates: int = Field(default=7, ge=2, le=24)
+    split_strategy: str = Field(default="auto", pattern="^(auto|random|temporal)$")
+    time_column: str | None = None
+
+
+class MLSafetyAuditRequest(BaseModel):
+    target: str | None = None
+    task: str = Field(default="auto", pattern="^(auto|classification|regression|clustering)$")
+    features: list[str] | None = None
+    primary_metric: str = Field(default="auto")
+    split_strategy: str = Field(default="auto", pattern="^(auto|random|temporal)$")
+    time_column: str | None = None
 
 
 class BenchmarkRequest(BaseModel):
-    target: str
-    task: str = Field(default="auto", pattern="^(auto|classification|regression)$")
-    primary_metric: str = Field(default="auto", pattern="^(auto|accuracy|balanced_accuracy|f1_weighted|roc_auc|rmse|mae|r2)$")
+    target: str | None = None
+    task: str = Field(default="auto", pattern="^(auto|classification|regression|clustering)$")
+    features: list[str] | None = None
+    primary_metric: str = Field(default="auto", pattern="^(auto|accuracy|balanced_accuracy|f1_weighted|roc_auc|rmse|mae|r2|silhouette|calinski_harabasz|davies_bouldin)$")
     cv_folds: int = Field(default=5, ge=2, le=10)
-    max_candidates: int = Field(default=10, ge=2, le=10)
+    max_candidates: int = Field(default=10, ge=2, le=24)
+    split_strategy: str = Field(default="auto", pattern="^(auto|random|temporal)$")
+    time_column: str | None = None
 
 
 class PredictRequest(BaseModel):
@@ -249,6 +270,16 @@ class CounterfactualRequest(BaseModel):
     )
     max_changes: int = Field(default=2, ge=1, le=2)
     max_results: int = Field(default=5, ge=1, le=10)
+    immutable_features: list[str] = []
+    actionable_features: list[str] | None = None
+    feature_constraints: dict[str, dict[str, Any]] = {}
+
+
+class XAIAuditRequest(BaseModel):
+    row: dict | None = None
+    pdp_features: list[str] = Field(default_factory=list, max_length=8)
+    include_shap: bool = False
+    persist: bool = True
 
 
 class FairnessRequest(BaseModel):
@@ -391,6 +422,8 @@ class ReportCreateRequest(BaseModel):
     auto_story: bool = False
     auto_visualizations: bool = False
     max_visualizations: int = Field(default=6, ge=1, le=10)
+    custom_blocks: list[dict] = Field(default_factory=list)
+    block_order: list[str] = Field(default_factory=list)
 
 
 
@@ -687,14 +720,30 @@ def dataset_train(dataset_id: str, request: TrainRequest):
         raise HTTPException(status_code=422, detail=f"Entraînement impossible: {exc}") from exc
 
 
+@router.post("/{dataset_id}/models/safety-audit")
+def dataset_ml_safety_audit(dataset_id: str, request: MLSafetyAuditRequest):
+    try:
+        return audit_automl_safety(
+            load_dataframe(dataset_id), target=request.target, task=request.task, features=request.features,
+            primary_metric=request.primary_metric, split_strategy=request.split_strategy, time_column=request.time_column,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Audit ML Safety impossible: {exc}") from exc
+
+
 @router.post("/{dataset_id}/models/automl")
 def dataset_automl(dataset_id: str, request: AutoMLRequest):
     try:
         meta = get_meta(dataset_id)
-        result = automl_train(
-            load_dataframe(dataset_id), target=request.target, task=request.task,
+        result = run_automl_experiment(
+            load_dataframe(dataset_id), target=request.target, task=request.task, features=request.features,
             primary_metric=request.primary_metric, cv_folds=request.cv_folds, tune=request.tune,
             max_candidates=request.max_candidates, dataset_context=_dataset_payload(meta),
+            split_strategy=request.split_strategy, time_column=request.time_column,
         )
         actor_id, workspace_id = _registry_identity("model:run")
         result["registry"] = register_model(actor_id, workspace_id, result["model_id"])
@@ -715,13 +764,10 @@ def dataset_model_benchmark(
     request: BenchmarkRequest,
 ):
     try:
-        return benchmark_models(
-            load_dataframe(dataset_id),
-            target=request.target,
-            task=request.task,
-            primary_metric=request.primary_metric,
-            cv_folds=request.cv_folds,
-            max_candidates=request.max_candidates,
+        return run_automl_benchmark(
+            load_dataframe(dataset_id), target=request.target, task=request.task, features=request.features,
+            primary_metric=request.primary_metric, cv_folds=request.cv_folds, max_candidates=request.max_candidates,
+            split_strategy=request.split_strategy, time_column=request.time_column,
         )
     except FileNotFoundError as exc:
         raise HTTPException(
@@ -1169,6 +1215,28 @@ def model_card(model_id: str):
         raise HTTPException(status_code=404, detail="Model Card introuvable") from exc
 
 
+
+
+@router.get("/{dataset_id}/models/experiments")
+def dataset_automl_experiments(dataset_id: str):
+    try:
+        get_meta(dataset_id)
+        return {"experiments": list_automl_experiments(dataset_id)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.get("/{dataset_id}/models/experiments/{experiment_id}")
+def dataset_automl_experiment(dataset_id: str, experiment_id: str):
+    try:
+        item = get_automl_experiment(experiment_id)
+        if str((item.get("dataset") or {}).get("id") or "") not in {"", dataset_id}:
+            raise HTTPException(status_code=404, detail="Expérience introuvable pour ce dataset")
+        return item
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Expérience introuvable") from exc
+
+
 @router.post("/models/{model_id}/predict")
 def model_predict(model_id: str, request: PredictRequest):
     try:
@@ -1294,6 +1362,9 @@ def model_xai_counterfactuals(
             direction=request.direction,
             max_changes=request.max_changes,
             max_results=request.max_results,
+            immutable_features=request.immutable_features,
+            actionable_features=request.actionable_features,
+            feature_constraints=request.feature_constraints,
         )
     except FileNotFoundError as exc:
         raise HTTPException(
@@ -1307,6 +1378,26 @@ def model_xai_counterfactuals(
         ) from exc
 
 
+
+@router.post("/models/{model_id}/xai/audit")
+def model_xai_audit(model_id: str, request: XAIAuditRequest):
+    try:
+        card = get_model_card(model_id)
+        dataset_id = card.get("dataset", {}).get("id")
+        if not dataset_id:
+            raise ValueError("La Model Card ne référence aucun dataset")
+        return xai_audit(
+            model_id,
+            load_dataframe(dataset_id),
+            row=request.row,
+            pdp_features=request.pdp_features,
+            include_shap=request.include_shap,
+            persist=request.persist,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Modèle ou dataset introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/models/{model_id}/responsible-ai/fairness")
@@ -1586,6 +1677,8 @@ def dataset_workspace_nlq(dataset_id: str, request: NLQRequest):
         return run_nlq(df, request.question, request.limit, get_semantic_model(dataset_id, df), dataset_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=403, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
@@ -1595,11 +1688,50 @@ def dataset_workspace_nlq(dataset_id: str, request: NLQRequest):
 @router.get("/{dataset_id}/dashboard")
 def dataset_dashboard(dataset_id: str):
     try:
-        return dashboard_overview(load_dataframe(dataset_id))
+        df = load_dataframe(dataset_id)
+        overview = dashboard_overview(df)
+        feed = generate_insights(dataset_id, df, max_insights=8, persist=False)
+        overview["insights"] = feed.get("insights", [])
+        overview["insight_summary"] = feed.get("summary", {})
+        overview["insight_engine_version"] = feed.get("engine_version")
+        return overview
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Dashboard analytique impossible: {exc}") from exc
+
+
+@router.get("/{dataset_id}/insights")
+def dataset_insights(dataset_id: str, limit: int = 20):
+    try:
+        return generate_insights(dataset_id, load_dataframe(dataset_id), max_insights=max(1, min(int(limit), 100)), persist=False)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except (ValueError, PermissionError) as exc:
+        raise HTTPException(status_code=403 if isinstance(exc, PermissionError) else 400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Insight Engine impossible: {exc}") from exc
+
+
+@router.post("/{dataset_id}/insights/scan")
+def dataset_insights_scan(dataset_id: str, body: InsightScanRequest):
+    try:
+        return generate_insights(dataset_id, load_dataframe(dataset_id), max_insights=body.max_insights, persist=True)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except (ValueError, PermissionError) as exc:
+        raise HTTPException(status_code=403 if isinstance(exc, PermissionError) else 400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Scan d'insights impossible: {exc}") from exc
+
+
+@router.get("/{dataset_id}/insights/history")
+def dataset_insights_history(dataset_id: str, limit: int = 50):
+    try:
+        get_meta(dataset_id)
+        return insight_history(dataset_id, limit)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
 
 
 @router.get("/{dataset_id}/visualizations/saved")
@@ -1934,6 +2066,7 @@ def dataset_report_create(dataset_id: str, request: ReportCreateRequest):
             template=request.template, subtitle=request.subtitle, author=request.author, organization=request.organization,
             visualization_ids=request.visualization_ids or None, auto_story=request.auto_story,
             auto_visualizations=request.auto_visualizations, max_visualizations=request.max_visualizations,
+            custom_blocks=request.custom_blocks or None, block_order=request.block_order or None,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset ou analyse introuvable") from exc
@@ -1950,6 +2083,17 @@ def dataset_report(dataset_id: str, report_id: str):
         if report.get("dataset_id") != dataset_id:
             raise HTTPException(status_code=404, detail="Rapport introuvable pour ce dataset")
         return report
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Rapport introuvable") from exc
+
+
+@router.get("/{dataset_id}/reports/{report_id}/validate")
+def dataset_report_validate(dataset_id: str, report_id: str):
+    try:
+        report = get_report(report_id)
+        if report.get("dataset_id") != dataset_id:
+            raise HTTPException(status_code=404, detail="Rapport introuvable pour ce dataset")
+        return validate_report(report_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Rapport introuvable") from exc
 

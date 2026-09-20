@@ -38,12 +38,13 @@ from sklearn.metrics import (
     recall_score,
     roc_auc_score,
 )
-from sklearn.model_selection import GridSearchCV, StratifiedKFold, KFold, cross_val_score, train_test_split
+from sklearn.model_selection import GridSearchCV, StratifiedKFold, KFold, TimeSeriesSplit, cross_val_score, train_test_split
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder, OneHotEncoder, StandardScaler
 from sklearn.svm import SVC, SVR
 
 from app.core.config import get_settings
+from app.services.ml_guardrails import audit_supervised_ml, assess_overfitting, build_split_audit, govern_metric
 
 
 try:
@@ -351,15 +352,7 @@ def _candidate_algorithms(
     return values[: max(1, min(max_candidates, len(values)))]
 
 def _primary_metric(task: str, y: pd.Series, requested: str) -> str:
-    allowed_class = {"accuracy", "balanced_accuracy", "f1_weighted", "roc_auc"}
-    allowed_reg = {"rmse", "mae", "r2"}
-    if task == "classification":
-        if requested in allowed_class:
-            if requested == "roc_auc" and y.nunique() != 2:
-                return "f1_weighted"
-            return requested
-        return "roc_auc" if y.nunique() == 2 else "f1_weighted"
-    return requested if requested in allowed_reg else "rmse"
+    return str(govern_metric(task, y, requested).get("effective"))
 
 
 def _scoring_name(task: str, metric: str) -> str:
@@ -405,7 +398,37 @@ def _evaluate(pipe: Pipeline, X: pd.DataFrame, y: pd.Series, task: str) -> dict[
     }
 
 
-def _safe_split(X: pd.DataFrame, y: pd.Series, task: str):
+def _safe_split(
+    X: pd.DataFrame,
+    y: pd.Series,
+    task: str,
+    *,
+    split_strategy: str = "random",
+    time_values: pd.Series | None = None,
+):
+    if split_strategy == "temporal":
+        if time_values is None:
+            raise ValueError("Split temporel demandé sans colonne temporelle.")
+        parsed = pd.to_datetime(time_values.reindex(X.index), errors="coerce", utc=True)
+        if parsed.isna().any():
+            raise ValueError("La colonne temporelle contient des valeurs non interprétables après filtrage.")
+        order = parsed.sort_values(kind="stable").index
+        n = len(order)
+        train_end = max(1, int(n * 0.60))
+        val_end = max(train_end + 1, int(n * 0.80))
+        if val_end >= n:
+            val_end = n - 1
+        train_idx = order[:train_end]
+        val_idx = order[train_end:val_end]
+        test_idx = order[val_end:]
+        if min(len(train_idx), len(val_idx), len(test_idx)) < 1:
+            raise ValueError("Échantillon insuffisant pour un split temporel 60/20/20.")
+        return (
+            X.loc[train_idx], X.loc[val_idx], X.loc[test_idx],
+            y.loc[train_idx], y.loc[val_idx], y.loc[test_idx],
+            build_split_audit(train_idx, val_idx, test_idx, strategy="temporal", time_column=str(time_values.name or "time")),
+        )
+
     stratify = None
     if task == "classification" and y.value_counts().min() >= 3:
         stratify = y
@@ -418,11 +441,26 @@ def _safe_split(X: pd.DataFrame, y: pd.Series, task: str):
     X_train, X_val, y_train, y_val = train_test_split(
         X_dev, y_dev, test_size=0.25, random_state=42, stratify=stratify_dev
     )
-    return X_train, X_val, X_test, y_train, y_val, y_test
+    split_audit = build_split_audit(X_train.index, X_val.index, X_test.index, strategy="random", time_column=None)
+    return X_train, X_val, X_test, y_train, y_val, y_test, split_audit
 
 
-def _cv_strategy(task: str, y: pd.Series, requested_folds: int):
+def _cv_strategy(task: str, y: pd.Series, requested_folds: int, *, split_strategy: str = "random"):
     folds = max(2, min(int(requested_folds), 10))
+    if split_strategy == "temporal":
+        folds = min(folds, max(2, len(y) // 10))
+        while folds >= 2 and len(y) > folds:
+            cv = TimeSeriesSplit(n_splits=folds)
+            valid = True
+            if task == "classification":
+                for train_idx, val_idx in cv.split(np.arange(len(y))):
+                    if y.iloc[train_idx].nunique(dropna=True) < 2 or y.iloc[val_idx].nunique(dropna=True) < 2:
+                        valid = False
+                        break
+            if valid:
+                return cv, folds
+            folds -= 1
+        return None, 0
     if task == "classification":
         min_class = int(y.value_counts().min())
         folds = min(folds, min_class)
@@ -591,6 +629,10 @@ def _model_card(
     features: list[str], primary_metric: str, metrics: dict[str, float], validation_metrics: dict[str, float],
     rows: dict[str, int], cv: dict[str, Any], guardrails: list[dict[str, Any]], importance: list[dict[str, Any]],
     best_params: dict[str, Any] | None = None,
+    safety_audit: dict[str, Any] | None = None,
+    split_audit: dict[str, Any] | None = None,
+    training_metrics: dict[str, float] | None = None,
+    overfitting: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
         "model_id": model_id,
@@ -606,10 +648,16 @@ def _model_card(
         "rows": rows,
         "validation_strategy": {
             "split": "60% train / 20% validation / 20% final test",
-            "random_state": 42,
+            "strategy": (split_audit or {}).get("strategy", "random"),
+            "time_column": (split_audit or {}).get("time_column"),
+            "random_state": 42 if (split_audit or {}).get("strategy", "random") == "random" else None,
             "cross_validation": cv,
             "test_policy": "Le jeu de test final n'est pas utilisé pour sélectionner ou optimiser le modèle.",
+            "split_audit": split_audit or {},
         },
+        "metrics_training": training_metrics or {},
+        "overfitting_assessment": overfitting or {},
+        "safety_audit": safety_audit or {},
         "best_params": best_params or {},
         "guardrails": guardrails,
         "feature_importance": importance,
@@ -650,7 +698,7 @@ def train_model(
         raise ValueError(f"{chosen} n'est pas compatible avec la tâche {resolved_task}")
 
     prep, _, _ = _build_preprocessor(X)
-    X_train, X_val, X_test, y_train, y_val, y_test = _safe_split(X, y, resolved_task)
+    X_train, X_val, X_test, y_train, y_val, y_test, split_audit = _safe_split(X, y, resolved_task)
     pipe = Pipeline([("preprocess", prep), ("model", _estimator(resolved_task, chosen))])
     pipe.fit(X_train, y_train)
     validation_metrics = _evaluate(pipe, X_val, y_val, resolved_task)
@@ -668,7 +716,7 @@ def train_model(
         model_id=model_id, dataset_context=dataset_context, target=target, task=resolved_task, algorithm=chosen,
         features=list(X.columns), primary_metric=primary, metrics=metrics, validation_metrics=validation_metrics,
         rows={"train": len(X_train), "validation": len(X_val), "test": len(X_test)},
-        cv={"folds": 0, "status": "single_model_training"}, guardrails=guardrails, importance=importance,
+        cv={"folds": 0, "status": "single_model_training"}, guardrails=guardrails, importance=importance, split_audit=split_audit,
     )
     payload = {"pipeline": pipe, "target": target, "features": list(X.columns), "task": resolved_task, "algorithm": chosen, "model_card": card, "feature_baselines": _feature_baselines(X_dev), "evaluation_indices": X_test.index.tolist()}
     _save_model(payload, card)
@@ -684,6 +732,8 @@ def automl_train(
     tune: bool = True,
     max_candidates: int = 5,
     dataset_context: dict[str, Any] | None = None,
+    split_strategy: str = "auto",
+    time_column: str | None = None,
 ) -> dict[str, Any]:
     if target not in df.columns:
         raise ValueError("Variable cible inconnue")
@@ -692,23 +742,29 @@ def automl_train(
         raise ValueError("AutoML requiert au moins 40 lignes complètes sur la cible.")
 
     y = work[target]
-    X = work.drop(columns=[target])
+    X_all = work.drop(columns=[target])
     resolved_task = _task_for_target(y, task)
-    if resolved_task == "classification" and y.nunique() < 2:
-        raise ValueError("La cible de classification doit contenir au moins deux classes")
-    if resolved_task == "classification" and y.value_counts().min() < 3:
-        raise ValueError("Chaque classe doit contenir au moins 3 observations pour AutoML.")
-
-    primary = _primary_metric(resolved_task, y, primary_metric)
+    safety_audit = audit_supervised_ml(
+        work, target=target, task=resolved_task, requested_metric=primary_metric,
+        split_strategy=split_strategy, time_column=time_column,
+    )
+    if safety_audit.get("status") == "blocked":
+        reasons = "; ".join(str(item.get("message")) for item in safety_audit.get("findings", []) if item.get("severity") == "blocking")
+        raise ValueError(f"ML Safety bloque l'entraînement: {reasons}")
+    primary = str((safety_audit.get("metric_policy") or {}).get("effective") or _primary_metric(resolved_task, y, primary_metric))
     scoring = _scoring_name(resolved_task, primary)
-    guardrails = _guardrails(work, target, resolved_task)
-    excluded_features = _auto_exclusions(X)
-    if excluded_features:
-        X = X.drop(columns=excluded_features)
+    excluded_features = [str(item.get("column")) for item in safety_audit.get("excluded_features", [])]
+    X = X_all.drop(columns=[c for c in excluded_features if c in X_all.columns])
     if X.shape[1] == 0:
-        raise ValueError("Toutes les variables explicatives ont été exclues par les garde-fous (identifiants/constantes).")
-    X_train, X_val, X_test, y_train, y_val, y_test = _safe_split(X, y, resolved_task)
-    cv, actual_folds = _cv_strategy(resolved_task, y_train, cv_folds)
+        raise ValueError("Toutes les variables explicatives ont été exclues par ML Safety.")
+    effective_split = str((safety_audit.get("split_policy") or {}).get("strategy") or "random")
+    effective_time = (safety_audit.get("split_policy") or {}).get("time_column")
+    time_values = work[str(effective_time)] if effective_time and str(effective_time) in work.columns else None
+    X_train, X_val, X_test, y_train, y_val, y_test, split_audit = _safe_split(
+        X, y, resolved_task, split_strategy=effective_split, time_values=time_values,
+    )
+    cv, actual_folds = _cv_strategy(resolved_task, y_train, cv_folds, split_strategy=effective_split)
+    guardrails = list(safety_audit.get("findings") or [])
     candidates = _candidate_algorithms(resolved_task, max_candidates)
     benchmark: list[dict[str, Any]] = []
 
@@ -839,7 +895,18 @@ def automl_train(
     else:
         tuned_pipe.fit(X_train, y_train)
 
+    tuned_training_metrics = _evaluate(tuned_pipe, X_train, y_train, resolved_task)
     tuned_validation_metrics = _evaluate(tuned_pipe, X_val, y_val, resolved_task)
+    overfitting = assess_overfitting(tuned_training_metrics, tuned_validation_metrics, primary)
+    guardrails.append({
+        "code": "overfitting_check",
+        "severity": overfitting.get("severity", "info"),
+        "message": (
+            f"Contrôle surapprentissage {primary}: écart train/validation={overfitting.get('gap')}"
+            if overfitting.get("gap") is not None else "Contrôle surapprentissage indisponible pour cette métrique."
+        ),
+        "details": overfitting,
+    })
 
     # Final refit on train + validation after selection/tuning. Test remains untouched until final evaluation.
     X_dev = pd.concat([X_train, X_val], axis=0)
@@ -860,6 +927,7 @@ def automl_train(
         rows={"train": len(X_train), "validation": len(X_val), "test": len(X_test)},
         cv={"folds": actual_folds, "scoring": scoring, "selection": "validation after CV on training only"},
         guardrails=guardrails, importance=importance, best_params=best_params,
+        safety_audit=safety_audit, split_audit=split_audit, training_metrics=tuned_training_metrics, overfitting=overfitting,
     )
     card["excluded_features"] = excluded_features
     payload = {
@@ -882,6 +950,10 @@ def automl_train(
         "benchmark": benchmark,
         "best_params": best_params,
         "guardrails": guardrails,
+        "safety_audit": safety_audit,
+        "split_audit": split_audit,
+        "training_metrics": tuned_training_metrics,
+        "overfitting_assessment": overfitting,
         "excluded_features": excluded_features,
         "feature_importance": importance,
         "model_card": card,
@@ -896,6 +968,8 @@ def benchmark_models(
     primary_metric: str = "auto",
     cv_folds: int = 5,
     max_candidates: int = 10,
+    split_strategy: str = "auto",
+    time_column: str | None = None,
 ) -> dict[str, Any]:
     if target not in df.columns:
         raise ValueError("Variable cible inconnue")
@@ -907,26 +981,29 @@ def benchmark_models(
         )
 
     y = work[target]
-    X = work.drop(columns=[target])
+    X_all = work.drop(columns=[target])
     resolved_task = _task_for_target(y, task)
-    primary = _primary_metric(resolved_task, y, primary_metric)
+    safety_audit = audit_supervised_ml(
+        work, target=target, task=resolved_task, requested_metric=primary_metric,
+        split_strategy=split_strategy, time_column=time_column,
+    )
+    if safety_audit.get("status") == "blocked":
+        reasons = "; ".join(str(item.get("message")) for item in safety_audit.get("findings", []) if item.get("severity") == "blocking")
+        raise ValueError(f"ML Safety bloque le benchmark: {reasons}")
+    primary = str((safety_audit.get("metric_policy") or {}).get("effective") or _primary_metric(resolved_task, y, primary_metric))
     scoring = _scoring_name(resolved_task, primary)
-
-    excluded_features = _auto_exclusions(X)
-    if excluded_features:
-        X = X.drop(columns=excluded_features)
+    excluded_features = [str(item.get("column")) for item in safety_audit.get("excluded_features", [])]
+    X = X_all.drop(columns=[c for c in excluded_features if c in X_all.columns])
     if X.shape[1] == 0:
-        raise ValueError(
-            "Toutes les variables explicatives ont été exclues."
-        )
-
-    X_train, X_val, _X_test, y_train, y_val, _y_test = _safe_split(
-        X, y, resolved_task
+        raise ValueError("Toutes les variables explicatives ont été exclues par ML Safety.")
+    effective_split = str((safety_audit.get("split_policy") or {}).get("strategy") or "random")
+    effective_time = (safety_audit.get("split_policy") or {}).get("time_column")
+    time_values = work[str(effective_time)] if effective_time and str(effective_time) in work.columns else None
+    X_train, X_val, _X_test, y_train, y_val, _y_test, split_audit = _safe_split(
+        X, y, resolved_task, split_strategy=effective_split, time_values=time_values
     )
     cv, actual_folds = _cv_strategy(
-        resolved_task,
-        y_train,
-        cv_folds,
+        resolved_task, y_train, cv_folds, split_strategy=effective_split
     )
     algorithms = _candidate_algorithms(
         resolved_task,
@@ -1023,6 +1100,8 @@ def benchmark_models(
         "rows": len(work),
         "features": list(X.columns),
         "excluded_features": excluded_features,
+        "safety_audit": safety_audit,
+        "split_audit": split_audit,
         "cv_folds": actual_folds,
         "availability": availability,
         "benchmark": rows,

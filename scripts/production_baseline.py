@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-EXPECTED_VERSION = "2.46.0"
+EXPECTED_VERSION = "2.52.0"
 EXPECTED_CRYPTOGRAPHY = "cryptography==46.0.5"
 REQUIRED_FILES = (
     "VERSION",
@@ -20,6 +20,12 @@ REQUIRED_FILES = (
     "compliance/ASSISTANT_ACCEPTANCE.json",
     "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json",
     "compliance/MULTI_AGENT_ACCEPTANCE.json",
+    "compliance/SEMANTIC_ACCEPTANCE.json",
+    "compliance/INSIGHT_ACCEPTANCE.json",
+    "compliance/REPORT_ACCEPTANCE.json",
+    "compliance/AUTOML_ACCEPTANCE.json",
+    "compliance/ML_SAFETY_ACCEPTANCE.json",
+    "compliance/XAI_ACCEPTANCE.json",
     "frontend/package.json",
     "frontend/next.config.mjs",
     "frontend/lib/assistant/orchestrator-adapter.ts",
@@ -30,6 +36,12 @@ REQUIRED_FILES = (
     "scripts/assistant_acceptance.py",
     "scripts/assistant_multimodal_acceptance.py",
     "scripts/multi_agent_acceptance.py",
+    "scripts/semantic_acceptance.py",
+    "scripts/insight_acceptance.py",
+    "scripts/report_acceptance.py",
+    "scripts/automl_acceptance.py",
+    "scripts/ml_safety_acceptance.py",
+    "scripts/xai_acceptance.py",
     "scripts/verify_release.py",
     "backend/tests/test_mvp_workflow_v241.py",
     "backend/tests/test_data_preparation_v242.py",
@@ -43,6 +55,18 @@ REQUIRED_FILES = (
     "backend/tests/test_frontend_assistant_v245.py",
     "backend/tests/assistant/test_multi_agent_v246.py",
     "backend/tests/test_frontend_assistant_v246.py",
+    "backend/tests/test_semantic_nlq_v247.py",
+    "backend/tests/test_frontend_semantic_v247.py",
+    "backend/tests/test_insight_engine_v248.py",
+    "backend/tests/test_frontend_insights_v248.py",
+    "backend/tests/test_reporting_v249.py",
+    "backend/tests/test_frontend_reporting_v249.py",
+    "backend/tests/test_automl_v2500.py",
+    "backend/tests/test_frontend_automl_v2500.py",
+    "backend/tests/test_ml_safety_v2510.py",
+    "backend/tests/test_xai_v2520.py",
+    "backend/app/services/ml_guardrails.py",
+    "backend/app/services/insight_engine.py",
     "backend/app/assistant/agents.py",
     "frontend/lib/assistant/effects.ts",
     "frontend/e2e/mvp.spec.ts",
@@ -100,7 +124,7 @@ def check(root: Path) -> list[str]:
                 if not scripts.get(script):
                     errors.append(f"Missing frontend npm script: {script}")
 
-    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json"):
+    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json", "compliance/SEMANTIC_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/XAI_ACCEPTANCE.json"):
         path = root / rel
         if not path.is_file():
             continue

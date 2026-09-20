@@ -125,3 +125,20 @@ Exemple :
 - les visualisations sont liées à la version du dataset ;
 - les rapports stockent leur structure avant export ;
 - les exports sont régénérables à partir du rapport sauvegardé.
+
+## v2.49 — Blocs composables et intégrité
+
+Le Report Studio accepte désormais des blocs personnalisés ordonnables en plus des sections automatiques :
+
+- `text`
+- `kpi`
+- `table`
+- `insight` (référence vérifiée au moteur d'insights)
+- `model` (référence vérifiée à une model card du dataset)
+- `code` (documenté uniquement, jamais exécuté par le Report Builder)
+- `methodology`
+- `visualization` (référence vérifiée à une visualisation sauvegardée de la version active)
+
+Chaque bloc persistant reçoit une provenance (`dataset_id`, `dataset_version`, `source_kind`, `source_ref`) et chaque rapport reçoit un `content_hash` SHA-256. L'endpoint `GET /api/v1/datasets/{dataset_id}/reports/{report_id}/validate` vérifie l'intégrité et la cohérence de version.
+
+Les formats réellement supportés restent PDF, DOCX, HTML et Markdown. Le contrat assistant n'expose plus de format non implémenté.

@@ -21,6 +21,131 @@ _ALLOWED_JOINS = {"left", "inner"}
 _ALLOWED_TIME_GRAINS = {"day", "week", "month", "quarter", "year"}
 _ALLOWED_COMPARISONS = {"none", "previous_period", "yoy"}
 _ALLOWED_TIME_CALCS = {"none", "running_total", "ytd", "rolling_mean", "rolling_sum"}
+_ALLOWED_ROLES = {"owner", "admin", "data_scientist", "analyst", "viewer"}
+
+
+
+
+def _normalize_allowed_roles(value: Any) -> list[str]:
+    if not value:
+        return []
+    raw = value if isinstance(value, (list, tuple, set)) else [value]
+    out: list[str] = []
+    for item in raw:
+        role = str(item).strip().lower()
+        if role and role not in out:
+            out.append(role)
+    return out[:10]
+
+
+def _active_semantic_role() -> str | None:
+    try:
+        from app.services.tenant_access import current_access_context
+        ctx = current_access_context()
+        return str(ctx.role) if ctx else None
+    except Exception:
+        return None
+
+
+def _semantic_item_allowed(item: dict[str, Any], role: str | None = None) -> bool:
+    role = role if role is not None else _active_semantic_role()
+    # Local mode intentionally remains unrestricted. Enterprise restrictions are additive
+    # to dataset row/column policies and only constrain the business semantic contract.
+    if role is None:
+        return True
+    allowed = _normalize_allowed_roles(item.get("allowed_roles"))
+    return not allowed or role in allowed
+
+
+def _visible_semantic_model(model: dict[str, Any], role: str | None = None) -> dict[str, Any]:
+    role = role if role is not None else _active_semantic_role()
+    if role is None:
+        out = dict(model)
+        out["access"] = {"mode": "local", "role": None, "filtered": False}
+        return out
+    tables = [dict(t) for t in model.get("tables", []) if _semantic_item_allowed(t, role)]
+    table_ids = {str(t.get("id")) for t in tables}
+    relationships = [dict(r) for r in model.get("relationships", []) if _semantic_item_allowed(r, role) and r.get("from_table") in table_ids and r.get("to_table") in table_ids]
+    dims = [dict(d) for d in model.get("dimensions", []) if d.get("table", "base") in table_ids and _semantic_item_allowed(d, role)]
+    dim_ids = {str(d.get("id")) for d in dims}
+    raw_metrics = [dict(m) for m in model.get("metrics", []) if m.get("table", "base") in table_ids and _semantic_item_allowed(m, role)]
+    allowed_metric_ids = {str(m.get("id")) for m in raw_metrics if m.get("type") != "calculated"}
+    # Calculated metrics are visible only when every dependency is itself visible.
+    changed = True
+    while changed:
+        changed = False
+        for metric in raw_metrics:
+            mid = str(metric.get("id"))
+            if mid in allowed_metric_ids:
+                continue
+            try:
+                deps = _formula_names(str(metric.get("formula") or "")) if metric.get("type") == "calculated" else set()
+            except ValueError:
+                deps = set()
+            if deps and deps <= allowed_metric_ids:
+                allowed_metric_ids.add(mid); changed = True
+    metrics = [m for m in raw_metrics if str(m.get("id")) in allowed_metric_ids]
+    hierarchies = [dict(h) for h in model.get("hierarchies", []) if _semantic_item_allowed(h, role) and set(h.get("levels") or []) <= dim_ids]
+    glossary = [dict(g) for g in model.get("business_glossary", []) if _semantic_item_allowed(g, role)]
+    out = dict(model)
+    out.update({
+        "tables": tables, "relationships": relationships, "metrics": metrics,
+        "dimensions": dims, "hierarchies": hierarchies, "business_glossary": glossary,
+        "access": {"mode": "enterprise", "role": role, "filtered": True},
+    })
+    return out
+
+
+def semantic_access_summary(model: dict[str, Any] | None = None) -> dict[str, Any]:
+    role = _active_semantic_role()
+    if role is None:
+        return {"mode": "local", "role": None, "filtered": False}
+    return {
+        "mode": "enterprise", "role": role, "filtered": True,
+        "visible_metrics": len((model or {}).get("metrics", [])),
+        "visible_dimensions": len((model or {}).get("dimensions", [])),
+    }
+
+
+def _semantic_norm(value: str) -> str:
+    import unicodedata
+    text = unicodedata.normalize("NFKD", str(value).lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return re.sub(r"\s+", " ", text.replace("_", " ").replace("-", " ")).strip()
+
+
+def assert_semantic_question_access(dataset_id: str, df: pd.DataFrame, question: str) -> None:
+    """Prevent NLQ fallback from bypassing a semantic-object role restriction.
+
+    Dataset row/column policies remain the primary data-security boundary. This guard adds a
+    business-contract boundary: if a user explicitly asks for a restricted metric/dimension by
+    governed name or synonym, DataVision refuses instead of silently falling back to raw SQL.
+    """
+    role = _active_semantic_role()
+    if role is None or not str(question or "").strip():
+        return
+    raw = get_semantic_model(dataset_id, df, enforce_access=False)
+    visible = _visible_semantic_model(raw, role)
+    visible_metric_ids = {str(x.get("id")) for x in visible.get("metrics", [])}
+    visible_dim_ids = {str(x.get("id")) for x in visible.get("dimensions", [])}
+    q = _semantic_norm(question)
+
+    def terms(item: dict[str, Any], dimension: bool = False) -> list[str]:
+        values = [item.get("id"), item.get("label"), item.get("name"), *(item.get("synonyms") or [])]
+        if dimension:
+            values.append(item.get("column"))
+        return [_semantic_norm(str(v)) for v in values if v and len(_semantic_norm(str(v))) >= 2]
+
+    for metric in raw.get("metrics", []):
+        if str(metric.get("id")) in visible_metric_ids:
+            continue
+        if any(term in q for term in terms(metric)):
+            raise PermissionError(f"Accès sémantique refusé à la métrique: {metric.get('label') or metric.get('id')}")
+    for dim in raw.get("dimensions", []):
+        if str(dim.get("id")) in visible_dim_ids:
+            continue
+        if any(term in q for term in terms(dim, True)):
+            raise PermissionError(f"Accès sémantique refusé à la dimension: {dim.get('label') or dim.get('id')}")
 
 
 def _now() -> str:
@@ -77,17 +202,17 @@ def _suggest(dataset_id: str, df: pd.DataFrame) -> dict[str, Any]:
             metrics.append({
                 "id": _slug(name), "name": name, "label": name.replace("_", " "), "type": "base",
                 "table": "base", "column": name, "aggregation": agg, "unit": "", "format": "number",
-                "description": "", "synonyms": [], "certified": False, "source": "suggested",
+                "description": "", "business_definition": "", "synonyms": [], "certified": False, "source": "suggested", "allowed_roles": [],
             })
         dimensions.append({
             "id": _slug(name), "table": "base", "column": name, "label": name.replace("_", " "),
-            "description": "", "synonyms": [], "hidden": False, "certified": False,
-            "kind": _dimension_kind(s), "source": "suggested",
+            "description": "", "business_definition": "", "synonyms": [], "hidden": False, "certified": False,
+            "kind": _dimension_kind(s), "source": "suggested", "allowed_roles": [],
         })
     return {
         "tables": [{
             "id": "base", "dataset_id": dataset_id, "label": get_meta(dataset_id).get("original_name", "Dataset principal"),
-            "role": "fact", "active": True,
+            "role": "fact", "active": True, "description": "", "allowed_roles": [],
         }],
         "relationships": [],
         "metrics": metrics[:32],
@@ -118,6 +243,8 @@ def _normalize_model(dataset_id: str, df: pd.DataFrame, payload: dict[str, Any])
             "label": str(raw.get("label") or table_id)[:160],
             "role": str(raw.get("role") or ("fact" if table_id == "base" else "dimension")),
             "active": bool(raw.get("active", True)),
+            "description": str(raw.get("description") or raw.get("business_definition") or "")[:800],
+            "allowed_roles": _normalize_allowed_roles(raw.get("allowed_roles")),
         })
     if not has_base:
         normalized_tables.insert(0, suggested["tables"][0])
@@ -145,10 +272,12 @@ def _normalize_model(dataset_id: str, df: pd.DataFrame, payload: dict[str, Any])
             "formula": str(raw.get("formula") or "")[:500],
             "unit": str(raw.get("unit") or "")[:32],
             "format": str(raw.get("format") or "number")[:32],
-            "description": str(raw.get("description") or "")[:800],
+            "description": str(raw.get("description") or raw.get("business_definition") or "")[:800],
+            "business_definition": str(raw.get("business_definition") or raw.get("description") or "")[:1200],
             "synonyms": [str(x)[:80] for x in raw.get("synonyms", []) if str(x).strip()][:30],
             "certified": bool(raw.get("certified", False)),
             "source": str(raw.get("source") or "user"),
+            "allowed_roles": _normalize_allowed_roles(raw.get("allowed_roles")),
         })
 
     normalized_dimensions: list[dict[str, Any]] = []
@@ -168,13 +297,15 @@ def _normalize_model(dataset_id: str, df: pd.DataFrame, payload: dict[str, Any])
             "table": table_id,
             "column": column,
             "label": str(raw.get("label") or column or dim_id)[:160],
-            "description": str(raw.get("description") or "")[:800],
+            "description": str(raw.get("description") or raw.get("business_definition") or "")[:800],
+            "business_definition": str(raw.get("business_definition") or raw.get("description") or "")[:1200],
             "synonyms": [str(x)[:80] for x in raw.get("synonyms", []) if str(x).strip()][:30],
             "hidden": bool(raw.get("hidden", False)),
             "certified": bool(raw.get("certified", False)),
             "kind": str(raw.get("kind") or "categorical"),
             "date_role": str(raw.get("date_role") or "")[:40],
             "source": str(raw.get("source") or "user"),
+            "allowed_roles": _normalize_allowed_roles(raw.get("allowed_roles")),
         })
 
     relationships: list[dict[str, Any]] = []
@@ -194,6 +325,7 @@ def _normalize_model(dataset_id: str, df: pd.DataFrame, payload: dict[str, Any])
             "join_type": str(raw.get("join_type") or "left"),
             "active": bool(raw.get("active", True)),
             "description": str(raw.get("description") or "")[:500],
+            "allowed_roles": _normalize_allowed_roles(raw.get("allowed_roles")),
         })
 
     hierarchies: list[dict[str, Any]] = []
@@ -205,13 +337,23 @@ def _normalize_model(dataset_id: str, df: pd.DataFrame, payload: dict[str, Any])
             "levels": levels[:12],
             "certified": bool(raw.get("certified", False)),
             "description": str(raw.get("description") or "")[:500],
+            "allowed_roles": _normalize_allowed_roles(raw.get("allowed_roles")),
         })
 
     glossary = []
     for raw in payload.get("business_glossary", []):
         term = str(raw.get("term") or "").strip()
         if term:
-            glossary.append({"term": term[:120], "definition": str(raw.get("definition") or "")[:1200]})
+            target_type = str(raw.get("target_type") or "").strip().lower()
+            target_id = str(raw.get("target_id") or "").strip()
+            glossary.append({
+                "term": term[:120],
+                "definition": str(raw.get("definition") or "")[:1200],
+                "synonyms": [str(x)[:80] for x in raw.get("synonyms", []) if str(x).strip()][:30],
+                "target_type": target_type if target_type in {"metric", "dimension"} else "",
+                "target_id": target_id[:120],
+                "allowed_roles": _normalize_allowed_roles(raw.get("allowed_roles")),
+            })
 
     return {
         "dataset_id": dataset_id,
@@ -230,22 +372,24 @@ def _normalize_model(dataset_id: str, df: pd.DataFrame, payload: dict[str, Any])
     }
 
 
-def get_semantic_model(dataset_id: str, df: pd.DataFrame) -> dict[str, Any]:
+def get_semantic_model(dataset_id: str, df: pd.DataFrame, *, enforce_access: bool = True) -> dict[str, Any]:
     path = _path(dataset_id)
     if path.exists():
         payload = json.loads(path.read_text(encoding="utf-8"))
         payload["dataset_id"] = dataset_id
         payload["root_id"] = _root_id(dataset_id)
-        return _normalize_model(dataset_id, df, payload)
-    suggested = _suggest(dataset_id, df)
-    return _normalize_model(dataset_id, df, {
-        "version": 1,
-        "status": "draft",
-        **suggested,
-        "business_glossary": [],
-        "updated_at": None,
-        "source": "auto_suggested",
-    })
+        model = _normalize_model(dataset_id, df, payload)
+    else:
+        suggested = _suggest(dataset_id, df)
+        model = _normalize_model(dataset_id, df, {
+            "version": 1,
+            "status": "draft",
+            **suggested,
+            "business_glossary": [],
+            "updated_at": None,
+            "source": "auto_suggested",
+        })
+    return _visible_semantic_model(model) if enforce_access else model
 
 
 def _load_table_frames(dataset_id: str, df: pd.DataFrame, model: dict[str, Any]) -> dict[str, pd.DataFrame]:
@@ -351,6 +495,12 @@ def validate_semantic_model(dataset_id: str, df: pd.DataFrame, payload: dict[str
     if "base" not in table_ids:
         errors.append("La table principale 'base' est obligatoire.")
 
+    for kind, rows in (("Table", model.get("tables", [])), ("Relation", model.get("relationships", [])), ("Métrique", model.get("metrics", [])), ("Dimension", model.get("dimensions", [])), ("Hiérarchie", model.get("hierarchies", [])), ("Glossaire", model.get("business_glossary", []))):
+        for item in rows:
+            invalid_roles = sorted(set(_normalize_allowed_roles(item.get("allowed_roles"))) - _ALLOWED_ROLES)
+            if invalid_roles:
+                errors.append(f"{kind} {item.get('id') or item.get('term') or item.get('name')}: rôles inconnus {', '.join(invalid_roles)}.")
+
     for relation in model.get("relationships", []):
         if not relation.get("active", True):
             continue
@@ -452,12 +602,21 @@ def validate_semantic_model(dataset_id: str, df: pd.DataFrame, payload: dict[str
         warnings.append(f"Tables non reliées à la table de faits: {', '.join(disconnected)}.")
 
     certified_metrics = sum(1 for m in model.get("metrics", []) if m.get("certified"))
-    described_metrics = sum(1 for m in model.get("metrics", []) if m.get("description"))
+    described_metrics = sum(1 for m in model.get("metrics", []) if m.get("business_definition") or m.get("description"))
+    synonymized_metrics = sum(1 for m in model.get("metrics", []) if m.get("synonyms"))
+    governed_metrics = sum(1 for m in model.get("metrics", []) if m.get("allowed_roles"))
+    for metric in model.get("metrics", []):
+        if metric.get("certified") and not (metric.get("business_definition") or metric.get("description")):
+            warnings.append(f"Métrique certifiée {metric.get('id')}: définition métier absente.")
+        if metric.get("certified") and not metric.get("unit"):
+            warnings.append(f"Métrique certifiée {metric.get('id')}: unité non renseignée.")
     relation_score = 100 if len(table_ids) == 1 else max(0, 100 - 25 * len(disconnected) - 20 * sum(1 for e in errors if "Relation" in e))
     semantic_score = int(max(0, min(100,
         35 + 25 * certified_metrics / max(1, len(model.get("metrics", [])))
         + 20 * described_metrics / max(1, len(model.get("metrics", [])))
-        + 20 * relation_score / 100
+        + 10 * relation_score / 100
+        + 5 * synonymized_metrics / max(1, len(model.get("metrics", [])))
+        + 5 * governed_metrics / max(1, len(model.get("metrics", [])))
         - min(50, 12 * len(errors))
     )))
     return {
@@ -470,6 +629,9 @@ def validate_semantic_model(dataset_id: str, df: pd.DataFrame, payload: dict[str
         "metrics": len(model.get("metrics", [])),
         "calculated_metrics": len([m for m in model.get("metrics", []) if m.get("type") == "calculated"]),
         "certified_metrics": certified_metrics,
+        "defined_metrics": described_metrics,
+        "synonymized_metrics": synonymized_metrics,
+        "role_governed_metrics": governed_metrics,
         "dimensions": len(model.get("dimensions", [])),
         "hierarchies": len(model.get("hierarchies", [])),
         "reachable_tables": sorted(reachable),
@@ -478,7 +640,7 @@ def validate_semantic_model(dataset_id: str, df: pd.DataFrame, payload: dict[str
 
 
 def save_semantic_model(dataset_id: str, df: pd.DataFrame, payload: dict[str, Any]) -> dict[str, Any]:
-    previous = get_semantic_model(dataset_id, df)
+    previous = get_semantic_model(dataset_id, df, enforce_access=False)
     candidate = _normalize_model(dataset_id, df, {
         **payload,
         "version": int(previous.get("version") or 0) + 1,
@@ -712,9 +874,13 @@ def query_semantic_metric(
     rolling_window: int = 3,
     aggregation_override: str | None = None,
 ) -> dict[str, Any]:
-    model = get_semantic_model(dataset_id, df)
+    raw_model = get_semantic_model(dataset_id, df, enforce_access=False)
+    model = _visible_semantic_model(raw_model)
     metric = _metric_by_id(model, metric_id)
     if not metric:
+        raw_metric = _metric_by_id(raw_model, metric_id)
+        if raw_metric is not None and not _semantic_item_allowed(raw_metric):
+            raise PermissionError(f"Accès sémantique refusé à la métrique: {metric_id}")
         raise ValueError(f"Métrique inconnue: {metric_id}")
     if aggregation_override:
         override = str(aggregation_override).lower()
@@ -734,6 +900,9 @@ def query_semantic_metric(
     for ref in dimensions or []:
         dim = _resolve_dimension(model, ref)
         if not dim:
+            raw_dim = _resolve_dimension(raw_model, ref)
+            if raw_dim is not None and not _semantic_item_allowed(raw_dim):
+                raise PermissionError(f"Accès sémantique refusé à la dimension: {ref}")
             raise ValueError(f"Dimension inconnue: {ref}")
         if dim.get("hidden"):
             raise ValueError(f"Dimension masquée: {ref}")
@@ -741,6 +910,9 @@ def query_semantic_metric(
 
     date_dim = _resolve_dimension(model, date_dimension) if date_dimension else None
     if date_dimension and not date_dim:
+        raw_date = _resolve_dimension(raw_model, date_dimension)
+        if raw_date is not None and not _semantic_item_allowed(raw_date):
+            raise PermissionError(f"Accès sémantique refusé à la dimension temporelle: {date_dimension}")
         raise ValueError(f"Dimension temporelle inconnue: {date_dimension}")
 
     base_metric_ids = _metric_dependencies(model, metric_id)
@@ -750,8 +922,14 @@ def query_semantic_metric(
     for f in filters or []:
         dim = _resolve_dimension(model, str(f.get("dimension") or f.get("column") or ""))
         if dim: required_tables.add(dim.get("table", "base"))
-    work = _joined_frame(dataset_id, df, model, {str(x) for x in required_tables if x})
+    required_tables = {str(x) for x in required_tables if x}
+    joined_tables = _required_join_closure(model, required_tables)
+    work = _joined_frame(dataset_id, df, model, required_tables)
     work = _apply_semantic_filters(work, model, filters or [])
+    relationships_used = [
+        str(r.get("id")) for r in model.get("relationships", [])
+        if r.get("active", True) and r.get("from_table") in joined_tables and r.get("to_table") in joined_tables
+    ]
 
     group_columns: list[tuple[str, str]] = []
     for dim in selected_dims:
@@ -850,6 +1028,11 @@ def query_semantic_metric(
         "aggregation_override": aggregation_override,
         "semantic_model_version": model.get("version"),
         "semantic_version": 2,
+        "tables_used": sorted(joined_tables),
+        "relationships_used": relationships_used,
+        "semantic_access": semantic_access_summary(model),
+        "business_definition": metric.get("business_definition") or metric.get("description") or "",
+        "unit": metric.get("unit") or "",
         "calculation_policy": "deterministic_semantic_engine",
     }
 

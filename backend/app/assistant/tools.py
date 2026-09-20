@@ -214,6 +214,22 @@ def build_default_registry() -> AssistantToolRegistry:
             requires_dataset=True,
         ),
         ToolSpec(
+            name="generate_dataset_insights",
+            description="Générer un feed priorisé d'insights déterministes avec preuves, tendances, anomalies, segments, corrélations et changements de version.",
+            category="statistics",
+            risk="read",
+            required_permissions=("analysis:create", "dataset:read"),
+            requires_dataset=True,
+            metadata={"agent_role": "statistics_agent", "engine": "insight_engine_v1"},
+            input_schema={
+                "type": "object",
+                "properties": {
+                    "max_insights": {"type": "integer", "minimum": 1, "maximum": 40, "default": 12},
+                    "persist": {"type": "boolean", "default": False},
+                },
+            },
+        ),
+        ToolSpec(
             name="run_statistical_test",
             description="Exécuter un test statistique déterministe.",
             category="statistics",

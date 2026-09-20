@@ -9,7 +9,8 @@ import pandas as pd
 from app.core.config import get_settings
 from app.services.advanced_analysis import regression_analysis
 from app.services.auth_service import has_permission
-from app.services.modeling import automl_train, benchmark_models, get_model_card, train_model
+from app.services.modeling import get_model_card, train_model
+from app.services.automl_engine import run_automl_experiment, run_automl_benchmark
 from app.services.model_registry import (
     LOCAL_ACTOR, LOCAL_WORKSPACE, check_retraining, get_registry_entry,
     monitor_model, transition_model,
@@ -24,6 +25,7 @@ from app.services.model_serving import (
 from app.services.notebook_service import run_cell as run_notebook_cell
 from app.services.preparation import apply_operation, combine_dataframes
 from app.services.profiling import profile_dataframe
+from app.services.insight_engine import generate_insights
 from app.services.report_builder import build_report, export_report
 from app.services.root_cause import root_cause_analysis
 from app.services.decision_lab import optimize_scenarios
@@ -42,7 +44,7 @@ from app.services.storage import (
 )
 from app.services.tenant_access import current_access_context
 from app.services.visualization import build_visualization, recommend_visualizations
-from app.services.xai import model_diagnostics, partial_dependence, shap_explanation, generate_counterfactuals
+from app.services.xai import model_diagnostics, partial_dependence, shap_explanation, generate_counterfactuals, xai_audit
 
 from .models import AssistantContext
 from .tools import AssistantToolRegistry, ToolSpec
@@ -343,6 +345,22 @@ class V212AnalysisBridge:
         ]
         return {"recent_failures": failures[-10:], "count": len(failures)}
 
+    def generate_dataset_insights(
+        self,
+        *,
+        context: AssistantContext,
+        max_insights: int = 12,
+        persist: bool = False,
+        **_: Any,
+    ) -> dict[str, Any]:
+        dataset_id, df = _load(context)
+        return generate_insights(
+            dataset_id,
+            df,
+            max_insights=max(1, min(int(max_insights), 40)),
+            persist=bool(persist),
+        )
+
     def run_statistical_test(
         self,
         *,
@@ -558,13 +576,9 @@ class V212MLBridge:
         **_: Any,
     ) -> dict[str, Any]:
         _dataset_id_value, df = _load(context)
-        return benchmark_models(
-            df,
-            target=target,
-            task=task,
-            primary_metric=primary_metric,
-            cv_folds=cv_folds,
-            max_candidates=max_candidates,
+        return run_automl_benchmark(
+            df, target=target, task=task, primary_metric=primary_metric,
+            cv_folds=cv_folds, max_candidates=max_candidates,
         )
 
     def run_automl(
@@ -576,33 +590,24 @@ class V212MLBridge:
         features: list[str] | None = None,
         metric: str | None = None,
         validation: str = "cross_validation",
+        time_column: str | None = None,
         max_models: int = 8,
         explain: bool = True,
         **_: Any,
     ) -> dict[str, Any]:
         dataset_id, df = _load(context)
-        if task not in {"classification", "regression"}:
-            raise ValueError(
-                "Le bridge AutoML v2.12 exécute classification/régression. "
-                "Clustering et forecasting utilisent leurs moteurs dédiés."
-            )
-        if not target:
-            raise ValueError("Cible requise.")
-        work = df
-        if features:
-            missing = [c for c in features if c not in df.columns]
-            if missing:
-                raise ValueError(f"Variables inconnues : {', '.join(missing)}")
-            work = df[[*features, target]].copy()
-        result = automl_train(
-            work,
-            target=target,
-            task=task,
+        if task not in {"classification", "regression", "clustering"}:
+            raise ValueError("AutoML v2.51 couvre classification, régression et clustering avec ML Safety. Le forecasting conserve son moteur dédié.")
+        if task != "clustering" and not target:
+            raise ValueError("Cible requise pour une tâche supervisée.")
+        result = run_automl_experiment(
+            df, target=target, task=task, features=features,
             primary_metric=metric or "auto",
             cv_folds=5 if validation == "cross_validation" else 2,
-            tune=True,
-            max_candidates=max_models,
+            tune=True, max_candidates=max_models,
             dataset_context={"id": dataset_id, "version": get_meta(dataset_id).get("version")},
+            split_strategy="temporal" if validation == "time_split" else ("random" if validation == "holdout" else "auto"),
+            time_column=time_column,
         )
         result["requested_explain"] = explain
         result["rollback_token"] = result.get("model_id")
@@ -722,6 +727,10 @@ class V212MLBridge:
         desired_class: Any | None = None,
         desired_value: float | None = None,
         direction: str | None = None,
+        immutable_features: list[str] | None = None,
+        actionable_features: list[str] | None = None,
+        feature_constraints: dict[str, dict[str, Any]] | None = None,
+        include_shap: bool = False,
         **_: Any,
     ) -> dict[str, Any]:
         model_id = context.activeModelId
@@ -747,6 +756,18 @@ class V212MLBridge:
             context.activeDatasetId
             or card.get("dataset", {}).get("id")
         )
+
+        if method == "xai_audit":
+            if not dataset_id:
+                raise ValueError("Dataset de référence requis pour l'audit XAI.")
+            return xai_audit(
+                model_id,
+                load_dataframe(dataset_id),
+                row=row,
+                pdp_features=list(features or ([feature] if feature else [])),
+                include_shap=include_shap,
+                persist=True,
+            )
 
         if method in {
             "confusion_matrix",
@@ -819,6 +840,9 @@ class V212MLBridge:
                 direction=direction,
                 max_changes=2,
                 max_results=5,
+                immutable_features=immutable_features,
+                actionable_features=actionable_features,
+                feature_constraints=feature_constraints,
             )
 
         raise ValueError(
@@ -1091,6 +1115,8 @@ class V212ReportBridge:
         include_methodology: bool = True,
         include_provenance: bool = True,
         include_visualizations: bool = True,
+        custom_blocks: list[dict[str, Any]] | None = None,
+        block_order: list[str] | None = None,
         **_: Any,
     ) -> dict[str, Any]:
         dataset_id = _dataset_id(context)
@@ -1114,10 +1140,10 @@ class V212ReportBridge:
             sections=sections,
             auto_story=True,
             auto_visualizations=include_visualizations,
+            custom_blocks=custom_blocks or None,
+            block_order=block_order or None,
         )
         report_id = report["id"]
-        if format == "pptx":
-            raise ValueError("L'export PPTX n'est pas encore disponible dans le moteur de rapport v2.12.")
         path = export_report(report_id, format)
         return {
             "report_id": report_id,
@@ -1227,6 +1253,7 @@ def bind_v212_host(registry: AssistantToolRegistry) -> None:
         "create_visualization": visual.create_visualization,
         "diagnose_visualization": visual.diagnose_visualization,
         "diagnose_analysis_failure": analysis.diagnose_analysis_failure,
+        "generate_dataset_insights": analysis.generate_dataset_insights,
         "run_statistical_test": analysis.run_statistical_test,
         "run_regression": analysis.run_regression,
         "run_root_cause_analysis": analysis.run_root_cause_analysis,

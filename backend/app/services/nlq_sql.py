@@ -8,6 +8,7 @@ import pandas as pd
 
 from app.services.data_workspace import run_sql
 from app.services.semantic_nlq import execute_semantic_question, semantic_result_as_table
+from app.services.semantic_layer import assert_semantic_question_access, semantic_access_summary
 
 
 def _norm(value: str) -> str:
@@ -173,6 +174,8 @@ def translate_nlq(df: pd.DataFrame, question: str, limit: int = 200, semantic: d
 
 
 def run_nlq(df: pd.DataFrame, question: str, limit: int = 200, semantic: dict[str, Any] | None = None, dataset_id: str | None = None) -> dict[str, Any]:
+    if dataset_id:
+        assert_semantic_question_access(dataset_id, df, question)
     # Prefer the governed semantic engine when a business metric is resolved. This enables
     # multi-table NLQ without exposing physical joins or guessing SQL across unrelated schemas.
     if dataset_id and semantic:
@@ -196,15 +199,35 @@ def run_nlq(df: pd.DataFrame, question: str, limit: int = 200, semantic: dict[st
                 "mentioned_columns": [],
                 "semantic_grounding": {
                     "metric_id": plan.get("metric_id"),
+                    "metric_label": plan.get("metric_label"),
+                    "metric_definition": plan.get("metric_definition"),
+                    "metric_unit": plan.get("metric_unit"),
+                    "matched_term": plan.get("metric_match_term"),
                     "dimensions": grouping,
+                    "dimension_resolution": plan.get("dimension_resolution", []),
                     "certified": plan.get("metric_certified"),
                     "model_version": plan.get("semantic_model_version"),
-                    "tables": plan.get("tables"),
+                    "semantic_version": plan.get("semantic_version"),
+                    "tables": query.get("tables_used") or plan.get("tables"),
+                    "relationships": query.get("relationships_used") or [],
+                    "access": query.get("semantic_access") or plan.get("semantic_access"),
+                    "resolution_policy": plan.get("resolution_policy"),
                 },
+                "sql_validation": semantic_execution.get("validation"),
                 "semantic_plan": plan,
                 "semantic_query": query,
                 "result": table,
             }
     translation = translate_nlq(df, question, limit, semantic)
     result = run_sql(df, translation["sql"], limit)
-    return {"question": question, "execution_mode": "sql", "sql_executable": True, **translation, "result": result}
+    return {
+        "question": question, "execution_mode": "sql", "sql_executable": True,
+        **translation,
+        "sql_validation": {
+            "read_only": True,
+            "deterministic_execution": True,
+            "validator": "data_workspace.run_sql",
+            "semantic_access": semantic_access_summary(semantic or {}),
+        },
+        "result": result,
+    }

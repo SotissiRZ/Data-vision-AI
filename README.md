@@ -1,4 +1,57 @@
-# DataVision AI — v2.46.0
+# DataVision AI — v2.52.0
+
+## Nouveau dans v2.52.0 — XAI gouverné, traçable et actionnable
+
+- audit XAI unifié avec provenance SHA-256 et `explanation_id` stable ;
+- permutation importance enrichie par stabilité, dispersion, cohérence de signe et rang ;
+- métriques de classification par classe et calibration par classe ;
+- SHAP global/local, PDP et explication locale conservés dans le moteur déterministe ;
+- contre-factuels contraignables via variables immuables/actionnables, bornes et valeurs autorisées ;
+- résumé XAI persisté dans la Model Card et réutilisable dans le Report Builder ;
+- gate de release `XAI_ACCEPTANCE 8/8`.
+
+## Nouveau dans v2.51.0 — ML Safety & Guardrails exécutables
+
+- audit pré-entraînement via `POST /api/v1/datasets/{dataset_id}/models/safety-audit` ;
+- blocage des copies directes de cible et exclusion des features de leakage quasi certain ;
+- exclusion automatique des IDs, quasi-identifiants et constantes ;
+- gouvernance de métrique sur classes déséquilibrées (`accuracy` → `balanced_accuracy`) ;
+- split chronologique réel avec CV temporelle lorsque la donnée contient un axe temps fiable ;
+- empreintes des partitions et preuve que le test final n'est utilisé ni pour sélection ni pour tuning ;
+- contrôle du surapprentissage sur train/validation avant refit final ;
+- Studio ML enrichi avec audit Safety, stratégie de split et colonne temporelle ;
+- gate exécutable : `python scripts/ml_safety_acceptance.py --root . --check`.
+
+## Nouveau dans v2.50.0 — AutoML gouverné + sidebar dynamique
+
+DataVision unifie désormais classification, régression et clustering dans un même workflow AutoML. Chaque run produit un leaderboard normalisé, une métrique de sélection explicite, un `experiment_id`, un historique persistant et une justification de sélection. Les garde-fous empêchent la cible d’entrer dans les features et conservent le test final hors sélection pour les tâches supervisées. Le ML Agent utilise ce même moteur réel.
+
+L’interface gagne aussi un sidebar dynamique : compact par défaut (icônes), il s’étend au survol ou au focus clavier pour afficher les libellés sans provoquer de reflow du contenu principal.
+
+- gate exécutable : `python scripts/automl_acceptance.py --root . --check` ;
+- classification/régression : split + validation croisée + test final isolé ;
+- clustering : K-Means, MiniBatch K-Means, BIRCH et métriques internes ;
+- historique des expériences consultable par dataset/version ;
+- le forecasting reste volontairement dans son moteur dédié jusqu’au lot forecasting/anomaly.
+
+## Nouveau dans v2.49.0 — Professional Report Builder
+
+DataVision peut désormais composer des rapports par blocs ordonnables (texte, KPI, table, insight, modèle, code, méthodologie, visualisation), avec provenance par bloc, hash d’intégrité, validation serveur et exports gouvernés PDF/DOCX/HTML/Markdown.
+
+## Nouveau dans v2.48.0 — Insight Engine vérifiable
+
+La v2.48.0 unifie la découverte automatique d'insights derrière un moteur déterministe dédié : qualité, anomalies robustes, tendances temporelles, segments distinctifs, corrélations et changements entre versions. Chaque insight expose un score de priorité, une preuve structurée, la méthode de calcul, les colonnes sources, la version du dataset et un fingerprint stable. Le moteur est disponible dans la vue **Insights**, sur la page d'accueil et comme outil réel du Statistics Agent.
+
+- gate exécutable : `python scripts/insight_acceptance.py --root . --check` ;
+- aucun LLM n'effectue les calculs numériques ;
+- les associations et tendances sont explicitement non causales ;
+- les scans persistants créent un historique léger sans modifier le dataset.
+
+
+## Nouveau dans v2.47.0 — NLQ gouverné & Semantic Layer métier
+
+La v2.47.0 ferme la couche sémantique métier : définitions, unités, synonymes, glossaire lié, relations multi-tables tracées et permissions `allowed_roles`. Le NLQ résout d'abord la question contre ce contrat gouverné, refuse tout contournement d'un objet sémantique interdit, puis exécute un moteur déterministe. Chaque réponse expose la résolution utilisée, les tables/relations, la version du modèle et une validation read-only du plan SQL/sémantique.
+
 
 ## Nouveau dans v2.46.0 — AI Orchestrator multi-agent réel
 

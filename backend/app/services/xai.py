@@ -2,6 +2,9 @@ from __future__ import annotations
 
 import importlib.util
 import itertools
+import hashlib
+import json
+from datetime import datetime, timezone
 from typing import Any
 
 import joblib
@@ -10,11 +13,14 @@ import pandas as pd
 from sklearn.calibration import calibration_curve
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
+    accuracy_score,
+    balanced_accuracy_score,
     brier_score_loss,
     confusion_matrix,
     mean_absolute_error,
     mean_squared_error,
     precision_recall_curve,
+    precision_recall_fscore_support,
     r2_score,
     roc_auc_score,
     roc_curve,
@@ -32,6 +38,112 @@ def _payload(model_id: str) -> dict[str, Any]:
 
 def _scalar(v: Any) -> Any:
     return v.item() if hasattr(v, "item") else v
+
+
+def _utcnow() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _sha256_bytes(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+def _stable_json(value: Any) -> bytes:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+
+
+def _frame_fingerprint(df: pd.DataFrame) -> str:
+    # Deterministic fingerprint of the exact reference frame used by XAI.
+    hashed = pd.util.hash_pandas_object(df, index=True).to_numpy(dtype="uint64")
+    schema = [(str(c), str(df[c].dtype)) for c in df.columns]
+    return _sha256_bytes(hashed.tobytes() + _stable_json(schema))
+
+
+def _model_fingerprint(model_id: str) -> str:
+    path = get_settings().model_dir / f"{model_id}.joblib"
+    if not path.exists():
+        raise FileNotFoundError(model_id)
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _explanation_provenance(
+    model_id: str,
+    payload: dict[str, Any],
+    df: pd.DataFrame,
+    method: str,
+    *,
+    parameters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    dataset = payload.get("model_card", {}).get("dataset", {}) or {}
+    reference_sha = _frame_fingerprint(df)
+    model_sha = _model_fingerprint(model_id)
+    identity = {
+        "model_id": model_id,
+        "model_sha256": model_sha,
+        "dataset_id": dataset.get("id"),
+        "dataset_version": dataset.get("version"),
+        "reference_data_sha256": reference_sha,
+        "method": method,
+        "parameters": parameters or {},
+    }
+    return {
+        **identity,
+        "explanation_id": _sha256_bytes(_stable_json(identity)),
+        "generated_at": _utcnow(),
+        "causal_claim": False,
+    }
+
+
+def _model_only_provenance(
+    model_id: str,
+    payload: dict[str, Any],
+    method: str,
+    *,
+    parameters: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    dataset = payload.get("model_card", {}).get("dataset", {}) or {}
+    identity = {
+        "model_id": model_id,
+        "model_sha256": _model_fingerprint(model_id),
+        "dataset_id": dataset.get("id"),
+        "dataset_version": dataset.get("version"),
+        "method": method,
+        "parameters": parameters or {},
+    }
+    return {
+        **identity,
+        "explanation_id": _sha256_bytes(_stable_json(identity)),
+        "generated_at": _utcnow(),
+        "causal_claim": False,
+    }
+
+
+def _persist_xai_summary(model_id: str, summary: dict[str, Any]) -> None:
+    path = get_settings().model_dir / f"{model_id}.card.json"
+    if not path.exists():
+        raise FileNotFoundError(model_id)
+    card = json.loads(path.read_text(encoding="utf-8"))
+    card["xai_summary"] = summary
+    card["explainability"] = {
+        **(card.get("explainability") or {}),
+        "xai_audit": True,
+        "last_audit_id": summary.get("explanation_id"),
+        "last_audit_at": summary.get("generated_at"),
+    }
+    path.write_text(
+        json.dumps(card, ensure_ascii=False, indent=2, default=str),
+        encoding="utf-8",
+    )
 
 
 def _evaluation_frame(
@@ -105,6 +217,9 @@ def model_diagnostics(
         "algorithm": payload.get("algorithm"),
         "evaluation_source": source,
         "rows": len(X),
+        "provenance": _explanation_provenance(
+            model_id, payload, df, "diagnostics", parameters={"evaluation_source": source}
+        ),
         "shap": {
             "available": importlib.util.find_spec("shap") is not None,
             "executed": False,
@@ -126,22 +241,31 @@ def model_diagnostics(
             random_state=42,
             n_jobs=1,
         )
-        result["permutation_importance"] = sorted(
-            [
-                {
-                    "feature": c,
-                    "importance": round(float(m), 8),
-                    "std": round(float(s), 8),
-                }
-                for c, m, s in zip(
-                    X.columns,
-                    perm.importances_mean,
-                    perm.importances_std,
-                )
-            ],
-            key=lambda row: abs(row["importance"]),
-            reverse=True,
-        )
+        importance_rows = []
+        for c, m, std, repeats in zip(
+            X.columns, perm.importances_mean, perm.importances_std, perm.importances
+        ):
+            mean = float(m)
+            spread = float(std)
+            denom = abs(mean) + 1e-12
+            stability = max(0.0, 1.0 - min(spread / denom, 1.0)) if abs(mean) > 1e-12 else 0.0
+            sign_consistency = float(np.mean(np.sign(repeats) == np.sign(mean))) if abs(mean) > 1e-12 else 0.0
+            importance_rows.append({
+                "feature": c,
+                "importance": round(mean, 8),
+                "std": round(spread, 8),
+                "stability": round(stability, 6),
+                "sign_consistency": round(sign_consistency, 6),
+            })
+        importance_rows.sort(key=lambda row: abs(row["importance"]), reverse=True)
+        for rank, row in enumerate(importance_rows, start=1):
+            row["rank"] = rank
+        result["permutation_importance"] = importance_rows
+        result["importance_stability"] = {
+            "stable_features": sum(1 for row in importance_rows if row["stability"] >= 0.5),
+            "features_evaluated": len(importance_rows),
+            "method": "permutation repeats dispersion",
+        }
     except Exception:
         result["permutation_importance"] = (
             payload.get("model_card", {}).get("feature_importance", [])
@@ -159,6 +283,35 @@ def model_diagnostics(
         matrix = confusion_matrix(y, pred, labels=classes)
         result["classes"] = classes
         result["confusion_matrix"] = matrix.tolist()
+        result["accuracy"] = round(float(accuracy_score(y, pred)), 6)
+        result["balanced_accuracy"] = round(float(balanced_accuracy_score(y, pred)), 6)
+        precision, recall, f1, support = precision_recall_fscore_support(
+            y, pred, labels=classes, zero_division=0
+        )
+        result["per_class_metrics"] = [
+            {
+                "class": label,
+                "precision": round(float(p), 6),
+                "recall": round(float(r), 6),
+                "f1": round(float(f), 6),
+                "support": int(n),
+            }
+            for label, p, r, f, n in zip(classes, precision, recall, f1, support)
+        ]
+
+        if hasattr(pipe, "predict_proba"):
+            all_probs = np.asarray(pipe.predict_proba(X), dtype=float)
+            per_class_calibration = []
+            for class_index, class_label in enumerate(classes):
+                y_class = (pd.Series(y).to_numpy() == class_label).astype(int)
+                probs_class = all_probs[:, class_index]
+                class_brier = float(np.mean((probs_class - y_class) ** 2))
+                per_class_calibration.append({
+                    "class": class_label,
+                    "brier_score": round(class_brier, 6),
+                    "expected_calibration_error": round(_expected_calibration_error(y_class, probs_class), 6),
+                })
+            result["calibration_by_class"] = per_class_calibration
 
         if len(classes) == 2 and hasattr(pipe, "predict_proba"):
             probs = np.asarray(pipe.predict_proba(X)[:, 1], dtype=float)
@@ -262,6 +415,12 @@ def local_explanation(
 
     task = payload["task"]
     prediction = _scalar(pipe.predict(frame)[0])
+    provenance = _model_only_provenance(
+        model_id,
+        payload,
+        "local_perturbation",
+        parameters={"row_sha256": _sha256_bytes(_stable_json({c: row[c] for c in features}))},
+    )
     contributions: list[dict[str, Any]] = []
 
     if task == "classification" and hasattr(
@@ -298,6 +457,7 @@ def local_explanation(
             "model_id": model_id,
             "task": task,
             "prediction": prediction,
+            "provenance": provenance,
             "classes": classes,
             "probabilities": [
                 round(float(x), 8) for x in probs
@@ -333,6 +493,7 @@ def local_explanation(
         "model_id": model_id,
         "task": task,
         "prediction": round(base_score, 8),
+        "provenance": provenance,
         "method": "one-feature-at-a-time baseline perturbation",
         "contributions": contributions,
         "caveat": (
@@ -352,7 +513,17 @@ def xai_capabilities(model_id: str) -> dict[str, Any]:
         "partial_dependence": True,
         "calibration": payload.get("task") == "classification",
         "counterfactual_search": True,
+        "counterfactual_constraints": {
+            "immutable_features": True,
+            "actionable_features": True,
+            "numeric_ranges": True,
+            "allowed_values": True,
+        },
         "local_perturbation": True,
+        "xai_audit": True,
+        "provenance_sha256": True,
+        "importance_stability": True,
+        "per_class_calibration": payload.get("task") == "classification",
         "shap": {
             "installed": importlib.util.find_spec("shap") is not None,
             "mode": "native_or_permutation",
@@ -481,6 +652,10 @@ def partial_dependence(
         "model_id": model_id,
         "task": task,
         "evaluation_source": source,
+        "provenance": _explanation_provenance(
+            model_id, payload, df, "partial_dependence",
+            parameters={"features": requested, "grid_points": int(grid_points), "class_label": class_label},
+        ),
         "rows_sampled": len(sample),
         "curves": curves,
         "method": (
@@ -731,10 +906,29 @@ def shap_explanation(
             )
             prediction = _scalar(pipe.predict(frame)[0])
 
+        provenance = _explanation_provenance(
+            model_id, payload, df, "shap",
+            parameters={
+                "max_rows": int(max_rows),
+                "local_row_sha256": (
+                    _sha256_bytes(_stable_json({feature: row[feature] for feature in features}))
+                    if row is not None else None
+                ),
+            },
+        )
+        base_values = np.asarray(getattr(explanation, "base_values", []))
+        base_value_summary = None
+        if base_values.size:
+            try:
+                base_value_summary = np.mean(base_values, axis=0).tolist()
+            except Exception:
+                base_value_summary = None
         return {
             "model_id": model_id,
             "status": "ok",
             "task": payload["task"],
+            "provenance": provenance,
+            "base_value": base_value_summary,
             "algorithm": payload.get("algorithm"),
             "evaluation_source": source,
             "method": method,
@@ -791,6 +985,37 @@ def _candidate_values(
     )
 
 
+def _constrain_candidate_values(
+    feature: str,
+    values: list[Any],
+    constraint: dict[str, Any] | None,
+) -> list[Any]:
+    if not constraint:
+        return values
+    if constraint.get("mutable") is False:
+        return []
+    allowed = constraint.get("allowed_values")
+    if isinstance(allowed, list) and allowed:
+        allowed_text = {str(v) for v in allowed}
+        values = [value for value in values if str(value) in allowed_text]
+    minimum = constraint.get("min")
+    maximum = constraint.get("max")
+    if minimum is not None or maximum is not None:
+        filtered: list[Any] = []
+        for value in values:
+            try:
+                numeric = float(value)
+            except (TypeError, ValueError):
+                continue
+            if minimum is not None and numeric < float(minimum):
+                continue
+            if maximum is not None and numeric > float(maximum):
+                continue
+            filtered.append(value)
+        values = filtered
+    return values
+
+
 def _row_distance(
     original: dict[str, Any],
     candidate: dict[str, Any],
@@ -831,6 +1056,9 @@ def generate_counterfactuals(
     direction: str | None = None,
     max_changes: int = 2,
     max_results: int = 5,
+    immutable_features: list[str] | None = None,
+    actionable_features: list[str] | None = None,
+    feature_constraints: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     payload = _payload(model_id)
     pipe = payload["pipeline"]
@@ -913,16 +1141,28 @@ def generate_counterfactuals(
         for feature in features
         if feature not in ordered_features
     ]
-    ordered_features = ordered_features[:10]
+    immutable = {str(feature) for feature in (immutable_features or [])}
+    constraints = feature_constraints or {}
+    immutable.update(
+        str(feature)
+        for feature, rule in constraints.items()
+        if isinstance(rule, dict) and rule.get("mutable") is False
+    )
+    if actionable_features is not None:
+        actionable = {str(feature) for feature in actionable_features}
+        ordered_features = [feature for feature in ordered_features if feature in actionable]
+    ordered_features = [feature for feature in ordered_features if feature not in immutable][:10]
 
-    values_by_feature = {
-        feature: [
+    values_by_feature = {}
+    for feature in ordered_features:
+        values = [
             value
             for value in _candidate_values(reference[feature])
             if str(value) != str(row.get(feature))
-        ][:5]
-        for feature in ordered_features
-    }
+        ]
+        values_by_feature[feature] = _constrain_candidate_values(
+            feature, values, constraints.get(feature)
+        )[:5]
 
     candidate_rows: list[tuple[dict[str, Any], list[str]]] = []
     for feature in ordered_features:
@@ -946,10 +1186,32 @@ def generate_counterfactuals(
                     )
 
     if not candidate_rows:
+        provenance = _explanation_provenance(
+            model_id, payload, df, "counterfactuals",
+            parameters={
+                "desired_class": desired_class,
+                "desired_value": desired_value,
+                "direction": direction,
+                "max_changes": int(max_changes),
+                "immutable_features": sorted(immutable),
+                "actionable_features": sorted(actionable_features or []),
+                "feature_constraints": constraints,
+                "row_sha256": _sha256_bytes(_stable_json({feature: row[feature] for feature in features})),
+            },
+        )
         return {
             "model_id": model_id,
+            "task": task,
             "status": "no_candidates",
+            "provenance": provenance,
             "counterfactuals": [],
+            "searched_candidates": 0,
+            "constraints_applied": {
+                "immutable_features": sorted(immutable),
+                "actionable_features": sorted(actionable_features or []),
+                "feature_constraints": constraints,
+                "features_searched": ordered_features,
+            },
         }
 
     frame = pd.DataFrame(
@@ -1052,9 +1314,23 @@ def generate_counterfactuals(
         )
     )
 
+    provenance = _explanation_provenance(
+        model_id, payload, df, "counterfactuals",
+        parameters={
+            "desired_class": desired_class,
+            "desired_value": desired_value,
+            "direction": direction,
+            "max_changes": int(max_changes),
+            "immutable_features": sorted(immutable),
+            "actionable_features": sorted(actionable_features or []),
+            "feature_constraints": constraints,
+            "row_sha256": _sha256_bytes(_stable_json({feature: row[feature] for feature in features})),
+        },
+    )
     return {
         "model_id": model_id,
         "task": task,
+        "provenance": provenance,
         "base_prediction": base_prediction,
         "base_probabilities": (
             [
@@ -1071,10 +1347,127 @@ def generate_counterfactuals(
         "direction": direction,
         "counterfactuals": ranked[: max(1, min(max_results, 10))],
         "searched_candidates": len(candidate_rows),
-        "method": "bounded deterministic candidate search",
+        "constraints_applied": {
+            "immutable_features": sorted(immutable),
+            "actionable_features": sorted(actionable_features or []),
+            "feature_constraints": constraints,
+            "features_searched": ordered_features,
+        },
+        "method": "bounded deterministic candidate search with actionability constraints",
         "caveat": (
             "Ces contre-factuels décrivent des modifications susceptibles "
             "de changer la sortie du modèle. Ils ne prouvent pas qu'une "
             "intervention réelle produirait le même effet."
         ),
+    }
+
+
+def xai_audit(
+    model_id: str,
+    df: pd.DataFrame,
+    *,
+    row: dict[str, Any] | None = None,
+    pdp_features: list[str] | None = None,
+    include_shap: bool = False,
+    persist: bool = True,
+) -> dict[str, Any]:
+    """Build a single, auditable XAI report without using an LLM for calculations."""
+    payload = _payload(model_id)
+    diagnostics = model_diagnostics(model_id, df)
+    capabilities = xai_capabilities(model_id)
+
+    local = None
+    if row is not None:
+        local = local_explanation(model_id, row)
+
+    pdp = None
+    selected_pdp = [
+        feature
+        for feature in (pdp_features or [])
+        if feature in payload.get("features", [])
+    ][:8]
+    if selected_pdp:
+        pdp = partial_dependence(model_id, df, selected_pdp, grid_points=16)
+
+    shap_result: dict[str, Any] = {
+        "model_id": model_id,
+        "status": "not_requested",
+        "installed": bool((capabilities.get("shap") or {}).get("installed")),
+    }
+    if include_shap:
+        shap_result = shap_explanation(
+            model_id,
+            df,
+            row=row,
+            max_rows=50,
+        )
+
+    provenance = _explanation_provenance(
+        model_id,
+        payload,
+        df,
+        "xai_audit",
+        parameters={
+            "row_supplied": row is not None,
+            "pdp_features": selected_pdp,
+            "include_shap": bool(include_shap),
+        },
+    )
+    coverage = {
+        "permutation_importance": bool(diagnostics.get("permutation_importance")),
+        "importance_stability": bool(diagnostics.get("importance_stability")),
+        "diagnostics": True,
+        "per_class_metrics": bool(diagnostics.get("per_class_metrics")) if payload.get("task") == "classification" else None,
+        "calibration": bool(diagnostics.get("calibration_by_class")) if payload.get("task") == "classification" else None,
+        "local_explanation": local is not None,
+        "partial_dependence": pdp is not None,
+        "shap": shap_result.get("status") == "ok",
+        "counterfactuals": bool(capabilities.get("counterfactual_search")),
+    }
+    summary = {
+        "explanation_id": provenance["explanation_id"],
+        "generated_at": provenance["generated_at"],
+        "evaluation_source": diagnostics.get("evaluation_source"),
+        "task": payload.get("task"),
+        "algorithm": payload.get("algorithm"),
+        "coverage": coverage,
+        "importance_top": (diagnostics.get("permutation_importance") or [])[:5],
+        "causal_claim": False,
+    }
+    if payload.get("task") == "classification":
+        summary["classification"] = {
+            "accuracy": diagnostics.get("accuracy"),
+            "balanced_accuracy": diagnostics.get("balanced_accuracy"),
+            "expected_calibration_error": diagnostics.get("expected_calibration_error"),
+        }
+    else:
+        summary["regression"] = diagnostics.get("metrics") or {}
+
+    if persist:
+        _persist_xai_summary(model_id, summary)
+
+    return {
+        "model_id": model_id,
+        "status": "ok",
+        "task": payload.get("task"),
+        "algorithm": payload.get("algorithm"),
+        "provenance": provenance,
+        "coverage": coverage,
+        "summary": summary,
+        "diagnostics": diagnostics,
+        "local": local,
+        "partial_dependence": pdp,
+        "shap": shap_result,
+        "counterfactual_policy": {
+            "supports_actionable_features": True,
+            "supports_immutable_features": True,
+            "supports_numeric_ranges": True,
+            "supports_allowed_values": True,
+            "max_changes": 2,
+        },
+        "caveats": [
+            "Les explications décrivent le comportement du modèle, pas des effets causaux.",
+            "Les contre-factuels doivent respecter les contraintes métier et la faisabilité réelle.",
+            "La stabilité des importances dépend de la distribution du dataset de référence.",
+        ],
     }

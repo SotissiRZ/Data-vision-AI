@@ -232,7 +232,7 @@ export async function buildVisualization(id: string, payload: Record<string, unk
   }), 'Visualisation impossible');
 }
 
-export async function runAutoML(id: string, payload: { target: string; task?: string; primary_metric?: string; cv_folds?: number; tune?: boolean; max_candidates?: number }) {
+export async function runAutoML(id: string, payload: { target?: string | null; task?: 'auto' | 'classification' | 'regression' | 'clustering'; features?: string[] | null; primary_metric?: string; cv_folds?: number; tune?: boolean; max_candidates?: number; split_strategy?: 'auto'|'random'|'temporal'; time_column?: string | null }) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/models/automl`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }), 'AutoML impossible');
@@ -297,10 +297,14 @@ export async function getReports(id: string) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/reports`), 'Rapports indisponibles');
 }
 
-export async function createReport(id: string, payload: { title: string; subtitle?: string | null; author?: string | null; organization?: string | null; template?: 'executive'|'analytical'|'technical'; sections: string[]; analysis_session_id?: string | null; visualization_ids?: string[]; auto_story?: boolean; auto_visualizations?: boolean; max_visualizations?: number }) {
+export async function createReport(id: string, payload: { title: string; subtitle?: string | null; author?: string | null; organization?: string | null; template?: 'executive'|'analytical'|'technical'; sections: string[]; analysis_session_id?: string | null; visualization_ids?: string[]; auto_story?: boolean; auto_visualizations?: boolean; max_visualizations?: number; custom_blocks?: Record<string,unknown>[]; block_order?: string[] }) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/reports`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }), 'Création du rapport impossible');
+}
+
+export async function validateReport(id: string, reportId: string) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/reports/${reportId}/validate`), 'Validation du rapport impossible');
 }
 
 export async function downloadReport(id: string, reportId: string, format: 'pdf'|'docx'|'html'|'md') {
@@ -317,6 +321,20 @@ export async function downloadReport(id: string, reportId: string, format: 'pdf'
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
   URL.revokeObjectURL(url);
+}
+
+export async function getInsights(id: string, limit = 30) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/insights?limit=${limit}`), 'Insight Engine indisponible');
+}
+
+export async function scanInsights(id: string, maxInsights = 30) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/insights/scan`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ max_insights: maxInsights }),
+  }), "Scan d'insights impossible");
+}
+
+export async function getInsightHistory(id: string, limit = 50) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/insights/history?limit=${limit}`), "Historique d'insights indisponible");
 }
 
 export async function getDashboard(id: string) {
@@ -843,11 +861,14 @@ export async function getModelEngines() {
 export async function runModelBenchmark(
   datasetId: string,
   payload: {
-    target: string;
-    task?: string;
+    target?: string | null;
+    task?: 'auto' | 'classification' | 'regression' | 'clustering';
+    features?: string[] | null;
     primary_metric?: string;
     cv_folds?: number;
     max_candidates?: number;
+    split_strategy?: 'auto'|'random'|'temporal';
+    time_column?: string | null;
   },
 ) {
   return parse<any>(
@@ -857,6 +878,42 @@ export async function runModelBenchmark(
       body: JSON.stringify(payload),
     }),
     'Benchmark de modèles impossible',
+  );
+}
+
+
+export async function runMLSafetyAudit(
+  datasetId: string,
+  payload: {
+    target?: string | null;
+    task?: 'auto' | 'classification' | 'regression' | 'clustering';
+    features?: string[] | null;
+    primary_metric?: string;
+    split_strategy?: 'auto'|'random'|'temporal';
+    time_column?: string | null;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/${encodeURIComponent(datasetId)}/models/safety-audit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Audit ML Safety impossible',
+  );
+}
+
+export async function getAutoMLExperiments(datasetId: string) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/${encodeURIComponent(datasetId)}/models/experiments`),
+    'Historique AutoML indisponible',
+  );
+}
+
+export async function getAutoMLExperiment(datasetId: string, experimentId: string) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/${encodeURIComponent(datasetId)}/models/experiments/${encodeURIComponent(experimentId)}`),
+    'Expérience AutoML indisponible',
   );
 }
 
@@ -902,6 +959,25 @@ export async function runModelSHAP(
   );
 }
 
+export async function runModelXAIAudit(
+  modelId: string,
+  payload: {
+    row?: Record<string, unknown> | null;
+    pdp_features?: string[];
+    include_shap?: boolean;
+    persist?: boolean;
+  },
+) {
+  return parse<any>(
+    await apiFetch(`${API}/datasets/models/${encodeURIComponent(modelId)}/xai/audit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }),
+    'Audit XAI impossible',
+  );
+}
+
 export async function runModelCounterfactuals(
   modelId: string,
   payload: {
@@ -911,6 +987,9 @@ export async function runModelCounterfactuals(
     direction?: 'increase' | 'decrease' | null;
     max_changes?: number;
     max_results?: number;
+    immutable_features?: string[];
+    actionable_features?: string[] | null;
+    feature_constraints?: Record<string, Record<string, unknown>>;
   },
 ) {
   return parse<any>(

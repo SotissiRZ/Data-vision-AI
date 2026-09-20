@@ -7,7 +7,7 @@ from typing import Any
 
 import pandas as pd
 
-from app.services.semantic_layer import get_semantic_model, query_semantic_metric
+from app.services.semantic_layer import get_semantic_model, query_semantic_metric, semantic_access_summary
 
 
 def _norm(value: str) -> str:
@@ -17,7 +17,7 @@ def _norm(value: str) -> str:
 
 
 def _terms(item: dict[str, Any], *, dimension: bool = False) -> list[str]:
-    values = [item.get("id"), item.get("label"), item.get("name"), *(item.get("synonyms") or [])]
+    values = [item.get("id"), item.get("label"), item.get("name"), *(item.get("synonyms") or []), *(item.get("glossary_terms") or [])]
     if dimension:
         values.extend([item.get("column")])
     out: list[str] = []
@@ -28,24 +28,43 @@ def _terms(item: dict[str, Any], *, dimension: bool = False) -> list[str]:
     return out
 
 
-def _best_match(question: str, items: list[dict[str, Any]], *, dimension: bool = False) -> tuple[dict[str, Any] | None, float]:
+def _with_glossary_terms(model: dict[str, Any]) -> dict[str, Any]:
+    aliases: dict[tuple[str, str], list[str]] = {}
+    for item in model.get("business_glossary", []):
+        target_type = str(item.get("target_type") or "")
+        target_id = str(item.get("target_id") or "")
+        if target_type not in {"metric", "dimension"} or not target_id:
+            continue
+        terms = [str(item.get("term") or ""), *(str(x) for x in item.get("synonyms", []) if str(x).strip())]
+        aliases.setdefault((target_type, target_id), []).extend([x for x in terms if x])
+    out = dict(model)
+    out["metrics"] = [{**m, "glossary_terms": aliases.get(("metric", str(m.get("id"))), [])} for m in model.get("metrics", [])]
+    out["dimensions"] = [{**d, "glossary_terms": aliases.get(("dimension", str(d.get("id"))), [])} for d in model.get("dimensions", [])]
+    return out
+
+
+def _best_match(question: str, items: list[dict[str, Any]], *, dimension: bool = False) -> tuple[dict[str, Any] | None, float, str | None]:
     q = _norm(question)
     best: dict[str, Any] | None = None
     best_score = 0.0
+    best_term: str | None = None
     for item in items:
         if dimension and item.get("hidden"):
             continue
         score = 0.0
+        matched: str | None = None
         for term in _terms(item, dimension=dimension):
             if term in q:
                 # Longer business phrases are more discriminating than short ids.
-                score = max(score, min(20.0, len(term)) + (4.0 if " " in term else 0.0))
+                candidate = min(20.0, len(term)) + (4.0 if " " in term else 0.0)
+                if candidate > score:
+                    score, matched = candidate, term
         if score:
             if item.get("certified"):
                 score += 3.0
             if score > best_score:
-                best, best_score = item, score
-    return best, best_score
+                best, best_score, best_term = item, score, matched
+    return best, best_score, best_term
 
 
 def _mentioned_dimensions(question: str, model: dict[str, Any]) -> list[dict[str, Any]]:
@@ -106,7 +125,15 @@ def _display_sql(plan: dict[str, Any], model: dict[str, Any]) -> str:
         dims.append(f'DATE_{str(plan.get("time_grain") or "month").upper()}("{physical}")')
     select = ", ".join([*dims, f'{metric_expr} AS "{plan.get("metric_id")}"'])
     group = f" GROUP BY {', '.join(dims)}" if dims else ""
-    source = "dataset" if set(plan.get("tables") or ["base"]) <= {"base"} else "SEMANTIC_MODEL /* joins governed by relationships */"
+    planned_tables = set(plan.get("tables") or ["base"])
+    if planned_tables <= {"base"}:
+        source = "dataset"
+    else:
+        rel_ids = [
+            str(r.get("id")) for r in model.get("relationships", [])
+            if r.get("active", True) and r.get("from_table") in planned_tables and r.get("to_table") in planned_tables
+        ]
+        source = "SEMANTIC_MODEL /* governed relationships: " + (", ".join(rel_ids) or "validated path") + " */"
     return f"SELECT {select} FROM {source}{group}"
 
 
@@ -160,8 +187,8 @@ def plan_semantic_question(dataset_id: str, df: pd.DataFrame, question: str, lim
     raw = (question or "").strip()
     if not raw:
         return None
-    model = model or get_semantic_model(dataset_id, df)
-    metric, metric_score = _best_match(raw, model.get("metrics", []), dimension=False)
+    model = _with_glossary_terms(model or get_semantic_model(dataset_id, df))
+    metric, metric_score, metric_term = _best_match(raw, model.get("metrics", []), dimension=False)
     if not metric:
         return None
 
@@ -181,7 +208,20 @@ def plan_semantic_question(dataset_id: str, df: pd.DataFrame, question: str, lim
         "metric_id": str(metric["id"]),
         "metric_label": metric.get("label") or metric.get("name") or metric.get("id"),
         "metric_certified": bool(metric.get("certified")),
+        "metric_unit": metric.get("unit") or "",
+        "metric_definition": metric.get("business_definition") or metric.get("description") or "",
+        "metric_match_term": metric_term,
+        "metric_allowed_roles": metric.get("allowed_roles") or [],
         "dimensions": dim_ids,
+        "dimension_resolution": [
+            {
+                "id": str(d.get("id")),
+                "label": d.get("label") or d.get("column"),
+                "table": d.get("table", "base"),
+                "definition": d.get("business_definition") or d.get("description") or "",
+                "allowed_roles": d.get("allowed_roles") or [],
+            } for d in dimensions
+        ],
         "filters": [],
         "limit": effective_limit,
         **time,
@@ -191,6 +231,8 @@ def plan_semantic_question(dataset_id: str, df: pd.DataFrame, question: str, lim
         "semantic_model_version": model.get("version"),
         "semantic_version": model.get("semantic_version", 2),
         "tables": sorted({str(metric.get("table", "base")), *[str(d.get("table", "base")) for d in dimensions]}),
+        "semantic_access": semantic_access_summary(model),
+        "resolution_policy": "deterministic_semantic_resolver_v3",
     }
 
 
@@ -214,7 +256,20 @@ def execute_semantic_question(dataset_id: str, df: pd.DataFrame, question: str, 
         plan.get("aggregation_override"),
     )
     result["elapsed_ms"] = round((time.perf_counter() - started) * 1000, 2)
-    return {"plan": plan, "query": result, "display_sql": _display_sql(plan, model or get_semantic_model(dataset_id, df))}
+    effective_model = _with_glossary_terms(model or get_semantic_model(dataset_id, df))
+    return {
+        "plan": plan,
+        "query": result,
+        "display_sql": _display_sql(plan, effective_model),
+        "validation": {
+            "read_only": True,
+            "deterministic_execution": True,
+            "semantic_model_version": plan.get("semantic_model_version"),
+            "tables_used": result.get("tables_used", plan.get("tables", [])),
+            "relationships_used": result.get("relationships_used", []),
+            "access": result.get("semantic_access") or plan.get("semantic_access"),
+        },
+    }
 
 
 def semantic_result_as_table(execution: dict[str, Any]) -> dict[str, Any]:

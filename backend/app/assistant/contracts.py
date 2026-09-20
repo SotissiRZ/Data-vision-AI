@@ -112,24 +112,28 @@ class CreateVisualizationArgs(BaseModel):
 
 
 class AutoMLArgs(BaseModel):
-    task: Literal["classification", "regression", "clustering", "forecasting"]
+    task: Literal["classification", "regression", "clustering"]
     target: str | None = None
     features: list[str] | None = None
     metric: str | None = None
     validation: Literal["holdout", "cross_validation", "time_split"] = "cross_validation"
+    time_column: str | None = None
     max_models: int = Field(default=8, ge=1, le=50)
     explain: bool = True
 
     @model_validator(mode="after")
     def target_required(self):
-        if self.task in {"classification", "regression", "forecasting"} and not self.target:
+        if self.task in {"classification", "regression"} and not self.target:
             raise ValueError("Une cible est requise pour cette tâche AutoML.")
         return self
 
 
 class ExplainModelArgs(BaseModel):
     method: Literal[
+        "xai_audit",
+        "diagnostics",
         "feature_importance",
+        "shap",
         "shap_global",
         "shap_local",
         "partial_dependence",
@@ -137,9 +141,19 @@ class ExplainModelArgs(BaseModel):
         "confusion_matrix",
         "calibration",
         "counterfactual",
+        "counterfactuals",
     ]
     row_id: str | int | None = None
+    row: dict[str, Any] | None = None
     feature: str | None = None
+    features: list[str] | None = None
+    desired_class: str | int | float | None = None
+    desired_value: float | None = None
+    direction: Literal["increase", "decrease"] | None = None
+    immutable_features: list[str] = []
+    actionable_features: list[str] | None = None
+    feature_constraints: dict[str, dict[str, Any]] = {}
+    include_shap: bool = False
 
 
 class MonitorModelHealthArgs(BaseModel):
@@ -227,10 +241,12 @@ class BufferLayerArgs(BaseModel):
 
 class GenerateReportArgs(BaseModel):
     title: str
-    format: Literal["pdf", "docx", "html", "markdown", "pptx"] = "pdf"
+    format: Literal["pdf", "docx", "html", "markdown"] = "pdf"
     include_methodology: bool = True
     include_provenance: bool = True
     include_visualizations: bool = True
+    custom_blocks: list[dict[str, Any]] = Field(default_factory=list)
+    block_order: list[str] = Field(default_factory=list)
 
 
 class InspectUploadedFileArgs(BaseModel):

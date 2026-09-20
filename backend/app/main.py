@@ -28,7 +28,7 @@ settings = get_settings()
 from app.services.upload_security import antivirus_status
 from app.services.secret_crypto import kms_status
 
-app = FastAPI(title=settings.app_name, version="2.42.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.52.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -264,7 +264,7 @@ def health_live():
     return {
         "status": "alive",
         "product": settings.app_name,
-        "version": "2.42.0",
+        "version": "2.52.0",
     }
 
 
@@ -330,7 +330,7 @@ def health_ready():
         "status": "ready" if ready else "not_ready",
         "ready": ready,
         "product": settings.app_name,
-        "version": "2.42.0",
+        "version": "2.52.0",
         "components": components,
     }
     if ready:
@@ -343,7 +343,7 @@ def health():
     return {
         "status": "ok",
         "product": settings.app_name,
-        "version": "2.42.0",
+        "version": "2.52.0",
     }
 
 
@@ -377,10 +377,10 @@ def capabilities():
             "local_model_registry", "model_cards", "prediction_api",
             "forecasting", "forecast_model_benchmark", "prediction_intervals", "anomaly_detection",
             "xai_diagnostics", "confusion_matrix", "roc_pr_curves", "binary_calibration", "local_perturbation_explanations",
-            "shap_global_local", "partial_dependence", "counterfactual_search",
+            "shap_global_local", "partial_dependence", "counterfactual_search", "xai_audit", "xai_provenance", "importance_stability", "per_class_calibration", "actionable_counterfactuals",
             "root_cause_decomposition", "distribution_shift_analysis", "decision_scenario_optimization",
             "ai_analyst_orchestrator", "natural_language_intent_routing", "analytic_tool_registry", "critic_validation", "analysis_provenance", "ai_analysis_streaming_progress", "ai_analysis_result_cache", "ai_analysis_inflight_deduplication", "ai_analysis_cooperative_cancellation",
-            "analytical_dashboard", "deterministic_insight_feed", "saved_visualizations", "report_visualization_assets",
+            "analytical_dashboard", "deterministic_insight_feed", "insight_engine_v1", "ranked_multi_signal_insights", "insight_priority_scoring", "stable_insight_fingerprints", "insight_version_change_detection", "insight_history", "saved_visualizations", "report_visualization_assets", "report_builder_v2", "composable_report_blocks", "report_block_provenance", "report_content_hash", "report_integrity_validation",
             "dashboard_builder", "dashboard_global_filters", "dashboard_cross_filtering", "dashboard_persistence",
             "local_authentication", "organizations", "enterprise_workspaces", "workspace_rbac", "member_provisioning",
             "postgres_metadata_store", "sqlite_metadata_fallback", "workspace_dataset_binding", "access_policy_registry",
@@ -398,6 +398,7 @@ def capabilities():
             "platform_telemetry", "feature_usage_analytics", "operational_slo_dashboard", "job_attempt_tracking", "job_retry_backoff", "ai_evaluation_suites", "ai_regression_benchmarks",
             "semantic_layer", "semantic_multitable", "semantic_calculated_metrics", "semantic_time_intelligence",
             "semantic_nlq_multitable", "semantic_dashboard_widgets", "semantic_drilldown",
+            "semantic_business_definitions", "semantic_units", "semantic_role_permissions", "linked_business_glossary", "governed_text_to_sql", "semantic_resolution_trace",
             "governed_actions", "human_approval_actions", "signed_webhooks", "action_idempotency", "action_deduplication",
             "action_throttling", "action_quiet_hours", "action_replay", "webhook_ssrf_guard", "action_delivery_audit",
             "native_slack_actions", "native_teams_actions", "native_jira_actions", "native_email_actions",

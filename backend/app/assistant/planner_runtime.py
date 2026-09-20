@@ -109,24 +109,26 @@ class DeterministicPlanner:
         if name == "predict_target":
             target = intent.entities.get("target")
             task = intent.entities.get("ml_task")
-            if not target or not task:
+            if not task or (task != "clustering" and not target):
                 return []
-            return [
-                AgentPlanStep(
+            steps: list[AgentPlanStep] = []
+            if task != "clustering":
+                steps.append(AgentPlanStep(
                     tool="inspect_data_leakage",
                     label="Contrôler les fuites de données",
                     args={"target": target},
-                ),
-                AgentPlanStep(
-                    tool="run_automl",
-                    label=f"Comparer des modèles pour {target}",
-                    args={
-                        "task": task,
-                        "target": target,
-                        "explain": True,
-                    },
-                ),
-            ]
+                ))
+            steps.append(AgentPlanStep(
+                tool="run_automl",
+                label="Comparer des segmentations" if task == "clustering" else f"Comparer des modèles pour {target}",
+                args={
+                    "task": task,
+                    "target": target,
+                    "features": intent.entities.get("features"),
+                    "explain": True,
+                },
+            ))
+            return steps
 
 
         if name == "fairness_analysis":

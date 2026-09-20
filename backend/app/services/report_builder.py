@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import html
 import json
 import math
@@ -37,6 +38,8 @@ from reportlab.platypus import (
 
 from app.core.config import get_settings
 from app.services.analysis_history import get_analysis
+from app.services.insight_engine import generate_insights
+from app.services.modeling import get_model_card
 from app.services.decision import decision_support
 from app.services.profiling import profile_dataframe
 from app.services.quality import quality_report
@@ -89,6 +92,125 @@ SECTION_LABELS = {
     "provenance": "Provenance et reproductibilite",
 }
 
+
+
+REPORT_CUSTOM_BLOCK_TYPES = {"text", "kpi", "table", "insight", "model", "code", "methodology", "visualization"}
+
+
+def _content_hash(payload: dict[str, Any]) -> str:
+    raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str, separators=(",", ":"))
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _block_provenance(meta: dict[str, Any], source_kind: str, source_ref: str | None = None, **extra: Any) -> dict[str, Any]:
+    out = {
+        "dataset_id": meta["id"],
+        "dataset_version": int(meta.get("version", 1)),
+        "source_kind": source_kind,
+        "source_ref": source_ref,
+        "generated_at": _now(),
+        "deterministic": source_kind not in {"user_text", "user_code"},
+    }
+    out.update({k: v for k, v in extra.items() if v is not None})
+    return out
+
+
+def _normalize_custom_blocks(
+    dataset_id: str,
+    meta: dict[str, Any],
+    df: pd.DataFrame,
+    custom_blocks: list[dict[str, Any]] | None,
+    saved_visualizations: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    if not custom_blocks:
+        return []
+    if len(custom_blocks) > 40:
+        raise ValueError("Un rapport ne peut pas contenir plus de 40 blocs personnalisés")
+    insight_cache: dict[str, Any] | None = None
+    saved_by_id = {str(v.get("id")): v for v in saved_visualizations}
+    out: list[dict[str, Any]] = []
+    for index, raw in enumerate(custom_blocks):
+        if not isinstance(raw, dict):
+            raise ValueError("Chaque bloc personnalisé doit être un objet")
+        kind = str(raw.get("type") or "").strip().lower()
+        if kind not in REPORT_CUSTOM_BLOCK_TYPES:
+            raise ValueError(f"Type de bloc de rapport non supporté: {kind or '-'}")
+        block_id = str(raw.get("id") or f"custom:{index+1}")[:120]
+        title = str(raw.get("title") or kind.title()).strip()[:180]
+        if kind == "text":
+            text = str(raw.get("text") or "").strip()
+            out.append({"id": block_id, "type": "text", "title": title, "text": text, "provenance": _block_provenance(meta, "user_text", block_id)})
+        elif kind == "kpi":
+            items = raw.get("items") or []
+            if not isinstance(items, list) or not items:
+                raise ValueError("Un bloc KPI doit contenir items[]")
+            normalized=[]
+            for item in items[:12]:
+                if not isinstance(item, dict) or not str(item.get("label") or "").strip():
+                    raise ValueError("Chaque KPI doit avoir un label")
+                normalized.append({"label": str(item.get("label"))[:120], "value": item.get("value"), "hint": str(item.get("hint") or item.get("unit") or "")[:80], "source": str(item.get("source") or "manual")[:120]})
+            out.append({"id": block_id, "type": "kpi", "title": title, "items": normalized, "provenance": _block_provenance(meta, "user_composed_kpi", block_id)})
+        elif kind == "table":
+            cols = [str(c)[:120] for c in (raw.get("columns") or [])][:20]
+            rows = raw.get("rows") or []
+            if not cols or not isinstance(rows, list):
+                raise ValueError("Un bloc table doit contenir columns[] et rows[]")
+            clean_rows = [{c: row.get(c) for c in cols} for row in rows[:200] if isinstance(row, dict)]
+            out.append({"id": block_id, "type": "table", "title": title, "columns": cols, "rows": clean_rows, "provenance": _block_provenance(meta, "user_composed_table", block_id, row_count=len(clean_rows))})
+        elif kind == "insight":
+            if insight_cache is None:
+                insight_cache = generate_insights(dataset_id, df, max_insights=50, persist=False)
+            wanted = str(raw.get("fingerprint") or raw.get("insight_id") or raw.get("id_ref") or "")
+            insight = next((x for x in (insight_cache.get("insights") or []) if str(x.get("fingerprint")) == wanted or str(x.get("id")) == wanted), None)
+            if insight is None:
+                raise ValueError("Insight introuvable pour ce dataset/version")
+            out.append({"id": block_id, "type": "insight", "title": title or str(insight.get("title")), "data": insight, "provenance": _block_provenance(meta, "insight_engine", str(insight.get("fingerprint")), engine="datavision_insight_engine_v1")})
+        elif kind == "model":
+            model_id = str(raw.get("model_id") or "").strip()
+            if not model_id:
+                raise ValueError("Un bloc modèle doit référencer model_id")
+            card = get_model_card(model_id)
+            card_dataset = str((card.get("dataset") or {}).get("id") or "")
+            if card_dataset and card_dataset != dataset_id:
+                raise ValueError("Le modèle référencé n'appartient pas à cette version du dataset")
+            out.append({"id": block_id, "type": "model", "title": title, "data": {"model_id": model_id, "task": card.get("task"), "algorithm": card.get("algorithm"), "target": card.get("target"), "metrics": card.get("metrics") or card.get("metrics_final_test") or {}, "validation": card.get("validation") or card.get("metrics_validation") or {}, "xai_summary": card.get("xai_summary") or {}, "created_at": card.get("created_at")}, "provenance": _block_provenance(meta, "model_card", model_id, xai_audited=bool(card.get("xai_summary")))})
+        elif kind == "code":
+            language = str(raw.get("language") or "text").strip()[:32]
+            code = str(raw.get("code") or "")[:20000]
+            output = str(raw.get("output") or "")[:10000]
+            out.append({"id": block_id, "type": "code", "title": title, "language": language, "code": code, "output": output, "provenance": _block_provenance(meta, "user_code", block_id, executed=False)})
+        elif kind == "methodology":
+            items = [str(x)[:1000] for x in (raw.get("items") or []) if str(x).strip()][:30]
+            out.append({"id": block_id, "type": "methodology", "title": title, "items": items, "provenance": _block_provenance(meta, "user_methodology", block_id)})
+        elif kind == "visualization":
+            viz_id = str(raw.get("visualization_id") or "")
+            item = saved_by_id.get(viz_id)
+            if item is None:
+                raise ValueError("Visualisation introuvable pour cette version du dataset")
+            out.append({"id": block_id, "type": "visualization", "title": title or str(item.get("title") or "Visualisation"), "item": item, "provenance": _block_provenance(meta, "saved_visualization", viz_id)})
+    return out
+
+
+def validate_report(report_id: str) -> dict[str, Any]:
+    report = get_report(report_id)
+    errors: list[str] = []
+    warnings: list[str] = []
+    blocks = report.get("blocks") or []
+    if not blocks:
+        errors.append("Le rapport ne contient aucun bloc")
+    if not report.get("reproducibility", {}).get("dataset_version_locked"):
+        errors.append("La version du dataset n'est pas verrouillée")
+    for idx, block in enumerate(blocks, 1):
+        if not block.get("provenance"):
+            warnings.append(f"Bloc {idx}: provenance absente (rapport historique)")
+        elif int(block["provenance"].get("dataset_version", report.get("dataset", {}).get("version", 0))) != int(report.get("dataset", {}).get("version", 0)):
+            errors.append(f"Bloc {idx}: version de provenance incohérente")
+    expected = report.get("content_hash")
+    payload = {k: v for k, v in report.items() if k != "content_hash"}
+    actual = _content_hash(payload)
+    if expected and expected != actual:
+        errors.append("Hash de contenu du rapport invalide")
+    return {"report_id": report_id, "status": "pass" if not errors else "fail", "errors": errors, "warnings": warnings, "blocks": len(blocks), "dataset": report.get("dataset"), "content_hash": expected or actual}
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -481,6 +603,8 @@ def build_report(
     auto_story: bool = False,
     auto_visualizations: bool = False,
     max_visualizations: int = 6,
+    custom_blocks: list[dict[str, Any]] | None = None,
+    block_order: list[str] | None = None,
 ) -> dict[str, Any]:
     meta = get_meta(dataset_id)
     df = load_dataframe(dataset_id)
@@ -513,38 +637,38 @@ def build_report(
 
     blocks: list[dict[str, Any]] = []
     if "executive_summary" in chosen:
-        blocks.append({"type": "executive_summary", "title": SECTION_LABELS["executive_summary"], "data": _executive_summary(profile, quality, decision, analysis)})
+        blocks.append({"id": "section:executive_summary", "type": "executive_summary", "title": SECTION_LABELS["executive_summary"], "data": _executive_summary(profile, quality, decision, analysis)})
     if "analytical_story" in chosen:
-        blocks.append({"type": "analytical_story", "title": SECTION_LABELS["analytical_story"], "data": _analytical_story(df, profile, quality, decision, analysis)})
+        blocks.append({"id": "section:analytical_story", "type": "analytical_story", "title": SECTION_LABELS["analytical_story"], "data": _analytical_story(df, profile, quality, decision, analysis)})
     if "overview" in chosen:
-        blocks.append({"type": "overview", "title": SECTION_LABELS["overview"], "data": {
+        blocks.append({"id": "section:overview", "type": "overview", "title": SECTION_LABELS["overview"], "data": {
             "rows": profile.get("rows"), "columns": profile.get("columns_count"), "duplicates": profile.get("duplicates"),
             "memory_bytes": profile.get("memory_bytes"), "quality_score": quality.get("score"),
             "type_summary": _type_summary(profile), "missing_summary": _missing_summary(profile),
             "recommended_actions": decision.get("actions", [])[:5],
         }})
     if "quality" in chosen:
-        blocks.append({"type": "quality", "title": SECTION_LABELS["quality"], "data": {
+        blocks.append({"id": "section:quality", "type": "quality", "title": SECTION_LABELS["quality"], "data": {
             "score": quality.get("score"), "issues_count": quality.get("issues_count"), "severity": _severity_counts(quality),
             "issues": quality.get("issues", [])[:30]
         }})
     if "descriptive" in chosen:
-        blocks.append({"type": "table", "title": SECTION_LABELS["descriptive"], "columns": ["variable", "n", "mean", "median", "std", "q1", "q3", "min", "max"], "rows": _numeric_summary(df)})
+        blocks.append({"id": "section:descriptive", "type": "table", "title": SECTION_LABELS["descriptive"], "columns": ["variable", "n", "mean", "median", "std", "q1", "q3", "min", "max"], "rows": _numeric_summary(df)})
     if "visualizations" in chosen:
-        blocks.append({"type": "visualizations", "title": SECTION_LABELS["visualizations"], "items": saved})
+        blocks.append({"id": "section:visualizations", "type": "visualizations", "title": SECTION_LABELS["visualizations"], "items": saved})
     if "ai_analysis" in chosen:
         if analysis:
-            blocks.append({"type": "ai_analysis", "title": SECTION_LABELS["ai_analysis"], "data": {
+            blocks.append({"id": "section:ai_analysis", "type": "ai_analysis", "title": SECTION_LABELS["ai_analysis"], "data": {
                 "session_id": analysis.get("session_id"), "question": analysis.get("question"), "answer": analysis.get("answer"),
                 "intent": analysis.get("intent"), "critic": analysis.get("critic"), "findings": analysis.get("findings", []),
                 "provenance": analysis.get("provenance", {}),
             }})
         else:
-            blocks.append({"type": "note", "title": SECTION_LABELS["ai_analysis"], "text": "Aucune session AI Analyst n'a ete selectionnee pour ce rapport."})
+            blocks.append({"id": "section:ai_analysis", "type": "note", "title": SECTION_LABELS["ai_analysis"], "text": "Aucune session AI Analyst n'a ete selectionnee pour ce rapport."})
     if "limitations" in chosen:
-        blocks.append({"type": "limitations", "title": SECTION_LABELS["limitations"], "items": _report_limitations(df, profile, quality, analysis)})
+        blocks.append({"id": "section:limitations", "type": "limitations", "title": SECTION_LABELS["limitations"], "items": _report_limitations(df, profile, quality, analysis)})
     if "methodology" in chosen:
-        blocks.append({"type": "methodology", "title": SECTION_LABELS["methodology"], "items": [
+        blocks.append({"id": "section:methodology", "type": "methodology", "title": SECTION_LABELS["methodology"], "items": [
             "Les statistiques et metriques sont calculees par les moteurs executables de DataVision, et non generees par un LLM.",
             "Le rapport reference la version exacte du dataset utilisee au moment de sa creation.",
             "Les donnees originales restent immuables; les transformations sont versionnees et tracables.",
@@ -552,11 +676,26 @@ def build_report(
             "Les resultats predicitifs doivent etre lus avec leurs metriques de validation et le contexte metier.",
         ]})
     if "provenance" in chosen:
-        blocks.append({"type": "provenance", "title": SECTION_LABELS["provenance"], "data": {
+        blocks.append({"id": "section:provenance", "type": "provenance", "title": SECTION_LABELS["provenance"], "data": {
             "dataset_id": meta["id"], "dataset_name": meta.get("original_name"), "dataset_version": meta.get("version", 1),
             "root_id": meta.get("root_id", meta["id"]), "parent_id": meta.get("parent_id"), "operation": meta.get("operation"),
             "generated_at": _now(), "analysis_session_id": analysis_session_id,
         }})
+
+    source_map = {
+        "executive_summary": "profile_quality_decision", "analytical_story": "deterministic_analytics", "overview": "profiling",
+        "quality": "data_quality", "table": "descriptive_statistics", "visualizations": "saved_visualizations",
+        "ai_analysis": "ai_analyst", "note": "report_builder", "limitations": "report_builder", "methodology": "report_builder", "provenance": "dataset_metadata",
+    }
+    for block in blocks:
+        block.setdefault("provenance", _block_provenance(meta, source_map.get(str(block.get("type")), "report_builder"), str(block.get("id"))))
+    custom = _normalize_custom_blocks(dataset_id, meta, df, custom_blocks, saved_all)
+    blocks.extend(custom)
+    if block_order:
+        order = {str(block_id): idx for idx, block_id in enumerate(block_order)}
+        original = {id(block): idx for idx, block in enumerate(blocks)}
+        blocks.sort(key=lambda b: (order.get(str(b.get("id")), len(order) + original[id(b)]), original[id(b)]))
+    outline = [{"number": i + 1, "key": str(block.get("id") or f"block:{i+1}"), "title": str(block.get("title") or "Section")} for i, block in enumerate(blocks)]
 
     report = {
         "id": str(uuid4()), "dataset_id": dataset_id,
@@ -565,15 +704,17 @@ def build_report(
         "author": (author or "DataVision AI").strip(), "organization": (organization or "").strip(),
         "template": template, "template_label": TEMPLATES[template]["label"],
         "created_at": _now(), "dataset": {"id": meta["id"], "name": meta.get("original_name"), "version": meta.get("version", 1)},
-        "sections": chosen, "section_outline": [{"number": i + 1, "key": key, "title": SECTION_LABELS[key]} for i, key in enumerate(chosen)],
+        "sections": chosen, "section_outline": outline,
         "analysis_session_id": analysis_session_id,
         "visualization_ids": [v.get("id") for v in saved if v.get("source") != "auto_report"],
         "auto_visualization_count": len([v for v in saved if v.get("source") == "auto_report"]),
         "generation_mode": "intelligent" if (auto_story or auto_visualizations) else "manual",
         "intelligence": {"auto_story": bool(auto_story), "auto_visualizations": bool(auto_visualizations), "max_visualizations": max_visualizations},
         "blocks": blocks,
-        "reproducibility": {"dataset_version_locked": True, "analysis_session_locked": bool(analysis_session_id), "visualizations_locked": True, "auto_generated_visualizations_embedded": bool(auto_items)},
+        "block_schema_version": 1, "block_count": len(blocks), "block_order": [str(b.get("id")) for b in blocks],
+        "reproducibility": {"dataset_version_locked": True, "analysis_session_locked": bool(analysis_session_id), "visualizations_locked": True, "auto_generated_visualizations_embedded": bool(auto_items), "block_provenance": True},
     }
+    report["content_hash"] = _content_hash(report)
     (_dir() / f"{report['id']}.json").write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return report
 
@@ -597,7 +738,7 @@ def list_reports(dataset_id: str) -> list[dict[str, Any]]:
         rows.append({
             "id": report.get("id"), "title": report.get("title"), "created_at": report.get("created_at"),
             "dataset_version": report.get("dataset", {}).get("version"), "sections": report.get("sections", []),
-            "analysis_session_id": report.get("analysis_session_id"), "template": report.get("template", "analytical"),
+            "analysis_session_id": report.get("analysis_session_id"), "template": report.get("template", "analytical"), "block_count": report.get("block_count", len(report.get("blocks", []))), "content_hash": report.get("content_hash"),
         })
     rows.sort(key=lambda x: x.get("created_at") or "", reverse=True)
     return rows
@@ -827,6 +968,20 @@ def _markdown(report: dict[str, Any]) -> str:
         elif kind == "methodology":
             for item in block.get("items", []): out.append(f"- {item}")
             out.append("")
+        elif kind == "kpi":
+            for item in block.get("items", []): out.append(f"- **{item.get('label','')} :** {_fmt(item.get('value'))} {item.get('hint','')}")
+            out.append("")
+        elif kind == "insight":
+            d=block.get("data",{}); out.extend([f"**{d.get('title','Insight')}**", "", d.get("statement", ""), "", f"Priorité : {_fmt(d.get('priority_score'))}/100 · confiance {_fmt(d.get('confidence'))}", "", f"Méthode : `{(d.get('calculation') or {}).get('method','-')}`", ""])
+        elif kind == "model":
+            d=block.get("data",{}); out.extend([f"- Modèle : `{d.get('model_id','')}`", f"- Tâche : {d.get('task','-')}", f"- Algorithme : {d.get('algorithm','-')}", f"- Cible : {d.get('target','-')}", ""]);
+            for k,v in (d.get("metrics") or {}).items(): out.append(f"  - {k}: {_fmt(v)}")
+            out.append("")
+        elif kind == "code":
+            out.extend([f"```{block.get('language','text')}", block.get("code", ""), "```", ""]);
+            if block.get("output"): out.extend(["Sortie :", "```text", block.get("output", ""), "```", ""])
+        elif kind == "visualization":
+            item=block.get("item",{}); viz=item.get("visualization",{}); out.extend([f"Type : `{viz.get('type','-')}`", "", str(item.get("insight") or item.get("reason") or ""), ""])
         elif kind == "provenance":
             for k, v in block.get("data", {}).items(): out.append(f"- {k}: `{_fmt(v)}`")
             out.append("")
@@ -1059,6 +1214,18 @@ def _docx_export(report: dict[str, Any], path: Path):
             elif kind=="methodology":
                 for i,item in enumerate(block.get("items",[]),1):
                     p=doc.add_paragraph(); a=p.add_run(f"{i:02d}  "); a.bold=True; a.font.color.rgb=RGBColor.from_string(BRAND["teal"].replace("#", "")); p.add_run(item)
+            elif kind=="kpi":
+                _docx_table(doc,["label","value","hint"],[{"label":x.get("label"),"value":_fmt(x.get("value")),"hint":x.get("hint","")} for x in block.get("items",[])])
+            elif kind=="insight":
+                d=block.get("data",{}); doc.add_paragraph(str(d.get("statement",""))); doc.add_paragraph(f"Priorité {_fmt(d.get('priority_score'))}/100 · confiance {_fmt(d.get('confidence'))}")
+            elif kind=="model":
+                d=block.get("data",{}); rows=[{"element":"model_id","valeur":d.get("model_id")},{"element":"task","valeur":d.get("task")},{"element":"algorithm","valeur":d.get("algorithm")},{"element":"target","valeur":d.get("target")}] + [{"element":k,"valeur":_fmt(v)} for k,v in (d.get("metrics") or {}).items()]; _docx_table(doc,["element","valeur"],rows)
+            elif kind=="code":
+                p=doc.add_paragraph(); r=p.add_run(block.get("code","")); r.font.name="Courier New"; r.font.size=Pt(8);
+                if block.get("output"): doc.add_paragraph("Sortie").runs[0].bold=True; doc.add_paragraph(block.get("output",""))
+            elif kind=="visualization":
+                item=block.get("item",{}); tmp=Path(tempfile.mkdtemp())/"chart.png";
+                if _drawing_png(item,tmp): doc.add_picture(str(tmp),width=Inches(6.2))
             elif kind=="provenance":
                 rows=[{"element":k,"valeur":_fmt(v)} for k,v in block.get("data",{}).items()]; _docx_table(doc,["element","valeur"],rows)
             else: doc.add_paragraph(block.get("text",""))
@@ -1180,6 +1347,17 @@ def _pdf_export(report: dict[str, Any], path: Path):
                 story.append(Paragraph(f"<b>{html.escape(str(item.get('title','')))}</b> - {html.escape(str(item.get('text','')))}<br/><font size='7' color='{BRAND['muted']}'><b>Prudence :</b> {html.escape(str(item.get('mitigation','')))}</font>",styles["body"]))
         elif kind=="methodology":
             for i,item in enumerate(block.get("items",[]),1): story.append(Paragraph(f"<b>{i:02d}</b>  {html.escape(item)}",styles["body"]))
+        elif kind=="kpi": story.append(_pdf_kpis(block.get("items",[]),styles))
+        elif kind=="insight":
+            d=block.get("data",{}); story.append(Paragraph(f"<b>{html.escape(str(d.get('title','Insight')))}</b><br/>{html.escape(str(d.get('statement','')))}<br/><font size='7' color='{BRAND['muted']}'>Priorité {_fmt(d.get('priority_score'))}/100 · confiance {_fmt(d.get('confidence'))}</font>",styles["body"]))
+        elif kind=="model":
+            d=block.get("data",{}); rows=[{"element":"model_id","valeur":d.get("model_id")},{"element":"task","valeur":d.get("task")},{"element":"algorithm","valeur":d.get("algorithm")},{"element":"target","valeur":d.get("target")}] + [{"element":k,"valeur":_fmt(v)} for k,v in (d.get("metrics") or {}).items()]; story.append(_pdf_table(["element","valeur"],rows,[45*mm,115*mm],6.3))
+        elif kind=="code":
+            story.append(Paragraph(f"<font name='Courier'>{html.escape(str(block.get('code',''))).replace(chr(10),'<br/>')}</font>",styles["small"]));
+            if block.get("output"): story.extend([Paragraph("Sortie",styles["h2"]),Paragraph(html.escape(str(block.get("output",""))).replace("\n","<br/>"),styles["small"])])
+        elif kind=="visualization":
+            item=block.get("item",{}); drawing=_chart_drawing(item,450,225);
+            if drawing is not None: story.append(drawing)
         elif kind=="provenance": story.append(_pdf_table(["element","valeur"],[{"element":k,"valeur":_fmt(v)} for k,v in block.get("data",{}).items()],[45*mm,115*mm],6.3))
         else: story.append(Paragraph(html.escape(block.get("text","")),styles["body"]))
         if sec<len(report.get("blocks",[])): story.append(PageBreak())
