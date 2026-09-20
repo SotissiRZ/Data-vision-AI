@@ -84,3 +84,15 @@ def test_agent_cannot_downgrade_registered_tool_risk():
         AssistantContext(activeDatasetId="ds_1"),
     )
     assert decision.status == "confirmation_required"
+
+
+def test_executor_denies_declared_but_unbound_tool():
+    registry = AssistantToolRegistry()
+    registry.register(ToolSpec(name="declared_only", description="x", category="test"))
+    executor = GovernedToolExecutor(registry, AllowAllDevelopmentAuthorization())
+    decision = executor.prepare(
+        AssistantAction(tool="declared_only", label="Tester"),
+        AssistantContext(),
+    )
+    assert decision.status == "deny"
+    assert "indisponible" in decision.reason

@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-EXPECTED_VERSION = "2.43.0"
+EXPECTED_VERSION = "2.44.0"
 EXPECTED_CRYPTOGRAPHY = "cryptography==46.0.5"
 REQUIRED_FILES = (
     "VERSION",
@@ -17,6 +17,7 @@ REQUIRED_FILES = (
     "compliance/MVP_ACCEPTANCE.json",
     "compliance/PREPARATION_ACCEPTANCE.json",
     "compliance/WORKSPACE_ACCEPTANCE.json",
+    "compliance/ASSISTANT_ACCEPTANCE.json",
     "frontend/package.json",
     "frontend/next.config.mjs",
     "frontend/lib/assistant/orchestrator-adapter.ts",
@@ -24,6 +25,7 @@ REQUIRED_FILES = (
     "scripts/mvp_acceptance.py",
     "scripts/preparation_acceptance.py",
     "scripts/workspace_acceptance.py",
+    "scripts/assistant_acceptance.py",
     "scripts/verify_release.py",
     "backend/tests/test_mvp_workflow_v241.py",
     "backend/tests/test_data_preparation_v242.py",
@@ -31,6 +33,9 @@ REQUIRED_FILES = (
     "backend/tests/test_frontend_preparation_v242.py",
     "backend/tests/test_data_workspace_v243.py",
     "backend/tests/test_frontend_workspace_v243.py",
+    "backend/tests/assistant/test_assistant_v244.py",
+    "backend/tests/test_frontend_assistant_v244.py",
+    "frontend/lib/assistant/effects.ts",
     "frontend/e2e/mvp.spec.ts",
 )
 
@@ -86,7 +91,7 @@ def check(root: Path) -> list[str]:
                 if not scripts.get(script):
                     errors.append(f"Missing frontend npm script: {script}")
 
-    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json"):
+    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json"):
         path = root / rel
         if not path.is_file():
             continue

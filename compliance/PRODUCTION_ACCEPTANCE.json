@@ -1,5 +1,5 @@
 {
-  "product_version": "2.43.0",
+  "product_version": "2.44.0",
   "acceptance": "conditional",
   "coverage_percent": 84.7,
   "gates": [
@@ -25,6 +25,12 @@
       "id": "full_cdc",
       "label": "CDC 100%",
       "status": "conditional",
+      "blocking": false
+    },
+    {
+      "id": "assistant_v1",
+      "label": "Assistant V1 tool-connected",
+      "status": "pass",
       "blocking": false
     }
   ],
@@ -76,5 +82,15 @@
     ],
     "frontend_contract_test": "backend/tests/test_frontend_workspace_v243.py",
     "ci_gate": "scripts/workspace_acceptance.py --check"
+  },
+  "assistant_runtime_evidence": {
+    "manifest": "compliance/ASSISTANT_ACCEPTANCE.json",
+    "backend_tests": [
+      "backend/tests/assistant/test_assistant_v244.py",
+      "backend/tests/assistant/test_action_runs.py",
+      "backend/tests/assistant/test_turn_resume.py"
+    ],
+    "frontend_contract_test": "backend/tests/test_frontend_assistant_v244.py",
+    "ci_gate": "scripts/assistant_acceptance.py --check"
   }
 }

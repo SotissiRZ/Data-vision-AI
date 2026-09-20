@@ -184,11 +184,11 @@ export default function Home() {
   useEffect(()=>{ if(!displayToolsOpen)return; const handlePointer=(e:PointerEvent)=>{if(displayToolsRef.current&&!displayToolsRef.current.contains(e.target as Node))setDisplayToolsOpen(false);}; window.addEventListener('pointerdown',handlePointer); return()=>window.removeEventListener('pointerdown',handlePointer); },[displayToolsOpen]);
   useEffect(()=>{
     const handleAssistantNavigate=(event:Event)=>{
-      const detail=(event as CustomEvent<{view?:string;datasetId?:string;modelId?:string}>).detail;
+      const detail=(event as CustomEvent<{view?:string;datasetId?:string;modelId?:string;refreshDataset?:boolean}>).detail;
       if(!detail?.view || !(detail.view in viewLabels)) return;
       void (async()=>{
         const nextView=detail.view as View;
-        if(detail.datasetId && detail.datasetId!==result?.dataset?.id){
+        if(detail.datasetId && (detail.datasetId!==result?.dataset?.id || detail.refreshDataset)){
           const loaded=await activateDataset(detail.datasetId,nextView);
           if(!loaded) return;
         } else {

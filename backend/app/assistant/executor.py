@@ -65,6 +65,13 @@ class GovernedToolExecutor:
                 reason=f"Outil non enregistré : {action.tool}",
             )
 
+        if not self.registry.has_handler(action.tool):
+            return ExecutionDecision(
+                status="deny",
+                reason=f"Outil déclaré mais indisponible dans ce runtime : {action.tool}",
+                tool=spec,
+            )
+
         if spec.metadata.get("origin") == "plugin":
             plugin_workspace = spec.metadata.get("workspace_id")
             if not context.workspaceId or str(plugin_workspace) != str(context.workspaceId):

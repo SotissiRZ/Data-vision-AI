@@ -18,6 +18,7 @@ import {
   type VoiceState,
 } from "../../lib/assistant/voice";
 import { toSpeechText } from "../../lib/assistant/speech-text";
+import { applyAssistantHostEffects } from "../../lib/assistant/effects";
 import styles from "./FloatingDataVisionAssistant.module.css";
 
 type Message = {
@@ -330,11 +331,13 @@ useEffect(() => {
     ]);
 
     try {
+      const liveContext = assistantEventBus.getContext();
       const response = await adapter.sendMessage({
         message: text,
-        context,
+        context: liveContext,
         attachmentIds: attachments.map((item) => item.id),
       });
+      applyAssistantHostEffects(response, liveContext);
 
       const artifacts = Array.isArray(response.metadata?.recent_artifacts)
         ? (response.metadata?.recent_artifacts as Array<Record<string, any>>)
@@ -449,7 +452,9 @@ useEffect(() => {
 
     setBusy(true);
     try {
-      const response = await adapter.executeAction(action, context);
+      const liveContext = assistantEventBus.getContext();
+      const response = await adapter.executeAction(action, liveContext);
+      applyAssistantHostEffects(response, liveContext);
       const artifacts = Array.isArray(response.metadata?.recent_artifacts)
         ? (response.metadata?.recent_artifacts as Array<Record<string, any>>)
         : [];
@@ -505,7 +510,8 @@ useEffect(() => {
 
     setBusy(true);
     try {
-      const response = await adapter.rejectAction(action, context);
+      const liveContext = assistantEventBus.getContext();
+      const response = await adapter.rejectAction(action, liveContext);
       const resolvedReference = response.metadata?.last_reference_resolution;
       if (resolvedReference && typeof resolvedReference === "object") {
         setLastReference(resolvedReference as Record<string, any>);

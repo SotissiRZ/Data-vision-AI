@@ -1,4 +1,4 @@
-.PHONY: up down logs test typecheck build-web compose-check e2e-smoke hygiene release verify-release
+.PHONY: up down logs test typecheck build-web compose-check e2e-smoke hygiene assistant-acceptance release verify-release
 
 up:
 	cp -n .env.example .env || true
@@ -28,6 +28,9 @@ e2e-smoke:
 
 hygiene:
 	python scripts/repository_hygiene.py --check
+
+assistant-acceptance:
+	python scripts/assistant_acceptance.py --root . --check
 
 release:
 	python scripts/release.py --output dist

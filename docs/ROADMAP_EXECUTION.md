@@ -1,5 +1,18 @@
 # Roadmap d'exécution
 
+## Livré — v2.44 Assistant V1 contextuel et tool-connected
+
+- bouton flottant global ;
+- contexte live écran / dataset / version / modèle ;
+- tool registry filtré aux capacités réellement exécutables ;
+- exécution sur moteurs DataVision réels avec RBAC ;
+- confirmation/refus/reprise des actions gouvernées ;
+- resynchronisation UI après actions ;
+- fichiers + texte + voix ;
+- gate `ASSISTANT_ACCEPTANCE` 8/8.
+
+La prochaine priorité produit est **v2.45 — Assistant multimodal/proactif : voix enrichie, fichiers avancés, erreurs et aide proactive**.
+
 ## Livré — v2.43 Data Workspace reproductible
 
 - SQL local read-only ;
@@ -11,7 +24,7 @@
 - artefacts persistés et promotion contrôlée vers une nouvelle version de dataset ;
 - gate `WORKSPACE_ACCEPTANCE` 8/8.
 
-La prochaine priorité produit est **v2.44 — Assistant V1 contextuel et réellement tool-connected**.
+La priorité v2.44 a été livrée ; voir la section ci-dessus.
 
 ## Livré — v2.12 Identity, SSO & Secret Management
 

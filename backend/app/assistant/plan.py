@@ -37,6 +37,18 @@ def validate_agent_plan(
             )
             continue
 
+        if not registry.has_handler(step.tool):
+            results.append(
+                AgentPlanStepValidation(
+                    id=step.id,
+                    tool=step.tool,
+                    status="deny",
+                    reason="Outil déclaré mais non raccordé au runtime DataVision.",
+                    risk=spec.risk,
+                )
+            )
+            continue
+
         if spec.metadata.get("origin") == "plugin":
             plugin_workspace = spec.metadata.get("workspace_id")
             if not context.workspaceId or str(plugin_workspace) != str(context.workspaceId):

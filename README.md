@@ -1,6 +1,24 @@
-# DataVision AI — v2.43.0
+# DataVision AI — v2.44.0
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
+
+
+## Nouveau dans v2.44.0 — Assistant V1 réellement tool-connected
+
+La v2.44.0 ferme le lot **Assistant V1** en s'appuyant sur l'architecture agentique déjà présente, sans créer un second chatbot parallèle :
+
+- assistant flottant monté globalement dans l'application ;
+- contexte live écran / workspace / dataset / version / modèle lu au moment exact de chaque tour et action ;
+- catalogue et planner limités aux outils réellement raccordés à un handler DataVision ;
+- refus déterministe des outils déclarés mais non disponibles dans le runtime ;
+- exécution via les moteurs DataVision réels et leurs permissions RBAC ;
+- confirmations humaines conservées pour les actions gouvernées ;
+- resynchronisation automatique de l'interface après transformation de dataset, création de modèle, rapport ou visualisation ;
+- upload de fichiers, texte, écoute et synthèse vocale conservés ;
+- gate exécutable `python scripts/assistant_acceptance.py --root . --check` ;
+- manifest de preuve `compliance/ASSISTANT_ACCEPTANCE.json`.
+
+Aucun volume Docker ni dataset existant n'a besoin d'être supprimé pour passer de v2.43.0 à v2.44.0.
 
 
 ## Nouveau dans v2.43.0 — Data Workspace reproductible

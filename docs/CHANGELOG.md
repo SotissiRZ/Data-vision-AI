@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.44.0 — Assistant V1 tool-connected
+- Catalogue du planner limité aux outils réellement exécutables dans le runtime courant.
+- Outils déclarés mais non bridgés refusés avant planification/exécution et masqués du catalogue utilisateur.
+- Contexte live relu depuis l'Event Bus au moment exact des messages, confirmations et refus.
+- Resynchronisation automatique de l'UI après transformation de dataset, création de modèle, rapport, visualisation ou cellule notebook.
+- Diagnostic assistant enrichi avec nombre d'outils exécutables/déclarés et liste des capacités indisponibles.
+- Nouveau gate `ASSISTANT_ACCEPTANCE` 8/8 intégré à la CI et au préflight.
+- Ajout des tests backend/frontend de non-régression v2.44.
+
 ## 2.43.0 — Data Workspace reproductible
 - Notebooks liés explicitement à une version immuable du dataset et visibles sur toute sa lignée.
 - Rebinding d'un notebook vers une version précise sans réécriture de l'historique des runs.

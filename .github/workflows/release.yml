@@ -23,6 +23,8 @@ jobs:
       - run: cp .env.example .env
       - run: python scripts/production_baseline.py --check
       - run: python scripts/preparation_acceptance.py --root . --check
+      - run: python scripts/workspace_acceptance.py --root . --check
+      - run: python scripts/assistant_acceptance.py --root . --check
       - run: docker compose config -q
       - run: docker compose build api web sandbox
       - working-directory: frontend

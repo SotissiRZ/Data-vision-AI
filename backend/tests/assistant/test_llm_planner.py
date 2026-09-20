@@ -35,9 +35,12 @@ def test_gateway_planner_parses_known_tools_and_drops_unknown():
         )
     )
 
+    tool_registry = build_default_registry()
+    tool_registry.bind_handler("profile_dataset", lambda **kwargs: {"rows": 1})
+
     planner = GatewayPlannerProvider(
         gateway=ModelGateway(registry),
-        registry=build_default_registry(),
+        registry=tool_registry,
         routing_policy=RoutingPolicy(
             privacy_mode="local_only",
             allow_external_ai=False,

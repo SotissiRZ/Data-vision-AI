@@ -69,7 +69,7 @@ class GatewayPlannerProvider(PlannerProvider):
             )
 
         catalog = []
-        for spec in self.registry.list_for_context(context):
+        for spec in self.registry.list_for_context(context, executable_only=True):
             catalog.append(
                 {
                     "name": spec.name,
@@ -126,7 +126,7 @@ class GatewayPlannerProvider(PlannerProvider):
 
         steps: list[AgentPlanStep] = []
         for item in parsed.steps:
-            if self.registry.get(item.tool) is None:
+            if self.registry.get(item.tool) is None or not self.registry.has_handler(item.tool):
                 continue
             steps.append(
                 AgentPlanStep(

@@ -105,11 +105,16 @@ agent_orchestrator = build_orchestrator(
 
 @router.get("/health")
 def assistant_health():
+    declared = [spec for spec in tool_registry.list() if spec.metadata.get("origin") != "plugin"]
+    executable = [spec for spec in tool_registry.list_executable() if spec.metadata.get("origin") != "plugin"]
+    unavailable = sorted(spec.name for spec in declared if not tool_registry.has_handler(spec.name))
     return {
         "status": "ok",
         "component": "conversational_voice_agent",
-        "version": "2.39.0",
-        "tool_count": len([spec for spec in tool_registry.list() if spec.metadata.get("origin") != "plugin"]),
+        "version": "2.44.0",
+        "tool_count": len(executable),
+        "declared_tool_count": len(declared),
+        "unavailable_tools": unavailable,
         "plugin_tools": "tenant_scoped",
     }
 
@@ -221,7 +226,11 @@ def list_tools():
     workspace_id = str(access.workspace_id) if access is not None else None
     class _Context:
         workspaceId = workspace_id
-    visible_tools = tool_registry.list_for_context(_Context()) if workspace_id else tool_registry.list_for_context(None)
+    visible_tools = (
+        tool_registry.list_for_context(_Context(), executable_only=True)
+        if workspace_id
+        else tool_registry.list_for_context(None, executable_only=True)
+    )
     return [
         ToolCatalogItem(
             name=spec.name,

@@ -59,10 +59,17 @@ class AssistantToolRegistry:
     def list(self) -> list[ToolSpec]:
         return sorted(self._specs.values(), key=lambda item: (item.category, item.name))
 
-    def list_for_context(self, context: Any | None) -> list[ToolSpec]:
+    def list_for_context(
+        self,
+        context: Any | None,
+        *,
+        executable_only: bool = False,
+    ) -> list[ToolSpec]:
         workspace_id = getattr(context, "workspaceId", None) if context is not None else None
         visible: list[ToolSpec] = []
-        for spec in self._specs.values():
+        for name, spec in self._specs.items():
+            if executable_only and name not in self._handlers:
+                continue
             if spec.metadata.get("origin") != "plugin":
                 visible.append(spec)
                 continue
@@ -78,6 +85,17 @@ class AssistantToolRegistry:
 
     def has_handler(self, name: str) -> bool:
         return name in self._handlers
+
+    def is_executable(self, name: str) -> bool:
+        """Return True only when a declared tool has a real host/plugin handler."""
+        return name in self._specs and name in self._handlers
+
+    def list_executable(self) -> list[ToolSpec]:
+        """List tools that can actually execute in the current runtime."""
+        return sorted(
+            (spec for name, spec in self._specs.items() if name in self._handlers),
+            key=lambda item: (item.category, item.name),
+        )
 
     def execute(self, name: str, **kwargs: Any) -> Any:
         spec = self._specs.get(name)

@@ -118,6 +118,7 @@ def test_retraining_command_creates_governed_request_plan():
 
 def test_tool_registry_confirmation_metadata_is_enforced():
     registry = build_default_registry()
+    registry.bind_handler("request_model_retraining", lambda **kwargs: {"ok": True})
     plan = [
         AgentPlanStep(
             tool="request_model_retraining",
