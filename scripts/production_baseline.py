@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-EXPECTED_VERSION = "2.52.0"
+EXPECTED_VERSION = "2.53.0"
 EXPECTED_CRYPTOGRAPHY = "cryptography==46.0.5"
 REQUIRED_FILES = (
     "VERSION",
@@ -26,6 +26,7 @@ REQUIRED_FILES = (
     "compliance/AUTOML_ACCEPTANCE.json",
     "compliance/ML_SAFETY_ACCEPTANCE.json",
     "compliance/XAI_ACCEPTANCE.json",
+    "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json",
     "frontend/package.json",
     "frontend/next.config.mjs",
     "frontend/lib/assistant/orchestrator-adapter.ts",
@@ -42,6 +43,7 @@ REQUIRED_FILES = (
     "scripts/automl_acceptance.py",
     "scripts/ml_safety_acceptance.py",
     "scripts/xai_acceptance.py",
+    "scripts/forecasting_anomaly_acceptance.py",
     "scripts/verify_release.py",
     "backend/tests/test_mvp_workflow_v241.py",
     "backend/tests/test_data_preparation_v242.py",
@@ -65,6 +67,7 @@ REQUIRED_FILES = (
     "backend/tests/test_frontend_automl_v2500.py",
     "backend/tests/test_ml_safety_v2510.py",
     "backend/tests/test_xai_v2520.py",
+    "backend/tests/test_forecasting_anomaly_v2530.py",
     "backend/app/services/ml_guardrails.py",
     "backend/app/services/insight_engine.py",
     "backend/app/assistant/agents.py",
@@ -124,7 +127,7 @@ def check(root: Path) -> list[str]:
                 if not scripts.get(script):
                     errors.append(f"Missing frontend npm script: {script}")
 
-    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json", "compliance/SEMANTIC_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/XAI_ACCEPTANCE.json"):
+    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json", "compliance/SEMANTIC_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/XAI_ACCEPTANCE.json", "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json"):
         path = root / rel
         if not path.is_file():
             continue

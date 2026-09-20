@@ -28,7 +28,7 @@ settings = get_settings()
 from app.services.upload_security import antivirus_status
 from app.services.secret_crypto import kms_status
 
-app = FastAPI(title=settings.app_name, version="2.52.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.53.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -264,7 +264,7 @@ def health_live():
     return {
         "status": "alive",
         "product": settings.app_name,
-        "version": "2.52.0",
+        "version": "2.53.0",
     }
 
 
@@ -330,7 +330,7 @@ def health_ready():
         "status": "ready" if ready else "not_ready",
         "ready": ready,
         "product": settings.app_name,
-        "version": "2.52.0",
+        "version": "2.53.0",
         "components": components,
     }
     if ready:
@@ -343,7 +343,7 @@ def health():
     return {
         "status": "ok",
         "product": settings.app_name,
-        "version": "2.52.0",
+        "version": "2.53.0",
     }
 
 
@@ -375,7 +375,7 @@ def capabilities():
             "ml_train_validation_test", "ml_cross_validation", "automl_benchmark", "controlled_hyperparameter_tuning",
             "ml_guardrails", "class_imbalance_detection", "leakage_heuristics", "feature_importance",
             "local_model_registry", "model_cards", "prediction_api",
-            "forecasting", "forecast_model_benchmark", "prediction_intervals", "anomaly_detection",
+            "forecasting", "forecast_model_benchmark", "rolling_origin_backtesting", "forecast_residual_diagnostics", "empirical_prediction_intervals", "forecast_missing_period_governance", "anomaly_detection", "anomaly_consensus",
             "xai_diagnostics", "confusion_matrix", "roc_pr_curves", "binary_calibration", "local_perturbation_explanations",
             "shap_global_local", "partial_dependence", "counterfactual_search", "xai_audit", "xai_provenance", "importance_stability", "per_class_calibration", "actionable_counterfactuals",
             "root_cause_decomposition", "distribution_shift_analysis", "decision_scenario_optimization",

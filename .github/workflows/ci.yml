@@ -38,6 +38,7 @@ jobs:
       - run: python ../scripts/automl_acceptance.py --root .. --check
       - run: python ../scripts/ml_safety_acceptance.py --root .. --check
       - run: python ../scripts/xai_acceptance.py --root .. --check
+      - run: python ../scripts/forecasting_anomaly_acceptance.py --root .. --check
       - run: python ../scripts/cdc_audit.py --check
 
   frontend:

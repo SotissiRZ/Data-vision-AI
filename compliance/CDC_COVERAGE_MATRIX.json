@@ -1,6 +1,6 @@
 {
   "cdc_version": "1.0 — August 2026",
-  "product_version": "2.52.0",
+  "product_version": "2.53.0",
   "status_model": {
     "implemented": 1.0,
     "partial": 0.5,
@@ -270,17 +270,19 @@
     {
       "section": 21,
       "title": "Architecture multi-agent",
-      "status": "partial",
+      "status": "implemented",
       "priority": "P1",
       "evidence": [
+        "backend/app/assistant/agents.py",
+        "backend/app/assistant/critic.py",
         "backend/app/assistant/orchestrator.py",
-        "backend/app/assistant/planner_runtime.py",
-        "backend/app/assistant/critic.py"
+        "backend/app/assistant/planner_runtime.py"
       ],
-      "tests": [],
-      "gaps": [
-        "Orchestration agentique réelle présente, mais pas encore une flotte spécialisée multi-agent complète au sens V2 du CDC."
-      ]
+      "tests": [
+        "backend/tests/assistant/test_multi_agent_v246.py",
+        "backend/tests/test_frontend_assistant_v246.py"
+      ],
+      "gaps": []
     },
     {
       "section": 22,
@@ -398,9 +400,13 @@
       "status": "implemented",
       "priority": "P2",
       "evidence": [
-        "backend/app/services/forecasting.py"
+        "backend/app/services/forecasting.py",
+        "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json",
+        "frontend/app/page.tsx"
       ],
-      "tests": [],
+      "tests": [
+        "backend/tests/test_forecasting_anomaly_v2530.py"
+      ],
       "gaps": []
     },
     {
@@ -409,9 +415,13 @@
       "status": "implemented",
       "priority": "P2",
       "evidence": [
-        "backend/app/services/anomaly_detection.py"
+        "backend/app/services/anomaly_detection.py",
+        "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json",
+        "frontend/app/page.tsx"
       ],
-      "tests": [],
+      "tests": [
+        "backend/tests/test_forecasting_anomaly_v2530.py"
+      ],
       "gaps": []
     },
     {

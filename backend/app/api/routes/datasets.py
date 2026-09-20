@@ -236,11 +236,15 @@ class ForecastRequest(BaseModel):
     horizon: int = Field(default=12, ge=1, le=365)
     frequency: str = Field(default="auto", pattern="^(auto|daily|weekly|monthly|quarterly|yearly)$")
     method: str = Field(default="auto", pattern="^(auto|naive|seasonal_naive|linear_trend|exponential_smoothing)$")
+    backtest_windows: int = Field(default=3, ge=1, le=8)
+    interval_level: float = Field(default=0.95, ge=0.5, le=0.99)
+    missing_strategy: str = Field(default="none", pattern="^(none|interpolate|ffill|zero)$")
+    selection_metric: str = Field(default="rmse", pattern="^(rmse|mae|smape)$")
 
 
 class AnomalyRequest(BaseModel):
     columns: list[str] = []
-    method: str = Field(default="auto", pattern="^(auto|iqr|robust_z|isolation_forest)$")
+    method: str = Field(default="auto", pattern="^(auto|iqr|robust_z|isolation_forest|consensus)$")
     contamination: float = Field(default=0.05, ge=0.001, le=0.4)
     threshold: float = Field(default=3.5, ge=1.0, le=10.0)
 
@@ -2327,7 +2331,10 @@ def dataset_sql(dataset_id: str, request: SQLRequest):
 @router.post("/{dataset_id}/analysis/forecast")
 def dataset_forecast(dataset_id: str, request: ForecastRequest):
     try:
-        return forecast_series(load_dataframe(dataset_id), request.date_column, request.target, request.horizon, request.frequency, request.method)
+        return forecast_series(
+            load_dataframe(dataset_id), request.date_column, request.target, request.horizon, request.frequency, request.method,
+            request.backtest_windows, request.interval_level, request.missing_strategy, request.selection_metric,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
     except ValueError as exc:

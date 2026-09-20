@@ -26,6 +26,8 @@ from app.services.notebook_service import run_cell as run_notebook_cell
 from app.services.preparation import apply_operation, combine_dataframes
 from app.services.profiling import profile_dataframe
 from app.services.insight_engine import generate_insights
+from app.services.forecasting import forecast_series
+from app.services.anomaly_detection import detect_anomalies
 from app.services.report_builder import build_report, export_report
 from app.services.root_cause import root_cause_analysis
 from app.services.decision_lab import optimize_scenarios
@@ -344,6 +346,40 @@ class V212AnalysisBridge:
             if event.severity in {"warning", "critical"} or event.type.endswith(".failed")
         ]
         return {"recent_failures": failures[-10:], "count": len(failures)}
+
+    def forecast_dataset(
+        self,
+        *,
+        context: AssistantContext,
+        date_column: str,
+        target: str,
+        horizon: int = 12,
+        frequency: str = "auto",
+        method: str = "auto",
+        backtest_windows: int = 3,
+        interval_level: float = 0.95,
+        missing_strategy: str = "none",
+        selection_metric: str = "rmse",
+        **_: Any,
+    ) -> dict[str, Any]:
+        _, df = _load(context)
+        return forecast_series(
+            df, date_column, target, horizon, frequency, method, backtest_windows, interval_level,
+            missing_strategy, selection_metric,
+        )
+
+    def detect_dataset_anomalies(
+        self,
+        *,
+        context: AssistantContext,
+        columns: list[str] | None = None,
+        method: str = "auto",
+        contamination: float = 0.05,
+        threshold: float = 3.5,
+        **_: Any,
+    ) -> dict[str, Any]:
+        _, df = _load(context)
+        return detect_anomalies(df, columns or [], method, contamination, threshold)
 
     def generate_dataset_insights(
         self,
@@ -1253,6 +1289,8 @@ def bind_v212_host(registry: AssistantToolRegistry) -> None:
         "create_visualization": visual.create_visualization,
         "diagnose_visualization": visual.diagnose_visualization,
         "diagnose_analysis_failure": analysis.diagnose_analysis_failure,
+        "forecast_dataset": analysis.forecast_dataset,
+        "detect_dataset_anomalies": analysis.detect_dataset_anomalies,
         "generate_dataset_insights": analysis.generate_dataset_insights,
         "run_statistical_test": analysis.run_statistical_test,
         "run_regression": analysis.run_regression,

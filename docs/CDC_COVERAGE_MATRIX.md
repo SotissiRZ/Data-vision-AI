@@ -1,9 +1,9 @@
 # Matrice de couverture CDC — DataVision AI
 
 - CDC: 1.0 — August 2026
-- Produit: 2.31.0
-- Couverture pondérée: **84.7%**
-- Implémenté: **52** / Partiel: **23** / Manquant: **0**
+- Produit: 2.53.0
+- Couverture pondérée: **85.3%**
+- Implémenté: **53** / Partiel: **22** / Manquant: **0**
 - Preuves absentes: **0**
 
 > Méthode: implemented=1, partial=0.5, missing=0. Le score mesure la couverture du CDC, pas une certification externe.
@@ -30,11 +30,11 @@
 | 18 | Visualisation | partial | P1 | La liste complète des visualisations du CDC n’est pas encore couverte de façon homogène. |
 | 19 | Langage naturel vers visualisation | partial | P1 | NL→viz existe mais n’atteint pas encore toute la profondeur de composition demandée. |
 | 20 | AI Analyst | implemented | P2 | — |
-| 21 | Architecture multi-agent | partial | P1 | Orchestration agentique réelle présente, mais pas encore une flotte spécialisée multi-agent complète au sens V2 du CDC. |
+| 21 | Architecture multi-agent | implemented | P1 | — |
 | 22 | Reliability layer | implemented | P2 | — |
 | 23 | Semantic layer | implemented | P2 | — |
 | 24 | NLQ / Text-to-SQL | implemented | P2 | — |
-| 25 | AutoML | partial | P1 | Classification/régression solides; clustering et forecasting ne sont pas unifiés dans le même pipeline AutoML. |
+| 25 | AutoML | partial | P1 | Classification, régression et clustering sont unifiés et gouvernés; le forecasting reste volontairement dans son moteur dédié jusqu’au lot forecasting/anomaly. |
 | 26 | Model Benchmark | implemented | P2 | — |
 | 27 | ML Guardrails | implemented | P2 | — |
 | 28 | Explainable AI | implemented | P2 | — |
@@ -97,8 +97,7 @@
 - **§12 AI Data Quality** — Suggestions AI de qualité existent mais la couverture de remédiation guidée n’est pas exhaustive.
 - **§18 Visualisation** — La liste complète des visualisations du CDC n’est pas encore couverte de façon homogène.
 - **§19 Langage naturel vers visualisation** — NL→viz existe mais n’atteint pas encore toute la profondeur de composition demandée.
-- **§21 Architecture multi-agent** — Orchestration agentique réelle présente, mais pas encore une flotte spécialisée multi-agent complète au sens V2 du CDC.
-- **§25 AutoML** — Classification/régression solides; clustering et forecasting ne sont pas unifiés dans le même pipeline AutoML.
+- **§25 AutoML** — Classification, régression et clustering sont unifiés et gouvernés; le forecasting reste volontairement dans son moteur dédié jusqu’au lot forecasting/anomaly.
 - **§35 Data storytelling** — Storytelling narratif multi-page automatisé encore partiel.
 - **§38 Notebook** — Cellules Python/R stateless entre exécutions; pas de kernel persistant/Jupyter protocol.
 - **§40 Python workspace** — Exécution réelle sandboxée, mais pas de kernel Python persistant ni environnements Conda utilisateur.

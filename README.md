@@ -1,4 +1,15 @@
-# DataVision AI — v2.52.0
+# DataVision AI — v2.53.0
+
+## Nouveau dans v2.53.0 — Forecasting renforcé, anomalies par consensus & réconciliation CDC
+
+- forecasting avec backtesting rolling-origin multi-fenêtres et ranking par RMSE/MAE/sMAPE ;
+- intervalles empiriques calculés exclusivement à partir des résidus hors-échantillon ;
+- diagnostics de régularité, tendance, saisonnalité et autocorrélation résiduelle ;
+- périodes temporelles manquantes gouvernées par stratégie explicite (blocage/interpolation/ffill/zéro) ;
+- anomalies par IQR, z-score robuste, Isolation Forest ou consensus 2-sur-3 avec votes ;
+- outils Assistant dédiés `forecast_dataset` et `detect_dataset_anomalies` routés vers ML/Statistics Agent ;
+- gate `FORECASTING_ANOMALY_ACCEPTANCE 8/8` ;
+- audit CDC réconcilié : l’architecture multi-agent v2.46 est désormais classée implémentée sur preuves.
 
 ## Nouveau dans v2.52.0 — XAI gouverné, traçable et actionnable
 

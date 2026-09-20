@@ -246,13 +246,13 @@ export async function getModels(id: string) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/models`), 'Registre des modèles indisponible');
 }
 
-export async function runForecast(id: string, payload: { date_column: string; target: string; horizon?: number; frequency?: string; method?: string }) {
+export async function runForecast(id: string, payload: { date_column: string; target: string; horizon?: number; frequency?: string; method?: string; backtest_windows?: number; interval_level?: number; missing_strategy?: 'none'|'interpolate'|'ffill'|'zero'; selection_metric?: 'rmse'|'mae'|'smape' }) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/analysis/forecast`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }), 'Forecasting impossible');
 }
 
-export async function runAnomalyDetection(id: string, payload: { columns: string[]; method?: string; contamination?: number; threshold?: number }) {
+export async function runAnomalyDetection(id: string, payload: { columns: string[]; method?: 'auto'|'iqr'|'robust_z'|'isolation_forest'|'consensus'; contamination?: number; threshold?: number }) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/analysis/anomalies`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }), 'Détection d’anomalies impossible');

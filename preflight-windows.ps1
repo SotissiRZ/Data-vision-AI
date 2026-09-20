@@ -6,13 +6,13 @@ function Assert-LastExit([string]$Step) {
   }
 }
 
-$expectedVersion = "2.52.0"
+$expectedVersion = "2.53.0"
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 Set-Location $root
 
 Write-Host "DataVision AI — contrôle pré-build" -ForegroundColor Cyan
 
-foreach ($required in @("VERSION", "backend/requirements.txt", "docker-compose.yml", "compliance/CDC_COVERAGE_MATRIX.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "frontend/next.config.mjs")) {
+foreach ($required in @("VERSION", "backend/requirements.txt", "docker-compose.yml", "compliance/CDC_COVERAGE_MATRIX.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json", "frontend/next.config.mjs")) {
   if (-not (Test-Path $required)) { throw "Fichier requis absent: $required" }
 }
 
@@ -27,7 +27,7 @@ if ($cryptoLine -ne "cryptography==46.0.5") {
   throw "Dépendance cryptography incorrecte: '$cryptoLine'. Attendu: cryptography==46.0.5. N'exécutez pas Docker depuis ce dossier."
 }
 if ($requirements -contains "cryptography==46.0.4") {
-  throw "Ancienne dépendance cryptography==46.0.4 détectée. Ce dossier n'est pas une copie v2.52.0 valide."
+  throw "Ancienne dépendance cryptography==46.0.4 détectée. Ce dossier n'est pas une copie v2.53.0 valide."
 }
 
 Write-Host "VERSION: $version" -ForegroundColor Green
@@ -35,16 +35,16 @@ Write-Host "Dependency: $cryptoLine" -ForegroundColor Green
 
 $composeText = Get-Content "docker-compose.yml" -Raw
 if ($composeText -notmatch 'NEXT_PUBLIC_API_URL:\s*/api/backend') {
-  throw "Proxy API same-origin absent du docker-compose.yml. Cette copie ne contient pas le baseline de production v2.52.0."
+  throw "Proxy API same-origin absent du docker-compose.yml. Cette copie ne contient pas le baseline de production v2.53.0."
 }
 $dockerfileText = Get-Content "backend/Dockerfile" -Raw
 if ($dockerfileText -notmatch 'COPY compliance ./compliance') {
-  throw "Le Dockerfile backend n'embarque pas compliance/. Cette copie ne contient pas le baseline de production v2.52.0."
+  throw "Le Dockerfile backend n'embarque pas compliance/. Cette copie ne contient pas le baseline de production v2.53.0."
 }
 Write-Host "CDC assets/proxy: OK" -ForegroundColor Green
 
-foreach ($requiredBaseline in @("frontend/lib/assistant/orchestrator-adapter.ts", "scripts/production_baseline.py", "scripts/mvp_acceptance.py", "scripts/preparation_acceptance.py", "scripts/workspace_acceptance.py", "scripts/assistant_acceptance.py", "scripts/assistant_multimodal_acceptance.py", "scripts/multi_agent_acceptance.py", "scripts/semantic_acceptance.py", "scripts/insight_acceptance.py", "scripts/report_acceptance.py", "scripts/automl_acceptance.py", "scripts/ml_safety_acceptance.py", "scripts/xai_acceptance.py", "scripts/verify_release.py", "backend/tests/test_mvp_workflow_v241.py", "backend/tests/test_data_preparation_v242.py", "backend/tests/test_pipelines_v242.py", "backend/tests/test_data_workspace_v243.py", "backend/tests/test_frontend_workspace_v243.py", "backend/tests/assistant/test_assistant_v244.py", "backend/tests/test_frontend_assistant_v244.py", "backend/tests/assistant/test_assistant_v245.py", "backend/tests/test_frontend_assistant_v245.py", "backend/tests/assistant/test_multi_agent_v246.py", "backend/tests/test_frontend_assistant_v246.py", "backend/tests/test_semantic_nlq_v247.py", "backend/tests/test_frontend_semantic_v247.py", "backend/tests/test_insight_engine_v248.py", "backend/tests/test_frontend_insights_v248.py", "backend/tests/test_reporting_v249.py", "backend/tests/test_frontend_reporting_v249.py", "backend/tests/test_automl_v2500.py", "backend/tests/test_frontend_automl_v2500.py", "backend/tests/test_ml_safety_v2510.py", "backend/tests/test_xai_v2520.py", "backend/app/services/ml_guardrails.py", "backend/app/services/insight_engine.py", "backend/app/assistant/agents.py", "frontend/lib/assistant/effects.ts", "frontend/e2e/mvp.spec.ts")) {
-  if (-not (Test-Path $requiredBaseline)) { throw "Baseline v2.52.0 incomplet: $requiredBaseline absent" }
+foreach ($requiredBaseline in @("frontend/lib/assistant/orchestrator-adapter.ts", "scripts/production_baseline.py", "scripts/mvp_acceptance.py", "scripts/preparation_acceptance.py", "scripts/workspace_acceptance.py", "scripts/assistant_acceptance.py", "scripts/assistant_multimodal_acceptance.py", "scripts/multi_agent_acceptance.py", "scripts/semantic_acceptance.py", "scripts/insight_acceptance.py", "scripts/report_acceptance.py", "scripts/automl_acceptance.py", "scripts/ml_safety_acceptance.py", "scripts/xai_acceptance.py", "scripts/forecasting_anomaly_acceptance.py", "scripts/verify_release.py", "backend/tests/test_mvp_workflow_v241.py", "backend/tests/test_data_preparation_v242.py", "backend/tests/test_pipelines_v242.py", "backend/tests/test_data_workspace_v243.py", "backend/tests/test_frontend_workspace_v243.py", "backend/tests/assistant/test_assistant_v244.py", "backend/tests/test_frontend_assistant_v244.py", "backend/tests/assistant/test_assistant_v245.py", "backend/tests/test_frontend_assistant_v245.py", "backend/tests/assistant/test_multi_agent_v246.py", "backend/tests/test_frontend_assistant_v246.py", "backend/tests/test_semantic_nlq_v247.py", "backend/tests/test_frontend_semantic_v247.py", "backend/tests/test_insight_engine_v248.py", "backend/tests/test_frontend_insights_v248.py", "backend/tests/test_reporting_v249.py", "backend/tests/test_frontend_reporting_v249.py", "backend/tests/test_automl_v2500.py", "backend/tests/test_frontend_automl_v2500.py", "backend/tests/test_ml_safety_v2510.py", "backend/tests/test_xai_v2520.py", "backend/tests/test_forecasting_anomaly_v2530.py", "backend/app/services/ml_guardrails.py", "backend/app/services/insight_engine.py", "backend/app/assistant/agents.py", "frontend/lib/assistant/effects.ts", "frontend/e2e/mvp.spec.ts")) {
+  if (-not (Test-Path $requiredBaseline)) { throw "Baseline v2.53.0 incomplet: $requiredBaseline absent" }
 }
 python scripts/production_baseline.py --check
 Assert-LastExit "production baseline"
@@ -97,6 +97,10 @@ Write-Host "ML Safety acceptance manifest: OK" -ForegroundColor Green
 python scripts/xai_acceptance.py --root . --check
 Assert-LastExit "XAI acceptance manifest"
 Write-Host "XAI acceptance manifest: OK" -ForegroundColor Green
+
+python scripts/forecasting_anomaly_acceptance.py --root . --check
+Assert-LastExit "Forecasting/Anomaly acceptance manifest"
+Write-Host "Forecasting/Anomaly acceptance manifest: OK" -ForegroundColor Green
 
 python scripts/repository_hygiene.py --check
 Assert-LastExit "repository hygiene"

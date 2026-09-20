@@ -17,13 +17,13 @@
     },
     {
       "path": ".github/workflows/ci.yml",
-      "sha256": "1f3579820f45814f9b5188e9892d4323cb71726c36b549f7dd658730c3d9bb3b",
-      "size": 3376
+      "sha256": "8733c12bda1b6b6c4603cff6b12737db488f2230b226db1673f7d4f4add0342c",
+      "size": 3459
     },
     {
       "path": ".github/workflows/release.yml",
-      "sha256": "5f449e793461dae514c4cdadb25d4656dae48c93c250dae7c2012bbe8963da4b",
-      "size": 2408
+      "sha256": "6f9125c0cad4ab26ec94747a31f0197f44a40cfc6f8a280f95659c02ac6447a4",
+      "size": 2487
     },
     {
       "path": ".github/workflows/security.yml",
@@ -42,8 +42,8 @@
     },
     {
       "path": "README.md",
-      "sha256": "9c068cc2823145acc2dea21b6f6ae181e85d03f03c0bc5c7dbdddb63f6f53eae",
-      "size": 81617
+      "sha256": "9f755b745ef0f9c359348ebdad50f602feacd1215f517ccff9c7c1b5e205b779",
+      "size": 82461
     },
     {
       "path": "SECURITY.md",
@@ -52,7 +52,7 @@
     },
     {
       "path": "VERSION",
-      "sha256": "e389ac5f9d10d5ba881f35fddec9d99a4e3b8e6910be9c57dbda45c9eadde76e",
+      "sha256": "b4bd6f04d9d6f79e251f40fa5b5efe18494b3873548eff48491d0a903d779aa0",
       "size": 7
     },
     {
@@ -82,8 +82,8 @@
     },
     {
       "path": "backend/app/api/routes/datasets.py",
-      "sha256": "2622bcc80a57d5eca419f7f15bbd6efeebfb7a01c54d18c280f77acb0e71c2cc",
-      "size": 92874
+      "sha256": "5e155962e015487985f9aa51c5c083a29e48eaf5712ddd48133f36a7b8c7f1c2",
+      "size": 93316
     },
     {
       "path": "backend/app/api/routes/enterprise.py",
@@ -162,8 +162,8 @@
     },
     {
       "path": "backend/app/assistant/host_v212.py",
-      "sha256": "3058cdff438864c2c59d703ab7d5a61c69a7f9a46779b2eeeaf6c19bb53cb3d8",
-      "size": 43746
+      "sha256": "1a515705f6374ba58ebed37263b68a5c0eb4ac2a2aa2cbfe149c36adbdb90750",
+      "size": 45020
     },
     {
       "path": "backend/app/assistant/hybrid_intent.py",
@@ -317,8 +317,8 @@
     },
     {
       "path": "backend/app/assistant/tools.py",
-      "sha256": "2ef099ef28645a5c5aff12fe19351452ab1cc0c12781b4bfa4297100a97d99a2",
-      "size": 18300
+      "sha256": "f7d5f26d926be624a805ab3b784622f850dce70a1785a5e130bcce0e28c09244",
+      "size": 20760
     },
     {
       "path": "backend/app/assistant/turn_runs.py",
@@ -342,8 +342,8 @@
     },
     {
       "path": "backend/app/main.py",
-      "sha256": "ed56a19b024f36796e37e74d6a6b8708098c9c2279119114b47720c5e4dfa2a1",
-      "size": 22698
+      "sha256": "ddf28feda8cd9c27e58f89a20e524e859e3686b64d79fe546fce6de93cb60ba3",
+      "size": 22830
     },
     {
       "path": "backend/app/services/__init__.py",
@@ -372,8 +372,8 @@
     },
     {
       "path": "backend/app/services/anomaly_detection.py",
-      "sha256": "01c2ad68100086b82ec855df3e1f62d6a09d7e97d51ac1f31b56fc42512548f9",
-      "size": 5027
+      "sha256": "0712feee82d04ce68219b8db4726563aa34299af5381bbcc880d8207d83ddaf2",
+      "size": 9240
     },
     {
       "path": "backend/app/services/audit_service.py",
@@ -452,8 +452,8 @@
     },
     {
       "path": "backend/app/services/forecasting.py",
-      "sha256": "a6b8af21aed00f750c9c546144e2fceedccae8404e965a74c3067905a9636c95",
-      "size": 7779
+      "sha256": "1cf43004e795e1d9ec4c67b21f0d6fbf8d7a13ceb027ee06e2e28d0c144bf14b",
+      "size": 16697
     },
     {
       "path": "backend/app/services/governed_actions.py",
@@ -857,7 +857,7 @@
     },
     {
       "path": "backend/tests/test_cdc_compliance_v230.py",
-      "sha256": "8402f63c397fed780423fd1339ee1421ab42882a67490e98b2e5842c4b8255ae",
+      "sha256": "048c0800f989feddf179a765f9f70b1dcac54c1383a9c9f475b25d44dc48e223",
       "size": 2604
     },
     {
@@ -909,6 +909,11 @@
       "path": "backend/tests/test_feature_store_v225.py",
       "sha256": "8481609055e2198304dc8c4bf33f2a615740208242d6e07c302172e95c72dbd0",
       "size": 3296
+    },
+    {
+      "path": "backend/tests/test_forecasting_anomaly_v2530.py",
+      "sha256": "a67be109ce32946b33fab7a1023bbcb34021fce76e90acb76a51015b7a6e8896",
+      "size": 4167
     },
     {
       "path": "backend/tests/test_frontend_assistant_v244.py",
@@ -1102,78 +1107,83 @@
     },
     {
       "path": "compliance/ASSISTANT_ACCEPTANCE.json",
-      "sha256": "ff6ab7bae61527f3b9d950a1525a572a3c5fef24ef50218d4694300315e103e6",
+      "sha256": "c354bb8b25813d7bc293e74b94072f041cc3b718dca2b6576f1e817b2552ad97",
       "size": 3293
     },
     {
       "path": "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json",
-      "sha256": "c5a298f026050344de379f9947446f5e310c8cee95c047fabf43dc72d0e6ca4e",
+      "sha256": "53665bb471dda07ab35704ac3f35552be67a6f623dce83cc8b495c3f8ef32a65",
       "size": 3057
     },
     {
       "path": "compliance/AUTOML_ACCEPTANCE.json",
-      "sha256": "9d513fedc870d5e0f8e3ce4408a928e05acc5db0eb86c51afaae1216ca016de8",
+      "sha256": "f6a302735fadd1ddfc4d948589cafb1a5f5eeb1d1ad188ba9316853efa0921a8",
       "size": 2643
     },
     {
       "path": "compliance/CDC_COVERAGE_MATRIX.json",
-      "sha256": "5b2bce91e8cf0ca7ecdcc7b31625be693a8b47172577bb01c1bceb5737566cfa",
-      "size": 25059
+      "sha256": "1e1aafd39c38b36b26063678e4a3beda74d8bb159710cd1725b7157364579b4b",
+      "size": 25399
     },
     {
       "path": "compliance/CDC_COVERAGE_SUMMARY.json",
-      "sha256": "8fe87f45387c169b4ce87a1be83d074a7bec07fd652070fa26bc065f5ce30463",
-      "size": 135
+      "sha256": "7692a56a009c4bd1f0f90f330166c468f35ab83534c95eb4502806b7fb84d958",
+      "size": 134
+    },
+    {
+      "path": "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json",
+      "sha256": "996fba8409a2b8f1e7d4ec283982d254b04b769481fc3d3716492eff8fdf76b4",
+      "size": 2495
     },
     {
       "path": "compliance/INSIGHT_ACCEPTANCE.json",
-      "sha256": "4165627e1fe7a1bcf33395450de2f4b1898813eee98107105b1c638cd847479a",
+      "sha256": "03b4c67125dcf3f7c4154db6cad6037c55b6251f362dee086702d4fa49994967",
       "size": 2849
     },
     {
       "path": "compliance/ML_SAFETY_ACCEPTANCE.json",
-      "sha256": "619b0fe0e0e3b7932634f4df97a27c415b4248dd77daa3246c9437dd81f155f2",
+      "sha256": "3934c5c1f150fd7b65d74e91b6bfeccd399a2b47bbb052154268777e6d499ee4",
       "size": 2793
     },
     {
       "path": "compliance/MULTI_AGENT_ACCEPTANCE.json",
-      "sha256": "67b23b7ef818ba0cbd595c87fb346032301a846a7d775e2a4a02dadb95ad226f",
+      "sha256": "386a621ccbed451fd35d30fd5903d0071c6a3d4db388811b4f12feb28af5b390",
       "size": 2916
     },
     {
       "path": "compliance/MVP_ACCEPTANCE.json",
-      "sha256": "b2f016d63015dfbb36b728f9db95f0cbcf4f28efbba1aca95c6c6e9537896ce5",
+      "sha256": "8cb70a24005b824f6c2c19b5b963dc0584f5e32036eff0c6dceb20cd7cc4ec36",
       "size": 3977
     },
     {
       "path": "compliance/PREPARATION_ACCEPTANCE.json",
-      "sha256": "351920dd2a07b3aa053d6e8add82018d652607f1a9b1be620a32235d2b1c9e9c",
+      "sha256": "0cf6a23f875ed2a5afc74ad9e171f020f04f6a7e5569657d31f5ca2ed6f91cf5",
       "size": 2616
     },
     {
       "path": "compliance/PRODUCTION_ACCEPTANCE.json",
-      "sha256": "b4014a30e7af3b27867f01d704b0bdd45fcbc24d518444c749f07484b44ca90f",
+      "sha256": "a0772c4696b593d94b96b68094722be766b36313308dac2dc4affced2cf64336",
       "size": 3400
     },
     {
       "path": "compliance/REPORT_ACCEPTANCE.json",
-      "sha256": "5b50a79a0c55dfd6e4d8ba2c7c25b12c3aac227ff38e325ccc2cad9f83de47c0",
+      "sha256": "225494ef7f06792d992c32baad914b426fb9f7da81fd96b692496d8fe3fcd775",
       "size": 2586
     },
     {
       "path": "compliance/SEMANTIC_ACCEPTANCE.json",
-      "sha256": "1593c0c0ec8c74e874518cd8feeb8a8495c07395ea9cfb9b1fb42081dfc90026",
+      "sha256": "8a87263eaba7c5077620d1ae59c232fb4dcbd0a10a73ae57048a42f50685722a",
       "size": 3298
     },
     {
       "path": "compliance/WORKSPACE_ACCEPTANCE.json",
-      "sha256": "e0c1007f8a64d9f1fdd8a86751a1b7a523240a039b0aa62ca9dafba2126648a8",
+      "sha256": "0231a2b3b5178d3c4fd86d98b927bd89143ce6618c9bfcc3d4b2221572ccb37f",
       "size": 2882
     },
     {
       "path": "compliance/XAI_ACCEPTANCE.json",
-      "sha256": "58a0b9021f479cb78f9a1123a8641c30734532d29518c2626e7feae4e99c81d3",
-      "size": 2524
+      "sha256": "e8e37b42a6a04b20217536ad1286f105238190b994fae8177d693c21324ab9aa",
+      "size": 2892
     },
     {
       "path": "docker-compose.yml",
@@ -1247,8 +1257,8 @@
     },
     {
       "path": "docs/CDC_COVERAGE_MATRIX.md",
-      "sha256": "52444245f2022071399390eaafbf1b1498c01e2d82970361258a42fe33a8c9b5",
-      "size": 9645
+      "sha256": "46b174543cc8f6879b2bdd43a07e00ce4f108d3f5416df89f8b92a4381b2b450",
+      "size": 9469
     },
     {
       "path": "docs/CHANGELOG.md",
@@ -1324,6 +1334,11 @@
       "path": "docs/FLOATING_UI_ORCHESTRATOR_BINDING_V2142.md",
       "sha256": "316566b14415d53a2ae605332c4d6c78fa7e758b78adcd0ab15c1fbed688c314",
       "size": 1491
+    },
+    {
+      "path": "docs/FORECASTING_ANOMALY_V2530.md",
+      "sha256": "4ef19d748e30a15e4ac3595875f3ecfa924ae1fac1811d3180e1984c48647d1a",
+      "size": 1111
     },
     {
       "path": "docs/FORECASTING_ANOMALY_XAI.md",
@@ -1756,6 +1771,11 @@
       "size": 844
     },
     {
+      "path": "docs/VALIDATION_V2530.md",
+      "sha256": "ed67005af8704ddb5b09b9f98674dad83a6803a86082e9709d4f82fa9753fad2",
+      "size": 739
+    },
+    {
       "path": "docs/VALIDATION_V260.md",
       "sha256": "0fdb2d3222550dc3d17caff09ac3dc01ff2253c1f00f9ef8be2a9284bb0092aa",
       "size": 744
@@ -2066,6 +2086,11 @@
       "size": 460
     },
     {
+      "path": "docs/history/migrations/MIGRATION_FROM_V2520_TO_V2530.md",
+      "sha256": "c8ec87203bb7ff513fd45371a27f15268ada59e488880bb5d2634fe5984e59f4",
+      "size": 313
+    },
+    {
       "path": "frontend/.dockerignore",
       "sha256": "717ef88a64b71bae3a95b5590e5e7b7f2b4a3ea23f1e010734fd0a22d76e6730",
       "size": 75
@@ -2092,8 +2117,8 @@
     },
     {
       "path": "frontend/app/page.tsx",
-      "sha256": "6b73bce94a620e11aa408d7741e40f61779b76b07a98c000409f97627f406a4d",
-      "size": 428226
+      "sha256": "e24ec8cac2189a2fe9e7e58c5ad65a11e999c2556f2c5f085c871e2e05f29086",
+      "size": 431961
     },
     {
       "path": "frontend/components/ComplianceCenter.module.css",
@@ -2182,8 +2207,8 @@
     },
     {
       "path": "frontend/lib/api.ts",
-      "sha256": "8b242c33932bedb78517bb46fbc0414669e1941d9415c2d6c8224198dfa8b155",
-      "size": 76072
+      "sha256": "e8492386ac8ece4651f3a11ce5b904a9edf8399b32070432ebcbb80f2594d9f1",
+      "size": 76269
     },
     {
       "path": "frontend/lib/assistant/actions.ts",
@@ -2302,8 +2327,8 @@
     },
     {
       "path": "preflight-windows.ps1",
-      "sha256": "674fa570da51b2b74adb92d76d75d50f671b26983da5b4a4d582dbc83fa52459",
-      "size": 7161
+      "sha256": "aa8736c1b6747ac856557309080db75a8a7d27bb11f0cfc86f009a2f8183be6c",
+      "size": 7512
     },
     {
       "path": "rebuild-windows.ps1",
@@ -2366,6 +2391,11 @@
       "size": 3607
     },
     {
+      "path": "scripts/forecasting_anomaly_acceptance.py",
+      "sha256": "15802bee167d5bad9162ce7f1924a8d76173bb3f90244cf9da24598a323ce6c9",
+      "size": 2632
+    },
+    {
       "path": "scripts/insight_acceptance.py",
       "sha256": "bb6510182c11fbf81d832954df7d68ba1df22961663afd4d2e13665c7e77092f",
       "size": 3533
@@ -2392,8 +2422,8 @@
     },
     {
       "path": "scripts/production_baseline.py",
-      "sha256": "b21fce809440c8f63cab3a2ec4c86f6dcd7e90df56a61616543d30b6ffd19f15",
-      "size": 7139
+      "sha256": "514f647cf39f819cc4a9c644b8c059ca37d15e16ce7b7e8077ce54863b24467e",
+      "size": 7347
     },
     {
       "path": "scripts/release.py",
@@ -2443,5 +2473,5 @@
   ],
   "format": "reproducible-source-archive-v1",
   "product": "DataVision AI",
-  "version": "2.52.0"
+  "version": "2.53.0"
 }
