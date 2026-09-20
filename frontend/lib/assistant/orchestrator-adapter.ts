@@ -32,7 +32,7 @@ function riskFromStep(step: AgentTurnResponse["steps"][number]) {
   return step.risk ?? (step.status === "waiting_confirmation" ? "reversible" : "read");
 }
 
-function turnToChatResponse(turn: AgentTurnResponse): AssistantChatResponse {
+function turnToChatResponse(turn: AgentTurnResponse, apiBaseUrl: string): AssistantChatResponse {
   const turnRunId =
     typeof turn.metadata?.turn_run_id === "string"
       ? turn.metadata.turn_run_id
@@ -58,10 +58,23 @@ function turnToChatResponse(turn: AgentTurnResponse): AssistantChatResponse {
     }
   }
 
+  const attachments: AssistantAttachment[] = (turn.attachments ?? []).map((item) => ({
+    id: item.id,
+    name: item.name,
+    mimeType: item.mime_type,
+    size: item.size,
+    kind: item.kind ?? "generated",
+    stepId: item.step_id,
+    downloadPath: item.download_path.startsWith("http")
+      ? item.download_path
+      : `${apiBaseUrl}${item.download_path.replace(/^\/api\/v1/, "")}`,
+  }));
+
   return {
     message: turn.message,
     speak: turn.speak,
     actions,
+    attachments,
     metadata: {
       ...turn.metadata,
       intent: turn.intent,
@@ -95,7 +108,7 @@ export function createOrchestratorAssistantAdapter(options: {
         attachmentIds: input.attachmentIds ?? [],
         autoExecuteSafeSteps: true,
       });
-      return turnToChatResponse(turn);
+      return turnToChatResponse(turn, base);
     },
 
     async observe(input) {
@@ -137,6 +150,7 @@ export function createOrchestratorAssistantAdapter(options: {
           name: raw?.name ?? raw?.dataset?.name ?? file.name,
           mimeType: raw?.mime_type ?? raw?.dataset?.format ?? file.type,
           size: raw?.size ?? file.size,
+          kind: "uploaded",
         });
       }
       return uploaded;
@@ -168,7 +182,7 @@ export function createOrchestratorAssistantAdapter(options: {
         confirmedActionRunId: continuation.actionRunId,
       });
 
-      return turnToChatResponse(resumed);
+      return turnToChatResponse(resumed, base);
     },
 
     async rejectAction(action, context) {
@@ -197,7 +211,7 @@ export function createOrchestratorAssistantAdapter(options: {
         confirmedActionRunId: continuation.actionRunId,
       });
 
-      return turnToChatResponse(resumed);
+      return turnToChatResponse(resumed, base);
     },
 
     async getProjectMemory(query) {

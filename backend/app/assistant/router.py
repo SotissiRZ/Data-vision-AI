@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from pathlib import Path
+import mimetypes
 
 from fastapi import APIRouter, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, FileResponse
 
 from .activity import ActivityMonitor, alerts_from_activity
 from .contracts import tool_json_schema, validate_tool_arguments
@@ -31,7 +33,7 @@ from .models import (
 )
 from .policy import evaluate_action_policy
 from .plan import validate_agent_plan
-from .proactive import evaluate_proactive_event
+from .proactive import evaluate_proactive_event, decorate_proactive_alerts, ProactiveAlertGate
 from .realtime import AssistantRealtimeHub, RealtimeMessage
 from .runtime import build_orchestrator
 from .persistent_memory import PersistentSessionMemoryStore
@@ -45,6 +47,7 @@ from .workflows import list_workflows
 from .host_v212 import V212HostAuthorization, bind_v212_host
 from .plugin_runtime import attach_plugin_registry, safe_refresh_runtime_plugins
 from app.services.tenant_access import current_access_context, require_workspace_permission
+from app.core.config import get_settings
 from app.services.auth_service import has_permission
 from app.services.audit_service import record_event
 from .project_memory import (
@@ -75,6 +78,7 @@ router = APIRouter(prefix="/ai/assistant", tags=["assistant-v2.13"])
 store = InMemoryAssistantContextStore()
 tool_registry = build_default_registry()
 activity_monitors: dict[str, ActivityMonitor] = defaultdict(ActivityMonitor)
+proactive_gates: dict[str, ProactiveAlertGate] = defaultdict(ProactiveAlertGate)
 
 bind_v212_host(tool_registry)
 attach_plugin_registry(tool_registry)
@@ -111,7 +115,7 @@ def assistant_health():
     return {
         "status": "ok",
         "component": "conversational_voice_agent",
-        "version": "2.44.0",
+        "version": "2.45.0",
         "tool_count": len(executable),
         "declared_tool_count": len(declared),
         "unavailable_tools": unavailable,
@@ -264,6 +268,8 @@ def observe(request: ObserveRequest):
             alerts.append(alert)
             seen.add(signature)
 
+    alerts = decorate_proactive_alerts(alerts, request.event)
+    alerts = proactive_gates[key].filter(alerts)
     return ObserveResponse(alerts=alerts)
 
 
@@ -495,6 +501,34 @@ def get_agent_turn(turn_run_id: str):
         return agent_orchestrator.get_turn(turn_run_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/turns/{turn_run_id}/artifacts/{step_id}")
+def download_turn_artifact(turn_run_id: str, step_id: str):
+    try:
+        turn = agent_orchestrator.get_turn(turn_run_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    step = next((item for item in turn.steps if item.id == step_id), None)
+    if step is None or step.status != "succeeded" or not isinstance(step.result, dict):
+        raise HTTPException(status_code=404, detail="Artefact assistant introuvable.")
+
+    raw_path = step.result.get("artifact_path")
+    if not raw_path:
+        raise HTTPException(status_code=404, detail="Cette étape ne produit pas de fichier téléchargeable.")
+
+    path = Path(str(raw_path)).expanduser().resolve()
+    root = get_settings().data_root.expanduser().resolve()
+    try:
+        path.relative_to(root)
+    except ValueError as exc:
+        raise HTTPException(status_code=403, detail="Chemin d'artefact non autorisé.") from exc
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Fichier généré introuvable.")
+
+    mime_type, _ = mimetypes.guess_type(path.name)
+    return FileResponse(path, filename=path.name, media_type=mime_type or "application/octet-stream")
 
 
 @router.post("/turns/{turn_run_id}/continue", response_model=AgentTurnResponse)

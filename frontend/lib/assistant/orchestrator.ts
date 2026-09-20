@@ -52,6 +52,17 @@ export type AgentTurnStep = {
   error?: string;
 };
 
+
+export type AgentTurnAttachment = {
+  id: string;
+  name: string;
+  mime_type?: string;
+  size?: number;
+  download_path: string;
+  kind?: string;
+  step_id?: string;
+};
+
 export type AgentTurnResponse = {
   session_id: string;
   intent: AgentIntent;
@@ -65,6 +76,7 @@ export type AgentTurnResponse = {
     | "needs_clarification";
   steps: AgentTurnStep[];
   pending_action_run_ids: string[];
+  attachments?: AgentTurnAttachment[];
   critic?: {
     status: "pass" | "warning" | "fail";
     findings: Array<{

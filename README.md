@@ -1,4 +1,14 @@
-# DataVision AI — v2.44.0
+# DataVision AI — v2.45.0
+
+## Nouveau dans v2.45.0 — Assistant multimodal et proactif
+
+La v2.45.0 consolide l'assistant contextuel en assistant de travail actif mais gouverné : surveillance déterministe des erreurs et boucles sans progression, alertes fingerprintées avec cooldown anti-spam, contrôle utilisateur (masquer/snooze), préférences vocales persistantes, et remontée des fichiers générés par les outils comme pièces jointes téléchargeables et traçables.
+
+- gate exécutable : `python scripts/assistant_multimodal_acceptance.py --root . --check` ;
+- les alertes critiques peuvent ouvrir l'assistant mais restent contrôlées par les préférences voix ;
+- les téléchargements d'artefacts sont confinés au `data_root` DataVision ;
+- aucune télémétrie invasive (caméra, frappe, mouvement souris) n'est utilisée pour inférer un blocage.
+
 
 DataVision AI est un **Data Intelligence Workspace local, installable, gouverné et collaboratif** couvrant le cycle : connecter → versionner → contrôler → analyser → modéliser → expliquer → décider → publier → revoir.
 

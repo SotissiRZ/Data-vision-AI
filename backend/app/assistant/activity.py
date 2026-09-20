@@ -72,7 +72,23 @@ class ActivityMonitor:
                     )
                 )
 
-        retries = [event for event in window if event.type.endswith(".retried")]
+        success_types = {
+            "analysis.completed",
+            "visualization.created",
+            "transform.completed",
+            "ml.training.completed",
+            "query.completed",
+            "dataset.loaded",
+        }
+        latest_success = max(
+            (event.timestamp for event in window if event.type in success_types),
+            default=None,
+        )
+        retries = [
+            event for event in window
+            if event.type.endswith(".retried")
+            and (latest_success is None or event.timestamp > latest_success)
+        ]
         if len(retries) >= 3:
             signals.append(
                 ActivitySignal(
@@ -81,6 +97,28 @@ class ActivityMonitor:
                     explanation=(
                         f"{len(retries)} nouvelles tentatives ont été effectuées "
                         "sans signal de réussite associé."
+                    ),
+                )
+            )
+
+        blockers = [
+            event for event in window
+            if event.type in {
+                "analysis.failed", "visualization.error", "transform.failed",
+                "ml.training.failed", "query.failed",
+            }
+            and (latest_success is None or event.timestamp > latest_success)
+        ]
+        if len(blockers) >= 4:
+            screens = Counter(str(event.payload.get("screen") or "") for event in blockers)
+            screen, count = screens.most_common(1)[0]
+            signals.append(
+                ActivitySignal(
+                    kind="stalled_workflow",
+                    score=min(1.0, 0.60 + 0.08 * count),
+                    explanation=(
+                        f"{len(blockers)} blocages se sont accumulés sans progression récente"
+                        + (f" sur {screen}." if screen else ".")
                     ),
                 )
             )

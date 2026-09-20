@@ -62,6 +62,9 @@ class ProactiveAlert(BaseModel):
     speak: bool = False
     actionLabel: str | None = None
     action: AssistantAction | None = None
+    fingerprint: str | None = None
+    sourceEventId: str | None = None
+    cooldownSeconds: int = Field(default=60, ge=0, le=3600)
 
 
 class ObserveResponse(BaseModel):
@@ -241,6 +244,17 @@ class CriticReport(BaseModel):
     findings: list[CriticFinding] = Field(default_factory=list)
 
 
+
+
+class AgentTurnAttachment(BaseModel):
+    id: str
+    name: str
+    mime_type: str | None = None
+    size: int | None = None
+    download_path: str
+    kind: str = "generated"
+    step_id: str | None = None
+
 class AgentTurnResponse(BaseModel):
     session_id: str
     intent: AgentIntent
@@ -256,6 +270,7 @@ class AgentTurnResponse(BaseModel):
     steps: list[AgentTurnStep] = Field(default_factory=list)
     critic: CriticReport | None = None
     pending_action_run_ids: list[str] = Field(default_factory=list)
+    attachments: list[AgentTurnAttachment] = Field(default_factory=list)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 

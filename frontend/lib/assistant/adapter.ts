@@ -9,6 +9,9 @@ export type AssistantAttachment = {
   name: string;
   mimeType?: string;
   size?: number;
+  downloadPath?: string;
+  kind?: "uploaded" | "generated" | string;
+  stepId?: string;
 };
 
 export type AssistantActionProposal = {
@@ -76,6 +79,9 @@ export type ProactiveAlert = {
   speak: boolean;
   actionLabel?: string;
   action?: AssistantActionProposal;
+  fingerprint?: string;
+  sourceEventId?: string;
+  cooldownSeconds?: number;
 };
 
 export interface AssistantAdapter {

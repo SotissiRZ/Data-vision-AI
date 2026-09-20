@@ -47,6 +47,7 @@ export function FloatingDataVisionAssistant({
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
   const [continuousVoice, setContinuousVoice] = useState(false);
   const [speechEnabled, setSpeechEnabled] = useState(false);
+  const [voiceAlertMode, setVoiceAlertMode] = useState<ProactiveVoiceMode>(proactiveVoiceMode);
   const [context, setContext] = useState<AssistantContextSnapshot>(
     assistantEventBus.getContext(),
   );
@@ -74,6 +75,7 @@ export function FloatingDataVisionAssistant({
   const pendingObservationRef = useRef<{ event: any; context: AssistantContextSnapshot } | null>(null);
   const lastObservationKeyRef = useRef("");
   const lastObservationAtRef = useRef(0);
+  const snoozedAlertsRef = useRef<Map<string, number>>(new Map());
 
   const contextDetails = useMemo(() => {
     const ui = context.uiState ?? {};
@@ -123,6 +125,13 @@ useEffect(() => {
         "datavision.assistant.tts.enabled",
       ) === "true",
     );
+    setContinuousVoice(
+      window.localStorage.getItem("datavision.assistant.voice.continuous") === "true",
+    );
+    const storedMode = window.localStorage.getItem("datavision.assistant.voice.proactive_mode") as ProactiveVoiceMode | null;
+    if (storedMode && ["off", "critical_only", "important", "active"].includes(storedMode)) {
+      setVoiceAlertMode(storedMode);
+    }
   } catch {
     setSpeechEnabled(false);
   }
@@ -155,10 +164,16 @@ useEffect(() => {
           context: currentContext,
         });
         if (!newAlerts.length) return;
+        const nowMs = Date.now();
+        const visibleAlerts = newAlerts.filter((alert) => {
+          const key = alert.fingerprint ?? alert.id;
+          return (snoozedAlertsRef.current.get(key) ?? 0) <= nowMs;
+        });
+        if (!visibleAlerts.length) return;
 
         setAlerts((prev) => {
           const seen = new Set<string>();
-          return [...newAlerts, ...prev]
+          return [...visibleAlerts, ...prev]
             .filter((alert) => {
               if (seen.has(alert.id)) return false;
               seen.add(alert.id);
@@ -168,11 +183,13 @@ useEffect(() => {
         });
 
         const mostImportant =
-          newAlerts.find((a) => a.severity === "critical") ?? newAlerts[0];
+          visibleAlerts.find((a) => a.severity === "critical") ?? visibleAlerts[0];
+
+        if (mostImportant.severity === "critical") setOpen(true);
 
         if (
           speechEnabled &&
-          shouldSpeakAlert(mostImportant, proactiveVoiceMode)
+          shouldSpeakAlert(mostImportant, voiceAlertMode)
         ) {
           voice.speak(
             toSpeechText(`${mostImportant.title}. ${mostImportant.message}`),
@@ -209,7 +226,7 @@ useEffect(() => {
       if (observeTimerRef.current) clearTimeout(observeTimerRef.current);
       voice.destroy();
     };
-  }, [adapter, locale, proactiveVoiceMode, speechEnabled, voice]);
+  }, [adapter, locale, speechEnabled, voice, voiceAlertMode]);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -786,15 +803,35 @@ useEffect(() => {
                   <div className={styles.alertTitle}>{alert.title}</div>
                   <div className={styles.alertMessage}>{alert.message}</div>
 
-                  {alert.action && (
+                  <div className={styles.alertActions}>
+                    {alert.action && (
+                      <button
+                        type="button"
+                        onClick={() => void executeAction(alert.action!)}
+                        className={styles.darkButton}
+                      >
+                        {alert.actionLabel ?? alert.action.label}
+                      </button>
+                    )}
                     <button
                       type="button"
-                      onClick={() => void executeAction(alert.action!)}
-                      className={styles.darkButton}
+                      className={styles.alertSecondaryButton}
+                      onClick={() => {
+                        const key = alert.fingerprint ?? alert.id;
+                        snoozedAlertsRef.current.set(key, Date.now() + 5 * 60 * 1000);
+                        setAlerts((prev) => prev.filter((item) => item.id !== alert.id));
+                      }}
                     >
-                      {alert.actionLabel ?? alert.action.label}
+                      5 min
                     </button>
-                  )}
+                    <button
+                      type="button"
+                      className={styles.alertSecondaryButton}
+                      onClick={() => setAlerts((prev) => prev.filter((item) => item.id !== alert.id))}
+                    >
+                      Masquer
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -838,7 +875,15 @@ useEffect(() => {
                 {!!message.attachments?.length && (
                   <div className={styles.messageAttachments}>
                     {message.attachments.map((file) => (
-                      <div key={file.id}>📎 {file.name}</div>
+                      <div key={file.id}>
+                        {file.downloadPath ? (
+                          <a href={file.downloadPath} className={styles.attachmentLink} download>
+                            📎 {file.name}
+                          </a>
+                        ) : (
+                          <>📎 {file.name}</>
+                        )}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -933,9 +978,31 @@ useEffect(() => {
                       const checked = event.target.checked;
                       setContinuousVoice(checked);
                       if (!checked) voice.stopListening();
+                      try {
+                        window.localStorage.setItem("datavision.assistant.voice.continuous", String(checked));
+                      } catch {}
                     }}
                   />
                   Conversation continue
+                </label>
+                <label className={styles.checkboxLabel}>
+                  Alertes vocales
+                  <select
+                    value={voiceAlertMode}
+                    onChange={(event) => {
+                      const mode = event.target.value as ProactiveVoiceMode;
+                      setVoiceAlertMode(mode);
+                      try {
+                        window.localStorage.setItem("datavision.assistant.voice.proactive_mode", mode);
+                      } catch {}
+                    }}
+                    className={styles.voiceModeSelect}
+                  >
+                    <option value="off">Off</option>
+                    <option value="critical_only">Critiques</option>
+                    <option value="important">Critiques + warnings</option>
+                    <option value="active">Toutes signalées</option>
+                  </select>
                 </label>
               </div>
 

@@ -949,3 +949,37 @@
     justify-content: flex-start;
   }
 }
+
+.alertActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.alertSecondaryButton {
+  margin-top: 8px;
+  border: 1px solid #d1dde3;
+  border-radius: 8px;
+  padding: 6px 9px;
+  cursor: pointer;
+  background: #ffffff;
+  color: #526875;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.attachmentLink {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.voiceModeSelect {
+  border: 1px solid #cad7de;
+  border-radius: 7px;
+  background: #ffffff;
+  color: #314955;
+  font-size: 11px;
+  padding: 3px 5px;
+}

@@ -30,6 +30,7 @@ jobs:
       - run: python ../scripts/preparation_acceptance.py --root .. --check
       - run: python ../scripts/workspace_acceptance.py --root .. --check
       - run: python ../scripts/assistant_acceptance.py --root .. --check
+      - run: python ../scripts/assistant_multimodal_acceptance.py --root .. --check
       - run: python ../scripts/cdc_audit.py --check
 
   frontend:

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from pathlib import Path
+import mimetypes
+
 from dataclasses import dataclass
 import re
 from datetime import datetime, timezone
@@ -16,6 +19,7 @@ from .models import (
     AgentIntent,
     AgentTurnRequest,
     AgentTurnResponse,
+    AgentTurnAttachment,
     AgentTurnRun,
     AgentTurnStep,
     AssistantAction,
@@ -658,6 +662,36 @@ class AgentOrchestrator:
             }
         except Exception:
             return {"recent_artifacts": []}
+    def _generated_attachments(self, run: AgentTurnRun) -> list[AgentTurnAttachment]:
+        attachments: list[AgentTurnAttachment] = []
+        for step in run.steps:
+            if step.status != "succeeded" or not isinstance(step.result, dict):
+                continue
+            raw_path = step.result.get("artifact_path")
+            if not raw_path:
+                continue
+            path = Path(str(raw_path))
+            name = path.name or f"artifact-{step.id}"
+            mime_type, _ = mimetypes.guess_type(name)
+            size = None
+            try:
+                if path.is_file():
+                    size = path.stat().st_size
+            except OSError:
+                size = None
+            attachments.append(
+                AgentTurnAttachment(
+                    id=f"{run.id}:{step.id}",
+                    name=name,
+                    mime_type=mime_type,
+                    size=size,
+                    download_path=f"/api/v1/ai/assistant/turns/{run.id}/artifacts/{step.id}",
+                    kind="generated",
+                    step_id=step.id,
+                )
+            )
+        return attachments
+
     def _response_from_run(self, run: AgentTurnRun) -> AgentTurnResponse:
         pending = [
             step.action_run_id
@@ -684,6 +718,7 @@ class AgentOrchestrator:
             steps=run.steps,
             critic=run.critic,
             pending_action_run_ids=pending,
+            attachments=self._generated_attachments(run),
             metadata={
                 "turn_run_id": run.id,
                 **self._memory_metadata(run.session_id),

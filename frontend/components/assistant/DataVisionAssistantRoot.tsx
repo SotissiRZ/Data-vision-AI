@@ -10,7 +10,7 @@ export function DataVisionAssistantRoot() {
     () =>
       createOrchestratorAssistantAdapter({
         apiBaseUrl:
-          process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8005",
+          process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8005/api/v1",
         uploadPath:
           process.env.NEXT_PUBLIC_ASSISTANT_UPLOAD_PATH ?? "/datasets",
       }),

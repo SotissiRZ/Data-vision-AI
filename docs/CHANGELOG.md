@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.45.0 — Assistant multimodal et proactif
+
+- Monitoring déterministe et détection de workflow bloqué.
+- Alertes fingerprintées avec cooldown anti-spam.
+- Snooze/masquage et modes vocaux persistants.
+- Fichiers générés par les outils téléchargeables depuis la conversation.
+- Nouveau gate `ASSISTANT_MULTIMODAL_ACCEPTANCE 8/8`.
+
 ## 2.44.0 — Assistant V1 tool-connected
 - Catalogue du planner limité aux outils réellement exécutables dans le runtime courant.
 - Outils déclarés mais non bridgés refusés avant planification/exécution et masqués du catalogue utilisateur.
