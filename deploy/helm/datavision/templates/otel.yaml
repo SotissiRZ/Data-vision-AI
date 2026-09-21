@@ -26,12 +26,23 @@ data:
       batch: {timeout: 5s}
     exporters:
       prometheus: {endpoint: 0.0.0.0:9464, namespace: datavision}
+      debug: {verbosity: basic}
+      {{- if .Values.monitoring.tracing.externalOtlpHttpEnabled }}
+      otlphttp/trace-backend:
+        endpoint: {{ required "monitoring.tracing.externalOtlpHttpEndpoint is required when tracing export is enabled" .Values.monitoring.tracing.externalOtlpHttpEndpoint | quote }}
+        tls:
+          insecure: {{ .Values.monitoring.tracing.externalOtlpHttpInsecure }}
+      {{- end }}
     service:
       pipelines:
         metrics:
           receivers: [prometheus, otlp]
           processors: [memory_limiter, batch]
           exporters: [prometheus]
+        traces:
+          receivers: [otlp]
+          processors: [memory_limiter, batch]
+          exporters: [debug{{ if .Values.monitoring.tracing.externalOtlpHttpEnabled }}, otlphttp/trace-backend{{ end }}]
 ---
 apiVersion: apps/v1
 kind: Deployment

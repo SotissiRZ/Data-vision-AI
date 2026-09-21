@@ -39,5 +39,18 @@ data:
   SRE_WORKER_AUTOSCALING_MODE: {{ .Values.autoscaling.worker.mode | quote }}
   SRE_CHAOS_ENABLED: {{ .Values.config.sreChaosEnabled | quote }}
   SRE_CHAOS_MAX_PROBE_JOBS: {{ .Values.config.sreChaosMaxProbeJobs | quote }}
+  BACKUP_REPLICATION_TARGETS_JSON: {{ .Values.continuity.multiZoneBackup.targetsJson | quote }}
+  BACKUP_REPLICATION_AUTO_ENABLED: {{ .Values.continuity.multiZoneBackup.enabled | quote }}
+  SRE_DR_ENABLED: {{ .Values.continuity.drDrill.enabled | quote }}
+  SRE_DR_ALLOWED_ENVS: {{ .Values.continuity.drDrill.allowedEnvs | quote }}
+  SRE_DR_INCLUDE_DEPENDENCY_LOSS_CHECKS: {{ .Values.continuity.drDrill.includeDependencyLossChecks | quote }}
+  MULTI_CLUSTER_SITES_JSON: {{ .Values.multiCluster.sitesJson | quote }}
+  MULTI_CLUSTER_FAILOVER_ENABLED: {{ .Values.multiCluster.enabled | quote }}
+  MULTI_CLUSTER_FAILOVER_EXECUTOR: {{ .Values.multiCluster.failoverExecutor | quote }}
+  MULTI_CLUSTER_FAILOVER_WEBHOOK_URL: {{ .Values.multiCluster.failoverWebhookUrl | quote }}
+  MULTI_CLUSTER_FAILOVER_WEBHOOK_TIMEOUT_SECONDS: {{ .Values.multiCluster.failoverWebhookTimeoutSeconds | quote }}
+  MULTI_CLUSTER_CONFIRMATION_TTL_MINUTES: {{ .Values.multiCluster.confirmationTtlMinutes | quote }}
+  MULTI_CLUSTER_REQUIRE_VERIFIED_BACKUP: {{ .Values.multiCluster.requireVerifiedBackup | quote }}
+  MULTI_CLUSTER_BACKUP_MAX_AGE_HOURS: {{ .Values.multiCluster.backupMaxAgeHours | quote }}
   NEXT_PUBLIC_API_URL: "/api/backend"
   INTERNAL_API_URL: "http://{{ include "datavision.fullname" . }}-api:8005/api/v1"

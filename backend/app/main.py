@@ -29,15 +29,33 @@ from app.services.upload_security import antivirus_status
 from app.services.secret_crypto import kms_status
 from app.services.schema_migrations import migration_status
 
-app = FastAPI(title=settings.app_name, version="2.60.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.62.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-DataVision-Governed", "X-DataVision-Role", "X-DataVision-Workspace"],
+    expose_headers=["X-DataVision-Governed", "X-DataVision-Role", "X-DataVision-Workspace", "X-Request-ID", "X-Trace-ID", "Traceparent"],
 )
+
+
+@app.middleware("http")
+async def distributed_trace_context(request: Request, call_next):
+    """Correlate HTTP telemetry across proxies/services using W3C traceparent without requiring an SDK."""
+    from app.services.trace_context import new_trace_context, reset_trace_context, set_trace_context
+
+    ctx = new_trace_context(request.headers)
+    request.state.trace_context = ctx
+    token = set_trace_context(ctx)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-ID"] = ctx.request_id
+        response.headers["X-Trace-ID"] = ctx.trace_id
+        response.headers["Traceparent"] = ctx.traceparent
+        return response
+    finally:
+        reset_trace_context(token)
 
 
 def _dataset_permission(path: str, method: str) -> str:
@@ -128,7 +146,10 @@ async def operational_telemetry(request: Request, call_next):
                     workspace_id=workspace_id, organization_id=organization_id, user_id=user_id,
                     feature=feature_for_path(path), latency_ms=(time.perf_counter()-started)*1000.0,
                     resource_type="http", resource_id=path,
-                    metadata={"method":request.method.upper(),"query":str(request.url.query or ""),"error":error_name},
+                    metadata={
+                        "method": request.method.upper(), "query": str(request.url.query or ""), "error": error_name,
+                        **(getattr(getattr(request, "state", None), "trace_context", None).as_dict() if getattr(getattr(request, "state", None), "trace_context", None) else {}),
+                    },
                 )
             except Exception:
                 pass
@@ -265,7 +286,7 @@ def health_live():
     return {
         "status": "alive",
         "product": settings.app_name,
-        "version": "2.60.0",
+        "version": "2.62.0",
     }
 
 
@@ -274,10 +295,10 @@ def health_startup():
     try:
         migrations = migration_status()
         ok = bool(migrations.get("ready"))
-        payload = {"status": "started" if ok else "migrations_pending", "ready": ok, "version": "2.60.0", "schema_migrations": migrations}
+        payload = {"status": "started" if ok else "migrations_pending", "ready": ok, "version": "2.62.0", "schema_migrations": migrations}
         return payload if ok else JSONResponse(status_code=503, content=payload)
     except Exception as exc:
-        return JSONResponse(status_code=503, content={"status": "startup_failed", "ready": False, "version": "2.60.0", "error": type(exc).__name__})
+        return JSONResponse(status_code=503, content={"status": "startup_failed", "ready": False, "version": "2.62.0", "error": type(exc).__name__})
 
 
 @app.get("/health/ready")
@@ -348,7 +369,7 @@ def health_ready():
         "status": "ready" if ready else "not_ready",
         "ready": ready,
         "product": settings.app_name,
-        "version": "2.60.0",
+        "version": "2.62.0",
         "components": components,
     }
     if ready:
@@ -361,7 +382,7 @@ def health():
     return {
         "status": "ok",
         "product": settings.app_name,
-        "version": "2.60.0",
+        "version": "2.62.0",
     }
 
 
@@ -425,7 +446,7 @@ def capabilities():
             "oidc_sso", "oidc_authorization_code_pkce", "oidc_rs256_validation", "oidc_jit_provisioning", "oidc_domain_discovery",
             "scim_provisioning", "scim_token_hash_storage", "scim_user_lifecycle", "scim_groups", "scim_group_role_mapping", "mfa_webauthn",
             "versioned_secret_vault", "environment_secret_references", "hashicorp_vault_kv2_references",
-            "private_ai_policy", "on_premise_profile", "prometheus_workspace_metrics", "opentelemetry_collector", "kubernetes_helm_packaging", "external_kms_vault_transit", "kms_online_rotation", "schema_versioned_migrations", "verified_backup_restore", "ha_kubernetes_runtime", "session_device_policies", "managed_devices", "entreprise_readiness", "upload_antivirus",
+            "private_ai_policy", "on_premise_profile", "prometheus_workspace_metrics", "prometheus_recording_rules", "grafana_sre_dashboard", "workspace_sre_alert_routing", "multi_target_backup_replication", "verified_cross_region_replication", "distributed_trace_context", "alertmanager_multichannel", "multi_cluster_control_plane", "two_phase_failover", "executable_sre_runbooks", "orchestrated_dr_drills", "safe_dependency_loss_model", "opentelemetry_collector", "kubernetes_helm_packaging", "external_kms_vault_transit", "kms_online_rotation", "schema_versioned_migrations", "verified_backup_restore", "ha_kubernetes_runtime", "session_device_policies", "managed_devices", "entreprise_readiness", "upload_antivirus",
             "floating_voice_assistant", "semantic_context_engine", "assistant_tool_registry",
             "assistant_action_lifecycle", "assistant_plan_validation", "assistant_turn_resume",
             "assistant_model_gateway", "assistant_privacy_routing",

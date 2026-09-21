@@ -56,6 +56,9 @@ hardening-acceptance:
 resilience-acceptance:
 	python scripts/resilience_acceptance.py --root . --check
 
+distributed-ops-acceptance:
+	python scripts/distributed_ops_acceptance.py --root . --check
+
 release:
 	python scripts/release.py --output dist
 

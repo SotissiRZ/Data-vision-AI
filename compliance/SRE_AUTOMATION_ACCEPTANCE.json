@@ -1,0 +1,54 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.62.0",
+  "items": [
+    {
+      "id": "prometheus_recording_rules",
+      "name": "Les SLO sont packagés en recording rules et alert rules Prometheus",
+      "evidence": ["deploy/helm/datavision/templates/prometheus-rules.yaml", "backend/app/services/entreprise_platform.py"],
+      "tests": ["backend/tests/test_sre_automation_v2610.py"]
+    },
+    {
+      "id": "grafana_sre_dashboard",
+      "name": "Un dashboard Grafana SRE/SLO est packagé dans le chart Helm",
+      "evidence": ["deploy/helm/datavision/templates/grafana-dashboard.yaml", "deploy/helm/datavision/values.yaml"],
+      "tests": ["backend/tests/test_sre_automation_v2610.py"]
+    },
+    {
+      "id": "workspace_alert_routing",
+      "name": "Les alertes SRE sont routables par workspace, sévérité et code vers Governed Actions",
+      "evidence": ["backend/app/services/sre_operations.py", "backend/app/api/routes/enterprise.py"],
+      "tests": ["backend/tests/test_sre_automation_v2610.py"]
+    },
+    {
+      "id": "multizone_backup_replication",
+      "name": "Une sauvegarde peut être répliquée sur plusieurs cibles S3 compatibles indépendantes",
+      "evidence": ["backend/app/services/backup_service.py", "backend/app/ops/backup.py", ".env.example"],
+      "tests": ["backend/tests/test_sre_automation_v2610.py"]
+    },
+    {
+      "id": "replication_audit",
+      "name": "Chaque réplication de backup est journalisée par cible avec statut et checksum",
+      "evidence": ["backend/app/services/schema_migrations.py", "backend/app/services/backup_service.py"],
+      "tests": ["backend/tests/test_sre_automation_v2610.py"]
+    },
+    {
+      "id": "orchestrated_dr_drill",
+      "name": "Les exercices DR orchestrent restore drill, réplication et probe de récupération",
+      "evidence": ["backend/app/services/sre_operations.py", "backend/app/api/routes/enterprise.py"],
+      "tests": ["backend/tests/test_sre_automation_v2610.py"]
+    },
+    {
+      "id": "safe_dependency_loss",
+      "name": "Les tests de perte de dépendance sont non destructifs, bornés et limités aux environnements autorisés",
+      "evidence": ["backend/app/services/sre_operations.py", "backend/app/core/config.py"],
+      "tests": ["backend/tests/test_sre_automation_v2610.py"]
+    },
+    {
+      "id": "sre_automation_ci_gate",
+      "name": "Le lot SRE automatisé est contrôlé par un gate CI/release dédié",
+      "evidence": ["scripts/sre_automation_acceptance.py", ".github/workflows/ci.yml", ".github/workflows/release.yml"],
+      "tests": ["backend/tests/test_sre_automation_v2610.py"]
+    }
+  ]
+}

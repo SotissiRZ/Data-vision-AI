@@ -1,0 +1,68 @@
+{{- if .Values.monitoring.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: {{ include "datavision.fullname" . }}-sre
+  labels:
+    {{- include "datavision.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  groups:
+    - name: datavision.slo.recording
+      interval: 1m
+      rules:
+        - record: datavision:slo:http_availability:ratio
+          expr: max by (workspace_id) (datavision_http_availability_ratio)
+        - record: datavision:slo:job_success:ratio
+          expr: max by (workspace_id) (datavision_job_success_ratio)
+        - record: datavision:slo:http_p95_latency_ms
+          expr: max by (workspace_id) (datavision_http_latency_p95_ms)
+        - record: datavision:sre:queue_depth
+          expr: max by (workspace_id) (datavision_queue_depth)
+    - name: datavision.slo.alerts
+      rules:
+        - alert: DataVisionApiAvailabilitySLOBreach
+          expr: datavision:slo:http_availability:ratio < {{ .Values.monitoring.slo.apiAvailabilityRatio }}
+          for: {{ .Values.monitoring.alerts.availabilityFor }}
+          labels:
+            severity: critical
+            service: datavision
+          annotations:
+            summary: "DataVision API availability is below SLO"
+            description: "Workspace {{ "{{ $labels.workspace_id }}" }} availability is {{ "{{ $value }}" }}."
+        - alert: DataVisionJobSuccessSLOBreach
+          expr: datavision:slo:job_success:ratio < {{ .Values.monitoring.slo.jobSuccessRatio }}
+          for: {{ .Values.monitoring.alerts.jobSuccessFor }}
+          labels:
+            severity: high
+            service: datavision
+          annotations:
+            summary: "DataVision job success rate is below SLO"
+            description: "Workspace {{ "{{ $labels.workspace_id }}" }} job success is {{ "{{ $value }}" }}."
+        - alert: DataVisionApiLatencyHigh
+          expr: datavision:slo:http_p95_latency_ms > {{ .Values.monitoring.slo.apiP95LatencyMs }}
+          for: {{ .Values.monitoring.alerts.latencyFor }}
+          labels:
+            severity: high
+            service: datavision
+          annotations:
+            summary: "DataVision API P95 latency is high"
+        - alert: DataVisionQueueBacklog
+          expr: datavision:sre:queue_depth >= {{ .Values.monitoring.slo.queueDepth }}
+          for: {{ .Values.monitoring.alerts.queueFor }}
+          labels:
+            severity: medium
+            service: datavision
+          annotations:
+            summary: "DataVision worker queue backlog"
+        - alert: DataVisionQueueUnavailable
+          expr: datavision:sre:queue_depth < 0
+          for: 2m
+          labels:
+            severity: critical
+            service: datavision
+          annotations:
+            summary: "DataVision Redis queue is unavailable"
+{{- end }}

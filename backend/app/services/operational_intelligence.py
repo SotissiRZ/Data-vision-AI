@@ -123,6 +123,19 @@ def list_telemetry(workspace_id: str, *, hours: int = 24, limit: int = 200, even
     return rows
 
 
+def list_trace_events(workspace_id: str, trace_id: str, *, hours: int = 24, limit: int = 200) -> list[dict[str, Any]]:
+    trace_id = str(trace_id or "").strip().lower()
+    if len(trace_id) != 32 or any(ch not in "0123456789abcdef" for ch in trace_id):
+        raise ValueError("trace_id invalide")
+    rows = fetch_all(
+        "SELECT * FROM telemetry_events WHERE workspace_id=:ws AND created_at>=:since AND metadata_json LIKE :trace ORDER BY created_at ASC LIMIT :limit",
+        {"ws": workspace_id, "since": _since(hours), "trace": f'%"trace_id":"{trace_id}"%', "limit": max(1, min(int(limit), 1000))},
+    )
+    for row in rows:
+        row["metadata"] = json_loads(row.pop("metadata_json", "{}"), {})
+    return rows
+
+
 def feature_usage(workspace_id: str, *, hours: int = 24 * 30) -> dict[str, Any]:
     rows = fetch_all(
         """SELECT feature,COUNT(*) AS uses,COUNT(DISTINCT user_id) AS users,

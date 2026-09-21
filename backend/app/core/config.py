@@ -92,6 +92,25 @@ class Settings(BaseSettings):
     sre_chaos_enabled: bool = False
     sre_chaos_max_probe_jobs: int = 20
 
+    # v2.61 automated SRE / multi-zone continuity
+    backup_replication_targets_json: str = "[]"
+    backup_replication_auto_enabled: bool = False
+    sre_default_alert_route_min_severity: str = "medium"
+    sre_dr_enabled: bool = False
+    sre_dr_allowed_envs: str = "development,test,staging"
+    sre_dr_include_dependency_loss_checks: bool = True
+
+    # v2.62 distributed observability / multi-cluster operations
+    multi_cluster_sites_json: str = "[]"
+    multi_cluster_failover_enabled: bool = False
+    multi_cluster_failover_executor: str = "control_plane_only"  # control_plane_only | webhook
+    multi_cluster_failover_webhook_url: str = ""
+    multi_cluster_failover_webhook_secret: str = ""
+    multi_cluster_failover_webhook_timeout_seconds: int = 10
+    multi_cluster_confirmation_ttl_minutes: int = 10
+    multi_cluster_require_verified_backup: bool = True
+    multi_cluster_backup_max_age_hours: int = 26
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

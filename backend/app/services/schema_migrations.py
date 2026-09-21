@@ -85,6 +85,84 @@ MIGRATIONS: tuple[Migration, ...] = (
                ON chaos_drills(workspace_id, started_at)""",
         ),
     ),
+    Migration(
+        version="2.61.0-001",
+        name="sre_multizone_continuity",
+        statements=(
+            """CREATE TABLE IF NOT EXISTS sre_alert_routes (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                name TEXT NOT NULL,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                min_severity TEXT NOT NULL DEFAULT 'medium',
+                event_type TEXT NOT NULL DEFAULT 'sre_slo_breach',
+                route_json TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_sre_alert_routes_workspace
+               ON sre_alert_routes(workspace_id, enabled)""",
+            """CREATE TABLE IF NOT EXISTS backup_replications (
+                id TEXT PRIMARY KEY,
+                backup_id TEXT,
+                target_name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                object_uri TEXT,
+                object_key TEXT,
+                sha256 TEXT,
+                error TEXT,
+                started_at TEXT NOT NULL,
+                completed_at TEXT
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_backup_replications_backup
+               ON backup_replications(backup_id, started_at)""",
+            """CREATE TABLE IF NOT EXISTS dr_drills (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                mode TEXT NOT NULL,
+                checks_json TEXT,
+                created_by TEXT,
+                started_at TEXT NOT NULL,
+                completed_at TEXT
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_dr_drills_workspace_started
+               ON dr_drills(workspace_id, started_at)""",
+        ),
+    ),
+    Migration(
+        version="2.62.0-001",
+        name="distributed_observability_multicluster",
+        statements=(
+            "ALTER TABLE backup_replications ADD COLUMN verification_status TEXT",
+            "ALTER TABLE backup_replications ADD COLUMN verified_at TEXT",
+            "ALTER TABLE backup_replications ADD COLUMN verification_json TEXT",
+            """CREATE TABLE IF NOT EXISTS cluster_control_state (
+                workspace_id TEXT PRIMARY KEY,
+                active_cluster_id TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                updated_by TEXT
+            )""",
+            """CREATE TABLE IF NOT EXISTS cluster_failover_events (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                source_cluster_id TEXT NOT NULL,
+                target_cluster_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                reason TEXT,
+                confirmation_token_hash TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                executor_mode TEXT NOT NULL,
+                result_json TEXT,
+                created_by TEXT,
+                created_at TEXT NOT NULL,
+                confirmed_at TEXT
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_cluster_failover_workspace_created
+               ON cluster_failover_events(workspace_id, created_at)""",
+        ),
+    ),
+
 )
 
 

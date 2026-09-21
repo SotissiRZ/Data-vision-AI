@@ -21,8 +21,9 @@ def test_v256_backend_declares_routes_and_release_version():
     main = (ROOT / "backend/app/main.py").read_text(encoding="utf-8")
     routes = (ROOT / "backend/app/api/routes/enterprise.py").read_text(encoding="utf-8")
     service = (ROOT / "backend/app/services/entreprise_platform.py").read_text(encoding="utf-8")
-    assert 'version="2.58.0"' in main
-    assert '"version": "2.58.0"' in main
+    current_version = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
+    assert f'version="{current_version}"' in main
+    assert f'"version": "{current_version}"' in main
     assert '@router.get("/entreprise/status")' in routes
     assert '@router.get("/workspaces/{workspace_id}/entreprise/readiness")' in routes
     assert '@router.get("/workspaces/{workspace_id}/metrics/prometheus"' in routes

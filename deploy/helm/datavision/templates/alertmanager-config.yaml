@@ -1,0 +1,48 @@
+{{- if .Values.monitoring.alertmanagerConfig.enabled }}
+{{- $secret := required "monitoring.alertmanagerConfig.secretName is required when AlertmanagerConfig is enabled" .Values.monitoring.alertmanagerConfig.secretName }}
+apiVersion: monitoring.coreos.com/v1alpha1
+kind: AlertmanagerConfig
+metadata:
+  name: {{ include "datavision.fullname" . }}-notifications
+  labels:
+    {{- include "datavision.labels" . | nindent 4 }}
+spec:
+  route:
+    receiver: datavision-multichannel
+    groupBy: ["alertname", "workspace_id", "severity"]
+    groupWait: {{ .Values.monitoring.alertmanagerConfig.groupWait }}
+    groupInterval: {{ .Values.monitoring.alertmanagerConfig.groupInterval }}
+    repeatInterval: {{ .Values.monitoring.alertmanagerConfig.repeatInterval }}
+  receivers:
+    - name: datavision-multichannel
+      {{- if .Values.monitoring.alertmanagerConfig.slack.enabled }}
+      slackConfigs:
+        - sendResolved: true
+          apiURL:
+            name: {{ $secret }}
+            key: {{ .Values.monitoring.alertmanagerConfig.slack.webhookKey }}
+          channel: {{ .Values.monitoring.alertmanagerConfig.slack.channel | quote }}
+          title: '{{ "{{ .CommonLabels.alertname }}" }}'
+          text: '{{ "{{ .CommonAnnotations.summary }}" }}'
+      {{- end }}
+      {{- if .Values.monitoring.alertmanagerConfig.webhook.enabled }}
+      webhookConfigs:
+        - sendResolved: true
+          urlSecret:
+            name: {{ $secret }}
+            key: {{ .Values.monitoring.alertmanagerConfig.webhook.urlKey }}
+          maxAlerts: {{ .Values.monitoring.alertmanagerConfig.webhook.maxAlerts }}
+      {{- end }}
+      {{- if .Values.monitoring.alertmanagerConfig.email.enabled }}
+      emailConfigs:
+        - sendResolved: true
+          to: {{ .Values.monitoring.alertmanagerConfig.email.to | quote }}
+          from: {{ .Values.monitoring.alertmanagerConfig.email.from | quote }}
+          smarthost: {{ .Values.monitoring.alertmanagerConfig.email.smarthost | quote }}
+          authUsername: {{ .Values.monitoring.alertmanagerConfig.email.authUsername | quote }}
+          authPassword:
+            name: {{ $secret }}
+            key: {{ .Values.monitoring.alertmanagerConfig.email.passwordKey }}
+          requireTLS: {{ .Values.monitoring.alertmanagerConfig.email.requireTLS }}
+      {{- end }}
+{{- end }}

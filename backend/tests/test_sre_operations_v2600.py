@@ -49,7 +49,8 @@ def test_v260_schema_and_restore_drill_verify_file_hashes(tmp_path, monkeypatch)
     created = create_backup(label="sre")
     inspected = inspect_backup(Path(created["archive"]))
     assert inspected["manifest"]["format"] == "datavision-backup-v2"
-    assert inspected["manifest"]["product_version"] == "2.60.0"
+    current_version = (Path(__file__).resolve().parents[2] / "VERSION").read_text(encoding="utf-8").strip()
+    assert inspected["manifest"]["product_version"] == current_version
     assert inspected["manifest"]["files"][0]["sha256"]
     drill = run_restore_drill(Path(created["archive"]))
     assert drill["status"] == "passed"

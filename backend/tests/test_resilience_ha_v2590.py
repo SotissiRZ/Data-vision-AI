@@ -53,7 +53,8 @@ def test_v259_backup_is_manifested_hashed_and_restorable(tmp_path, monkeypatch):
     assert archive.is_file() and len(created["sha256"]) == 64
     inspected = inspect_backup(archive)
     assert inspected["manifest"]["format"] in {"datavision-backup-v1", "datavision-backup-v2"}
-    assert inspected["manifest"]["product_version"] in {"2.59.0", "2.60.0"}
+    current_version = (Path(__file__).resolve().parents[2] / "VERSION").read_text(encoding="utf-8").strip()
+    assert inspected["manifest"]["product_version"] == current_version
 
     sample.write_text("after", encoding="utf-8")
     try:

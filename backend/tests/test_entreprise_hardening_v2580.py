@@ -233,8 +233,9 @@ def test_v258_packaging_contains_otel_and_helm_chart():
     helpers = (root / "deploy/helm/datavision/templates/_helpers.tpl").read_text(encoding="utf-8")
     assert "otel/opentelemetry-collector-contrib:0.161.0" in compose
     assert "prometheus:" in otel and "otlp:" in otel
-    assert 'appVersion: "2.58.0"' in chart
-    assert 'tag: "2.58.0"' in values
+    current_version = (root / "VERSION").read_text(encoding="utf-8").strip()
+    assert f'appVersion: "{current_version}"' in chart
+    assert f'tag: "{current_version}"' in values
     assert "ReadWriteMany" in values and "persistence.accessModes" in pvc
     assert 'existingSecret: ""' in values and 'define "datavision.secretName"' in helpers
     assert "readOnlyRootFilesystem: true" in sandbox

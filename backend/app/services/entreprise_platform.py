@@ -709,6 +709,14 @@ def prometheus_metrics(workspace_id: str, *, hours: int = 24) -> str:
     p95 = latencies[min(len(latencies) - 1, int(round((len(latencies) - 1) * 0.95)))] if latencies else 0.0
     status_5xx = sum(1 for r in http if str(r.get("status") or "").startswith("5"))
     job_failed = sum(1 for r in jobs if str(r.get("status") or "").lower() in {"failed", "error"})
+    http_availability = (1.0 - (status_5xx / len(http))) if http else 1.0
+    job_success = (1.0 - (job_failed / len(jobs))) if jobs else 1.0
+    try:
+        from app.services.job_service import queue_status
+        queue_info = queue_status()
+        queue_depth = int(queue_info.get("queue_depth") or 0) if queue_info.get("available") else -1
+    except Exception:
+        queue_depth = -1
     input_tokens = sum(int(r.get("input_tokens") or 0) for r in recent)
     output_tokens = sum(int(r.get("output_tokens") or 0) for r in recent)
     cost = sum(float(r.get("estimated_cost_usd") or 0.0) for r in recent)
@@ -720,12 +728,24 @@ def prometheus_metrics(workspace_id: str, *, hours: int = 24) -> str:
         "# HELP datavision_http_5xx_total Réponses HTTP 5xx observées dans la fenêtre.",
         "# TYPE datavision_http_5xx_total gauge",
         f'datavision_http_5xx_total{{workspace_id="{label}"}} {status_5xx}',
+        "# HELP datavision_http_availability_ratio Disponibilité HTTP calculée sur la fenêtre.",
+        "# TYPE datavision_http_availability_ratio gauge",
+        f'datavision_http_availability_ratio{{workspace_id="{label}"}} {http_availability:.8f}',
         "# HELP datavision_http_latency_p95_ms Latence HTTP p95 en millisecondes.",
         "# TYPE datavision_http_latency_p95_ms gauge",
         f'datavision_http_latency_p95_ms{{workspace_id="{label}"}} {p95:.6f}',
+        "# HELP datavision_jobs_total Jobs observés dans la fenêtre.",
+        "# TYPE datavision_jobs_total gauge",
+        f'datavision_jobs_total{{workspace_id="{label}"}} {len(jobs)}',
         "# HELP datavision_jobs_failed_total Jobs en échec dans la fenêtre.",
         "# TYPE datavision_jobs_failed_total gauge",
         f'datavision_jobs_failed_total{{workspace_id="{label}"}} {job_failed}',
+        "# HELP datavision_job_success_ratio Taux de succès des jobs calculé sur la fenêtre.",
+        "# TYPE datavision_job_success_ratio gauge",
+        f'datavision_job_success_ratio{{workspace_id="{label}"}} {job_success:.8f}',
+        "# HELP datavision_queue_depth Profondeur courante de la file Redis (-1 si indisponible).",
+        "# TYPE datavision_queue_depth gauge",
+        f'datavision_queue_depth{{workspace_id="{label}"}} {queue_depth}',
         "# HELP datavision_ai_input_tokens_total Tokens IA entrants observés.",
         "# TYPE datavision_ai_input_tokens_total gauge",
         f'datavision_ai_input_tokens_total{{workspace_id="{label}"}} {input_tokens}',
@@ -773,6 +793,10 @@ def entreprise_readiness(actor_id: str, workspace_id: str) -> dict[str, Any]:
     kms = kms_status()
     av = antivirus_status()
     cfg = get_settings()
+    from app.services.backup_service import replication_targets_status
+    from app.services.multi_cluster import cluster_topology_status
+    replication = replication_targets_status()
+    multi_cluster = cluster_topology_status(workspace_id)
     checks = [
         {"id": "tenant_isolation", "label": "Isolation tenant / RBAC", "status": "pass", "detail": "Workspace, RBAC, RLS et sécurité colonne actifs."},
         {"id": "sso", "label": "SSO OIDC", "status": "pass" if oidc_count else "warn", "detail": f"{oidc_count} fournisseur(s) OIDC actif(s)."},
@@ -789,11 +813,14 @@ def entreprise_readiness(actor_id: str, workspace_id: str) -> dict[str, Any]:
         {"id": "kubernetes", "label": "Kubernetes / Helm", "status": "pass", "detail": "Chart Helm on-prem fourni sans retirer Docker Compose."},
         {"id": "sre", "label": "SRE & résilience avancée", "status": "pass", "detail": f"SLO/error budget, restore drills et autoscaling worker={cfg.sre_worker_autoscaling_mode}."},
         {"id": "object_backup", "label": "Backup objet", "status": "pass" if cfg.backup_object_store_provider != "disabled" else "warn", "detail": f"Provider={cfg.backup_object_store_provider} · auto-upload={'oui' if cfg.backup_object_store_auto_upload else 'non'}."},
+        {"id": "multizone_backup", "label": "Réplication backup multi-zone", "status": "pass" if replication.get("enabled") and replication.get("configured_targets", 0) >= 2 else "warn", "detail": f"{replication.get('configured_targets', 0)} cible(s) configurée(s) · réplication auto={'oui' if replication.get('enabled') else 'non'}."},
+        {"id": "distributed_tracing", "label": "Observabilité distribuée", "status": "pass", "detail": "Traceparent W3C, X-Trace-ID, X-Request-ID et pipeline OTLP traces disponibles."},
+        {"id": "multi_cluster", "label": "Continuité multi-cluster", "status": "pass" if multi_cluster.get("enabled") and multi_cluster.get("configured_clusters", 0) >= 2 else "warn", "detail": f"{multi_cluster.get('configured_clusters', 0)} cluster(s) · actif={multi_cluster.get('active_cluster_id') or 'non défini'} · failover={'activé' if multi_cluster.get('enabled') else 'désactivé'}."},
     ]
     pass_count = sum(1 for c in checks if c["status"] == "pass")
     return {
         "product": "DataVision AI",
-        "version": "2.60.0",
+        "version": "2.62.0",
         "edition": "Entreprise",
         "workspace_id": workspace_id,
         "organization_id": ws["organization_id"],
@@ -804,6 +831,8 @@ def entreprise_readiness(actor_id: str, workspace_id: str) -> dict[str, Any]:
         "scim": {"active_tokens": scim_count, "groups": scim_group_count, "configured": scim_count > 0},
         "session_device_policy": session_policy,
         "kms": kms,
+        "backup_replication": replication,
+        "multi_cluster": multi_cluster,
         "checks": checks,
         "score": round(pass_count / len(checks) * 100),
         "ready": all(c["status"] != "fail" for c in checks),

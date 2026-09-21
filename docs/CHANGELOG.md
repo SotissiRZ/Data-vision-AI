@@ -1,5 +1,31 @@
 # Changelog
 
+## v2.62.0 — Observabilité distribuée & opérations multi-cluster
+
+- Corrélation W3C `traceparent` et consultation des traces par workspace.
+- Pipeline OpenTelemetry traces avec export OTLP HTTP optionnel.
+- AlertmanagerConfig multi-canaux Slack / webhook / email avec secrets externes.
+- Réplications cross-region vérifiées par SHA-256 distant et audit de vérification.
+- Control plane multi-cluster et bascule à confirmation en deux phases.
+- Runbooks CLI exécutables pour topologie, réplications, DR et failover.
+- Gate `DISTRIBUTED_OPS_ACCEPTANCE 8/8`.
+
+## v2.61.0 — SRE automatisé & continuité multi-zone
+
+- Recording/alert rules Prometheus et dashboard Grafana packagés dans Helm.
+- Routage SRE par workspace, seuil de sévérité et code d’alerte.
+- Réplication multi-cible S3 avec journal d’audit par cible.
+- Exercices DR orchestrés avec restore drill et fault model non destructif.
+- Métriques dérivées pour disponibilité API, succès des jobs et profondeur de file.
+
+## v2.60.1 — Correctif build frontend
+
+- Corrige le build Next.js strict TypeScript du Governance Control Plane : la matrice de rôles ne déréférence plus `controlPlane` lorsqu’il est nul.
+- Normalise les alignements flex CSS `start/end` vers `flex-start/flex-end` pour supprimer les avertissements Autoprefixer observés au build Docker.
+- Ajoute `incremental: true` au `tsconfig.json` afin que Next.js ne le modifie plus pendant le build.
+- Aucun changement de schéma de données : la migration `2.60.0-001` reste la migration courante.
+
+
 ## v2.60.0 — Exploitation avancée & SRE
 - Error budgets, alertes SLO et snapshots SRE.
 - Alertes SRE intégrables aux Governed Actions.

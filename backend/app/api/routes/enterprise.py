@@ -29,13 +29,17 @@ from app.services.connector_service import (
     save_schedule, list_schedules, get_refresh_runs, workspace_refresh_health,
 )
 from app.services.operational_intelligence import (
-    operational_overview, feature_usage, list_telemetry, job_attempts,
+    operational_overview, feature_usage, list_telemetry, list_trace_events, job_attempts,
     create_evaluation_suite, list_evaluation_suites, get_evaluation_suite, add_evaluation_case,
     run_evaluation_suite, list_evaluation_runs, get_evaluation_run,
 )
 from app.services.sre_operations import (
-    sre_status, capture_sre_snapshot, emit_sre_alerts, list_sre_snapshots, run_chaos_drill, list_chaos_drills,
+    sre_status, capture_sre_snapshot, emit_sre_alerts, list_sre_snapshots,
+    list_sre_alert_routes, save_sre_alert_route, delete_sre_alert_route,
+    run_dr_drill, list_dr_drills, run_chaos_drill, list_chaos_drills,
 )
+from app.services.backup_service import verify_backup_replications, list_backup_replications
+from app.services.multi_cluster import cluster_topology_status, create_failover_plan, confirm_failover, list_failovers
 from app.services.data_reliability import (
     save_contract, get_contract, list_contracts, delete_contract, run_contract, list_contract_runs,
     build_lineage_graph, impact_analysis, publication_gate, reliability_summary,
@@ -136,9 +140,31 @@ class PluginUpdateRequest(BaseModel):
     context_policy: str | None = Field(default=None, pattern="^(none|semantic)$")
     timeout_seconds: int | None = Field(default=None, ge=2, le=30)
 
+class SREAlertRouteRequest(BaseModel):
+    route_id: str | None = Field(default=None, max_length=128)
+    name: str = Field(min_length=1, max_length=180)
+    min_severity: str = Field(default="medium", pattern="^(info|low|medium|high|critical)$")
+    event_type: str = Field(default="sre_slo_breach", min_length=1, max_length=120)
+    enabled: bool = True
+    codes: list[str] = []
+
+
+class DRDrillRequest(BaseModel):
+    mode: str = Field(default="continuity", pattern="^(continuity|restore_only)$")
+
+
 class ChaosDrillRequest(BaseModel):
     scenario: str = Field(pattern="^(queue_backlog|readiness_snapshot)$")
     intensity: int = Field(default=5, ge=1, le=20)
+
+
+class FailoverPlanRequest(BaseModel):
+    target_cluster_id: str = Field(min_length=1, max_length=120)
+    reason: str = Field(default="operational failover", min_length=3, max_length=1000)
+
+
+class FailoverConfirmRequest(BaseModel):
+    confirmation_token: str = Field(min_length=20, max_length=512)
 
 
 class BootstrapRequest(BaseModel):
@@ -1286,6 +1312,15 @@ def operational_workspace_overview(workspace_id: str, hours: int = Query(default
         _handle(exc)
 
 
+@router.get("/workspaces/{workspace_id}/operational/traces/{trace_id}")
+def operational_trace_detail(workspace_id: str, trace_id: str, hours: int = Query(default=24, ge=1, le=720), limit: int = Query(default=200, ge=1, le=1000), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"trace_id": trace_id, "events": list_trace_events(workspace_id, trace_id, hours=hours, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
 @router.get("/workspaces/{workspace_id}/operational/sre")
 def operational_sre_status(workspace_id: str, hours: int = Query(default=24, ge=1, le=720), user=Depends(current_user)):
     try:
@@ -1320,6 +1355,128 @@ def operational_sre_snapshots(workspace_id: str, limit: int = Query(default=50, 
     try:
         _workspace_permission(user["id"], workspace_id, "observability:read")
         return {"snapshots": list_sre_snapshots(workspace_id, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/sre/routes")
+def operational_sre_routes(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"routes": list_sre_alert_routes(workspace_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.put("/workspaces/{workspace_id}/operational/sre/routes")
+def operational_sre_route_save(workspace_id: str, req: SREAlertRouteRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        route = save_sre_alert_route(
+            workspace_id,
+            route_id=req.route_id,
+            name=req.name,
+            min_severity=req.min_severity,
+            event_type=req.event_type,
+            enabled=req.enabled,
+            codes=req.codes,
+        )
+        record_event("sre.alert_route.save", user_id=user["id"], workspace_id=workspace_id, resource_type="sre_alert_route", resource_id=route["id"], payload={"min_severity": route["min_severity"], "event_type": route["event_type"]})
+        return {"route": route}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/workspaces/{workspace_id}/operational/sre/routes/{route_id}")
+def operational_sre_route_delete(workspace_id: str, route_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        deleted = delete_sre_alert_route(workspace_id, route_id)
+        if not deleted:
+            raise KeyError("Route SRE introuvable")
+        record_event("sre.alert_route.delete", user_id=user["id"], workspace_id=workspace_id, resource_type="sre_alert_route", resource_id=route_id)
+        return {"deleted": True}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/operational/dr-drills")
+def operational_dr_drill_run(workspace_id: str, req: DRDrillRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        ws = fetch_one("SELECT organization_id FROM workspaces WHERE id=:id", {"id": workspace_id}) or {}
+        result = run_dr_drill(user["id"], workspace_id, organization_id=ws.get("organization_id"), mode=req.mode)
+        record_event("sre.dr_drill", user_id=user["id"], workspace_id=workspace_id, resource_type="dr_drill", resource_id=result["id"], payload={"mode": req.mode, "status": result["status"]})
+        return {"drill": result}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/dr-drills")
+def operational_dr_drill_list(workspace_id: str, limit: int = Query(default=25, ge=1, le=100), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"drills": list_dr_drills(workspace_id, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/replications")
+def operational_replications(workspace_id: str, backup_id: str | None = Query(default=None), limit: int = Query(default=100, ge=1, le=500), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"replications": list_backup_replications(backup_id=backup_id, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/operational/replications/{backup_id}/verify")
+def operational_replications_verify(workspace_id: str, backup_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        result = verify_backup_replications(backup_id)
+        record_event("sre.replication.verify", user_id=user["id"], workspace_id=workspace_id, resource_type="backup", resource_id=backup_id, payload={"status": result.get("status"), "targets": len(result.get("results") or [])})
+        return result
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/clusters")
+def operational_cluster_topology(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return cluster_topology_status(workspace_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/failovers")
+def operational_failovers(workspace_id: str, limit: int = Query(default=50, ge=1, le=200), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"failovers": list_failovers(workspace_id, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/operational/failovers/plan")
+def operational_failover_plan(workspace_id: str, req: FailoverPlanRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        result = create_failover_plan(user["id"], workspace_id, target_cluster_id=req.target_cluster_id, reason=req.reason)
+        record_event("sre.failover.plan", user_id=user["id"], workspace_id=workspace_id, resource_type="cluster_failover", resource_id=result["id"], payload={"source": result.get("source_cluster_id"), "target": result.get("target_cluster_id"), "expires_at": result.get("expires_at")})
+        return {"plan": result}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/operational/failovers/{plan_id}/confirm")
+def operational_failover_confirm(workspace_id: str, plan_id: str, req: FailoverConfirmRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        result = confirm_failover(user["id"], workspace_id, plan_id=plan_id, confirmation_token=req.confirmation_token)
+        record_event("sre.failover.confirm", user_id=user["id"], workspace_id=workspace_id, resource_type="cluster_failover", resource_id=plan_id, payload={"source": result.get("source_cluster_id"), "target": result.get("target_cluster_id"), "executor": result.get("executor"), "traffic_switched": result.get("traffic_switched")})
+        return {"failover": result}
     except Exception as exc:
         _handle(exc)
 

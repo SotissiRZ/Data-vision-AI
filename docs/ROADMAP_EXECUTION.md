@@ -1,5 +1,18 @@
 # Roadmap d’exécution
 
+## Livré — v2.62.0 Observabilité distribuée & opérations multi-cluster
+
+- propagation W3C `traceparent` et corrélation par trace ID ;
+- pipeline OpenTelemetry traces avec export OTLP HTTP optionnel ;
+- AlertmanagerConfig multi-canaux Slack / webhook / email ;
+- réplication cross-region vérifiée par SHA-256 distant ;
+- control plane multi-cluster persistant ;
+- bascule contrôlée en deux phases avec préflight et jeton temporaire ;
+- runbooks SRE exécutables ;
+- gate `DISTRIBUTED_OPS_ACCEPTANCE 8/8`.
+
+La prochaine priorité est **v2.63 — Sécurité opérationnelle & supply chain** : SBOM/signature d'images, attestations de provenance, policy-as-code de déploiement, rotation automatisée des secrets et exercices de rollback de release.
+
 ## Livré — v2.60.0 Exploitation avancée & SRE
 
 - budgets d’erreur calculés sur les SLO réels ;
@@ -11,7 +24,16 @@
 - cockpit Operational Intelligence enrichi ;
 - gate `SRE_ACCEPTANCE 8/8`.
 
-La prochaine priorité est **v2.61 — SRE automatisé & continuité multi-zone** : dashboards/recording rules Prometheus packagés, alert routing enrichi, réplication de sauvegardes multi-cibles, exercices DR orchestrés et tests de perte de dépendance en environnement de staging.
+## Livré — v2.61.0 SRE automatisé & continuité multi-zone
+
+- recording rules et alert rules Prometheus packagées ;
+- dashboard Grafana SRE/SLO livré avec le chart Helm ;
+- routage des alertes SRE par workspace, sévérité et code ;
+- réplication de sauvegardes multi-cibles S3 avec audit par cible ;
+- exercices DR orchestrés, restore drill et fault model non destructif ;
+- gate `SRE_AUTOMATION_ACCEPTANCE 8/8`.
+
+La prochaine priorité est **v2.62 — Observabilité distribuée & opérations multi-cluster** : traces corrélées, Alertmanager/notifications multi-canaux, réplication cross-region vérifiée, runbooks exécutables et orchestration de bascule contrôlée.
 
 ## Livré — v2.59.0 Résilience & exploitation HA
 

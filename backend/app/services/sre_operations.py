@@ -138,7 +138,7 @@ def sre_status(workspace_id: str, *, hours: int = 24) -> dict[str, Any]:
     if budget.get("burn_rate") is not None and float(budget["burn_rate"]) >= settings.sre_error_budget_burn_alert:
         alerts.append(_alert("error_budget_burn", "critical", "Budget d'erreur consommé trop vite", f"Burn rate {float(budget['burn_rate']):.2f}×", budget["burn_rate"], settings.sre_error_budget_burn_alert))
 
-    from app.services.backup_service import object_store_status
+    from app.services.backup_service import object_store_status, replication_targets_status
 
     result = {
         "workspace_id": workspace_id,
@@ -150,6 +150,9 @@ def sre_status(workspace_id: str, *, hours: int = 24) -> dict[str, Any]:
         "backup": backup,
         "restore_drill": drill,
         "object_store": object_store_status(),
+        "replication": replication_targets_status(),
+        "alert_routes": {"configured": len(list_sre_alert_routes(workspace_id))},
+        "multi_cluster": __import__("app.services.multi_cluster", fromlist=["cluster_topology_status"]).cluster_topology_status(workspace_id),
         "autoscaling": {
             "worker_mode": settings.sre_worker_autoscaling_mode,
             "queue_name": "datavision:jobs",
@@ -182,24 +185,99 @@ def capture_sre_snapshot(workspace_id: str, *, hours: int = 24) -> dict[str, Any
     return status
 
 
+def _severity_rank(value: str) -> int:
+    return {"info": 0, "low": 1, "medium": 2, "high": 3, "critical": 4}.get(str(value).lower(), 2)
+
+
+def list_sre_alert_routes(workspace_id: str) -> list[dict[str, Any]]:
+    rows = fetch_all(
+        "SELECT * FROM sre_alert_routes WHERE workspace_id=:ws ORDER BY name,id",
+        {"ws": workspace_id},
+    )
+    for row in rows:
+        row["enabled"] = bool(row.get("enabled"))
+        row["route"] = json_loads(row.pop("route_json", "{}"), {})
+    return rows
+
+
+def save_sre_alert_route(
+    workspace_id: str,
+    *,
+    name: str,
+    min_severity: str = "medium",
+    event_type: str = "sre_slo_breach",
+    enabled: bool = True,
+    codes: list[str] | None = None,
+    route_id: str | None = None,
+) -> dict[str, Any]:
+    severity = str(min_severity).lower()
+    if severity not in {"info", "low", "medium", "high", "critical"}:
+        raise ValueError("min_severity invalide")
+    event_type = str(event_type or "sre_slo_breach").strip()
+    if not event_type or len(event_type) > 120:
+        raise ValueError("event_type invalide")
+    clean_codes = sorted({str(code).strip() for code in (codes or []) if str(code).strip()})
+    now = utcnow()
+    route_id = route_id or str(uuid.uuid4())
+    existing = fetch_one("SELECT id FROM sre_alert_routes WHERE id=:id AND workspace_id=:ws", {"id": route_id, "ws": workspace_id})
+    payload = json_dumps({"codes": clean_codes})
+    if existing:
+        execute(
+            "UPDATE sre_alert_routes SET name=:name,enabled=:enabled,min_severity=:severity,event_type=:event,route_json=:route,updated_at=:updated WHERE id=:id AND workspace_id=:ws",
+            {"name": name.strip()[:180], "enabled": 1 if enabled else 0, "severity": severity, "event": event_type, "route": payload, "updated": now, "id": route_id, "ws": workspace_id},
+        )
+    else:
+        execute(
+            "INSERT INTO sre_alert_routes(id,workspace_id,name,enabled,min_severity,event_type,route_json,created_at,updated_at) VALUES(:id,:ws,:name,:enabled,:severity,:event,:route,:created,:updated)",
+            {"id": route_id, "ws": workspace_id, "name": name.strip()[:180], "enabled": 1 if enabled else 0, "severity": severity, "event": event_type, "route": payload, "created": now, "updated": now},
+        )
+    return next(route for route in list_sre_alert_routes(workspace_id) if route["id"] == route_id)
+
+
+def delete_sre_alert_route(workspace_id: str, route_id: str) -> bool:
+    row = fetch_one("SELECT id FROM sre_alert_routes WHERE id=:id AND workspace_id=:ws", {"id": route_id, "ws": workspace_id})
+    if not row:
+        return False
+    execute("DELETE FROM sre_alert_routes WHERE id=:id AND workspace_id=:ws", {"id": route_id, "ws": workspace_id})
+    return True
+
+
+def _matching_routes(workspace_id: str, alert: dict[str, Any]) -> list[dict[str, Any]]:
+    routes = [route for route in list_sre_alert_routes(workspace_id) if route.get("enabled")]
+    if not routes:
+        return [{"id": "default", "name": "Default", "min_severity": get_settings().sre_default_alert_route_min_severity, "event_type": "sre_slo_breach", "route": {"codes": []}}]
+    result = []
+    for route in routes:
+        if _severity_rank(alert.get("severity", "medium")) < _severity_rank(route.get("min_severity", "medium")):
+            continue
+        codes = set((route.get("route") or {}).get("codes") or [])
+        if codes and alert.get("code") not in codes:
+            continue
+        result.append(route)
+    return result
+
+
 def emit_sre_alerts(actor_user_id: str, workspace_id: str, *, hours: int = 24) -> dict[str, Any]:
     status = capture_sre_snapshot(workspace_id, hours=hours)
     emitted = 0
+    routed = 0
     if status["alerts"]:
         from app.services.governed_actions import dispatch_event
         bucket = datetime.now(timezone.utc).strftime("%Y%m%d%H")
         for alert in status["alerts"]:
-            event_id = hashlib.sha256(f"{workspace_id}:{alert['code']}:{bucket}".encode()).hexdigest()[:32]
-            result = dispatch_event(
-                actor_user_id,
-                workspace_id,
-                event_type="sre_slo_breach",
-                event_id=event_id,
-                payload={**alert, "workspace_id": workspace_id, "window_hours": hours},
-                enqueue=True,
-            )
-            emitted += len(result.get("runs") or [])
-    return {**status, "governed_action_runs": emitted}
+            for route in _matching_routes(workspace_id, alert):
+                event_id = hashlib.sha256(f"{workspace_id}:{route['id']}:{alert['code']}:{bucket}".encode()).hexdigest()[:32]
+                result = dispatch_event(
+                    actor_user_id,
+                    workspace_id,
+                    event_type=str(route.get("event_type") or "sre_slo_breach"),
+                    event_id=event_id,
+                    payload={**alert, "workspace_id": workspace_id, "window_hours": hours, "sre_route_id": route["id"], "sre_route_name": route.get("name")},
+                    enqueue=True,
+                )
+                emitted += len(result.get("runs") or [])
+                routed += 1
+    return {**status, "governed_action_runs": emitted, "routed_alert_events": routed}
 
 
 def list_sre_snapshots(workspace_id: str, *, limit: int = 50) -> list[dict[str, Any]]:
@@ -210,6 +288,86 @@ def list_sre_snapshots(workspace_id: str, *, limit: int = 50) -> list[dict[str, 
     for row in rows:
         row["alerts"] = json_loads(row.pop("alerts_json", "[]"), [])
         row["error_budget"] = json_loads(row.pop("error_budget_json", "{}"), {})
+    return rows
+
+
+
+def _dependency_loss_checks() -> dict[str, Any]:
+    settings = get_settings()
+    queue = queue_status()
+    return {
+        "mode": "non_destructive_fault_model",
+        "redis": {
+            "currently_available": bool(queue.get("available")),
+            "expected_when_unavailable": "critical_alert_queue_unavailable",
+            "worker_recovery": "redis_blpop_retry_loop",
+        },
+        "object_store": {
+            "primary": "local_backup_retained_when_remote_upload_fails",
+            "replication": "per_target_failure_isolated_and_audited",
+        },
+        "database": {
+            "readiness_policy": "schema_migrations_must_be_ready",
+            "backup_policy": "pg_dump_required" if settings.backup_require_database_dump else "best_effort",
+        },
+    }
+
+
+def run_dr_drill(actor_user_id: str, workspace_id: str, *, organization_id: str | None = None, mode: str = "continuity") -> dict[str, Any]:
+    settings = get_settings()
+    if not settings.sre_dr_enabled:
+        raise PermissionError("Les exercices DR orchestrés sont désactivés. Activez SRE_DR_ENABLED explicitement.")
+    allowed = {item.strip().lower() for item in settings.sre_dr_allowed_envs.split(",") if item.strip()}
+    if settings.app_env.strip().lower() not in allowed:
+        raise PermissionError(f"Exercice DR interdit dans APP_ENV={settings.app_env}")
+    if mode not in {"continuity", "restore_only"}:
+        raise ValueError("Mode DR non supporté")
+    drill_id = str(uuid.uuid4())
+    started = utcnow()
+    execute(
+        "INSERT INTO dr_drills(id,workspace_id,status,mode,checks_json,created_by,started_at,completed_at) VALUES(:id,:ws,'running',:mode,:checks,:user,:started,NULL)",
+        {"id": drill_id, "ws": workspace_id, "mode": mode, "checks": "{}", "user": actor_user_id, "started": started},
+    )
+    checks: dict[str, Any] = {}
+    try:
+        from app.services.backup_service import latest_backup_archive, run_restore_drill, replication_targets_status, list_backup_replications
+        restore = run_restore_drill(latest_backup_archive())
+        checks["restore_drill"] = restore
+        checks["replication_targets"] = replication_targets_status()
+        checks["recent_replications"] = list_backup_replications(backup_id=restore.get("backup_id"), limit=50)
+        if mode == "continuity" and settings.sre_dr_include_dependency_loss_checks:
+            checks["dependency_loss"] = _dependency_loss_checks()
+            probe = submit_job(
+                user_id=actor_user_id,
+                organization_id=organization_id,
+                workspace_id=workspace_id,
+                job_type="sre_probe",
+                dataset_id=None,
+                payload={"drill_id": drill_id, "sequence": 1, "scenario": "dependency_recovery_path"},
+                max_retries=0,
+            )
+            checks["recovery_probe_job_id"] = probe["id"]
+        execute(
+            "UPDATE dr_drills SET status='passed',checks_json=:checks,completed_at=:completed WHERE id=:id",
+            {"checks": json_dumps(checks), "completed": utcnow(), "id": drill_id},
+        )
+        return {"id": drill_id, "status": "passed", "mode": mode, "checks": checks}
+    except Exception as exc:
+        checks["error"] = str(exc)
+        execute(
+            "UPDATE dr_drills SET status='failed',checks_json=:checks,completed_at=:completed WHERE id=:id",
+            {"checks": json_dumps(checks), "completed": utcnow(), "id": drill_id},
+        )
+        raise
+
+
+def list_dr_drills(workspace_id: str, *, limit: int = 25) -> list[dict[str, Any]]:
+    rows = fetch_all(
+        "SELECT * FROM dr_drills WHERE workspace_id=:ws ORDER BY started_at DESC LIMIT :limit",
+        {"ws": workspace_id, "limit": max(1, min(int(limit), 100))},
+    )
+    for row in rows:
+        row["checks"] = json_loads(row.pop("checks_json", "{}"), {})
     return rows
 
 

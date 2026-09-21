@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -146,7 +147,8 @@ def test_v256_readiness_reports_entreprise_and_onprem_posture(tmp_path, monkeypa
     out = client.get(f"/api/v1/workspaces/{ws}/entreprise/readiness", headers=headers)
     assert out.status_code == 200, out.text
     body = out.json()
-    assert body["version"] == "2.58.0"
+    current_version = (Path(__file__).resolve().parents[2] / "VERSION").read_text(encoding="utf-8").strip()
+    assert body["version"] == current_version
     assert body["edition"] == "Entreprise"
     assert body["deployment"]["profile"] == "onprem"
     assert body["deployment"]["external_egress_policy"] == "explicit_opt_in"

@@ -15,7 +15,7 @@ from typing import Any
 from urllib.parse import quote, urlparse
 
 from app.core.config import get_settings
-from app.services.metadata_store import execute, get_engine, init_metadata_store, json_dumps
+from app.services.metadata_store import execute, fetch_all, get_engine, init_metadata_store, json_dumps, json_loads
 from app.services.schema_migrations import migration_status
 
 
@@ -89,6 +89,249 @@ def object_store_status() -> dict[str, Any]:
         "auto_upload": settings.backup_object_store_auto_upload,
         "verify_tls": settings.backup_object_store_verify_tls,
     }
+
+
+
+def _replication_targets() -> list[dict[str, Any]]:
+    settings = get_settings()
+    try:
+        raw = json.loads(settings.backup_replication_targets_json or "[]")
+    except json.JSONDecodeError as exc:
+        raise RuntimeError("BACKUP_REPLICATION_TARGETS_JSON invalide") from exc
+    if not isinstance(raw, list):
+        raise RuntimeError("BACKUP_REPLICATION_TARGETS_JSON doit être une liste")
+    targets: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for idx, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise RuntimeError(f"Cible de réplication #{idx + 1} invalide")
+        name = str(item.get("name") or f"target-{idx + 1}").strip()
+        if not name or name in seen:
+            raise RuntimeError("Les noms de cibles de réplication doivent être uniques")
+        seen.add(name)
+        access_key = str(item.get("access_key") or "")
+        secret_key = str(item.get("secret_key") or "")
+        session_token = str(item.get("session_token") or "")
+        if item.get("access_key_env"):
+            access_key = os.getenv(str(item["access_key_env"]), "")
+        if item.get("secret_key_env"):
+            secret_key = os.getenv(str(item["secret_key_env"]), "")
+        if item.get("session_token_env"):
+            session_token = os.getenv(str(item["session_token_env"]), "")
+        target = {
+            "name": name,
+            "endpoint": str(item.get("endpoint") or "").rstrip("/"),
+            "bucket": str(item.get("bucket") or "").strip(),
+            "prefix": str(item.get("prefix") or "datavision/backups").strip("/"),
+            "region": str(item.get("region") or "us-east-1"),
+            "verify_tls": bool(item.get("verify_tls", True)),
+            "access_key": access_key,
+            "secret_key": secret_key,
+            "session_token": session_token,
+        }
+        parsed = urlparse(target["endpoint"])
+        target["configured"] = bool(
+            parsed.scheme in {"http", "https"}
+            and parsed.netloc
+            and target["bucket"]
+            and target["access_key"]
+            and target["secret_key"]
+        )
+        targets.append(target)
+    return targets
+
+
+def replication_targets_status() -> dict[str, Any]:
+    targets = _replication_targets()
+    public = [
+        {
+            "name": t["name"],
+            "endpoint": t["endpoint"],
+            "bucket": t["bucket"],
+            "prefix": t["prefix"],
+            "region": t["region"],
+            "verify_tls": t["verify_tls"],
+            "configured": t["configured"],
+        }
+        for t in targets
+    ]
+    return {
+        "enabled": get_settings().backup_replication_auto_enabled,
+        "configured_targets": sum(1 for t in targets if t["configured"]),
+        "targets": public,
+    }
+
+
+def _s3_request_target(method: str, key: str, target: dict[str, Any], *, body: bytes = b"", extra_headers: dict[str, str] | None = None) -> Any:
+    if not target.get("configured"):
+        raise RuntimeError(f"Cible S3-compatible non configurée: {target.get('name')}")
+    canonical_uri = "/" + quote(str(target["bucket"]), safe="") + "/" + quote(key.strip("/"), safe="/~")
+    url = str(target["endpoint"]).rstrip("/") + canonical_uri
+    parsed = urlparse(url)
+    now = datetime.now(timezone.utc)
+    amz_date = now.strftime("%Y%m%dT%H%M%SZ")
+    date_stamp = now.strftime("%Y%m%d")
+    region = str(target.get("region") or "us-east-1")
+    payload_hash = _bytes_sha256(body)
+    headers: dict[str, str] = {
+        "host": parsed.netloc,
+        "x-amz-content-sha256": payload_hash,
+        "x-amz-date": amz_date,
+    }
+    if target.get("session_token"):
+        headers["x-amz-security-token"] = str(target["session_token"])
+    for key_name, value in (extra_headers or {}).items():
+        headers[key_name.lower()] = str(value).strip()
+    canonical_header_names = sorted(headers)
+    canonical_headers = "".join(f"{name}:{headers[name]}\n" for name in canonical_header_names)
+    signed_headers = ";".join(canonical_header_names)
+    canonical_request = "\n".join([method.upper(), canonical_uri, "", canonical_headers, signed_headers, payload_hash])
+    scope = f"{date_stamp}/{region}/s3/aws4_request"
+    string_to_sign = "\n".join(["AWS4-HMAC-SHA256", amz_date, scope, hashlib.sha256(canonical_request.encode()).hexdigest()])
+    signature = hmac.new(
+        _s3_signing_key(str(target["secret_key"]), date_stamp, region),
+        string_to_sign.encode(), hashlib.sha256,
+    ).hexdigest()
+    headers["authorization"] = (
+        f"AWS4-HMAC-SHA256 Credential={target['access_key']}/{scope}, "
+        f"SignedHeaders={signed_headers}, Signature={signature}"
+    )
+    import httpx
+    response = httpx.request(
+        method.upper(), url,
+        content=body if method.upper() in {"PUT", "POST"} else None,
+        headers=headers, timeout=30.0, verify=bool(target.get("verify_tls", True)),
+    )
+    if response.status_code >= 400:
+        raise RuntimeError(f"S3 {target.get('name')} {method.upper()} a échoué ({response.status_code}): {response.text[:300]}")
+    return response
+
+
+def _verify_target_object(key: str, target: dict[str, Any], expected_sha256: str) -> dict[str, Any]:
+    response = _s3_request_target("HEAD", key, target)
+    remote_sha = str(response.headers.get("x-amz-meta-sha256") or "").strip().lower()
+    content_length = response.headers.get("content-length")
+    verified = bool(remote_sha) and hmac.compare_digest(remote_sha, expected_sha256.lower())
+    if not verified:
+        raise RuntimeError(
+            f"Vérification distante échouée pour {target.get('name')}: sha256 attendu {expected_sha256}, reçu {remote_sha or 'absent'}"
+        )
+    return {
+        "status": "verified",
+        "target": target["name"],
+        "sha256": remote_sha,
+        "content_length": int(content_length) if str(content_length or "").isdigit() else None,
+        "verified_at": _utcnow(),
+    }
+
+
+def _upload_backup_to_target(archive: Path, target: dict[str, Any]) -> dict[str, Any]:
+    archive = archive.resolve()
+    if not archive.is_file():
+        raise FileNotFoundError(archive.name)
+    prefix = str(target.get("prefix") or "").strip("/")
+    key = f"{prefix}/{archive.name}" if prefix else archive.name
+    digest = _sha256(archive)
+    response = _s3_request_target(
+        "PUT", key, target, body=archive.read_bytes(),
+        extra_headers={"content-type": "application/gzip", "x-amz-meta-sha256": digest},
+    )
+    return {
+        "target": target["name"],
+        "key": key,
+        "uri": f"s3://{target['bucket']}/{key}",
+        "sha256": digest,
+        "etag": response.headers.get("etag", "").strip('"'),
+    }
+
+
+def replicate_backup_to_targets(archive: Path, *, backup_id: str | None = None) -> dict[str, Any]:
+    init_metadata_store()
+    results: list[dict[str, Any]] = []
+    for target in _replication_targets():
+        replication_id = str(uuid.uuid4())
+        started = _utcnow()
+        execute(
+            "INSERT INTO backup_replications(id,backup_id,target_name,status,object_uri,object_key,sha256,error,started_at,completed_at) "
+            "VALUES(:id,:backup,:target,'running',NULL,NULL,NULL,NULL,:started,NULL)",
+            {"id": replication_id, "backup": backup_id, "target": target["name"], "started": started},
+        )
+        try:
+            uploaded = _upload_backup_to_target(archive, target)
+            try:
+                verification = _verify_target_object(uploaded["key"], target, uploaded["sha256"])
+                verification_status = "verified"
+                verified_at = verification["verified_at"]
+            except Exception as verify_exc:
+                verification = {"status": "failed", "target": target["name"], "error": str(verify_exc), "verified_at": _utcnow()}
+                verification_status = "failed"
+                verified_at = verification["verified_at"]
+            execute(
+                "UPDATE backup_replications SET status='completed',object_uri=:uri,object_key=:key,sha256=:sha,verification_status=:verification_status,verified_at=:verified_at,verification_json=:verification,completed_at=:completed WHERE id=:id",
+                {"uri": uploaded["uri"], "key": uploaded["key"], "sha": uploaded["sha256"], "verification_status": verification_status, "verified_at": verified_at, "verification": json_dumps(verification), "completed": _utcnow(), "id": replication_id},
+            )
+            results.append({"id": replication_id, "status": "completed", "verification": verification, **uploaded})
+        except Exception as exc:
+            execute(
+                "UPDATE backup_replications SET status='failed',verification_status='failed',verification_json=:verification,error=:error,completed_at=:completed WHERE id=:id",
+                {"verification": json_dumps({"status": "failed", "target": target["name"], "error": str(exc)}), "error": str(exc), "completed": _utcnow(), "id": replication_id},
+            )
+            results.append({"id": replication_id, "status": "failed", "target": target["name"], "error": str(exc)})
+    return {
+        "backup_id": backup_id,
+        "status": "completed" if results and all(r["status"] == "completed" for r in results) else ("partial" if results else "disabled"),
+        "results": results,
+    }
+
+
+def verify_backup_replications(backup_id: str) -> dict[str, Any]:
+    init_metadata_store()
+    rows = fetch_all(
+        "SELECT * FROM backup_replications WHERE backup_id=:backup ORDER BY started_at",
+        {"backup": backup_id},
+    )
+    target_map = {target["name"]: target for target in _replication_targets()}
+    results: list[dict[str, Any]] = []
+    for row in rows:
+        target = target_map.get(str(row.get("target_name") or ""))
+        if not target or not row.get("object_key") or not row.get("sha256"):
+            result = {"id": row.get("id"), "target": row.get("target_name"), "status": "unverifiable", "error": "Cible, clé objet ou SHA-256 manquant"}
+            results.append(result)
+            continue
+        try:
+            verification = _verify_target_object(str(row["object_key"]), target, str(row["sha256"]))
+            execute(
+                "UPDATE backup_replications SET verification_status='verified',verified_at=:at,verification_json=:details WHERE id=:id",
+                {"at": verification["verified_at"], "details": json_dumps(verification), "id": row["id"]},
+            )
+            results.append({"id": row["id"], **verification})
+        except Exception as exc:
+            details = {"status": "failed", "target": row.get("target_name"), "error": str(exc), "verified_at": _utcnow()}
+            execute(
+                "UPDATE backup_replications SET verification_status='failed',verified_at=:at,verification_json=:details WHERE id=:id",
+                {"at": details["verified_at"], "details": json_dumps(details), "id": row["id"]},
+            )
+            results.append({"id": row["id"], **details})
+    overall = "verified" if results and all(item.get("status") == "verified" for item in results) else ("partial" if results else "missing")
+    return {"backup_id": backup_id, "status": overall, "results": results}
+
+
+def list_backup_replications(*, backup_id: str | None = None, limit: int = 100) -> list[dict[str, Any]]:
+    init_metadata_store()
+    if backup_id:
+        from app.services.metadata_store import fetch_all
+        rows = fetch_all(
+            "SELECT * FROM backup_replications WHERE backup_id=:backup ORDER BY started_at DESC LIMIT :limit",
+            {"backup": backup_id, "limit": max(1, min(int(limit), 500))},
+        )
+    else:
+        rows = fetch_all(
+            "SELECT * FROM backup_replications ORDER BY started_at DESC LIMIT :limit",
+            {"limit": max(1, min(int(limit), 500))},
+        )
+    for row in rows:
+        row["verification"] = json_loads(row.pop("verification_json", "{}"), {})
+    return rows
 
 
 def _s3_signing_key(secret: str, date_stamp: str, region: str) -> bytes:
@@ -263,7 +506,7 @@ def create_backup(*, label: str = "manual") -> dict[str, Any]:
 
         manifest = {
             "format": "datavision-backup-v2",
-            "product_version": "2.60.0",
+            "product_version": "2.62.0",
             "backup_id": run_id,
             "created_at": _utcnow(),
             "database_backend": backend,
@@ -284,6 +527,9 @@ def create_backup(*, label: str = "manual") -> dict[str, Any]:
         object_result: dict[str, Any] | None = None
         if settings.backup_object_store_auto_upload and settings.backup_object_store_provider != "disabled":
             object_result = upload_backup_to_object_store(archive)
+        replication_result: dict[str, Any] | None = None
+        if settings.backup_replication_auto_enabled:
+            replication_result = replicate_backup_to_targets(archive, backup_id=run_id)
         completed = _utcnow()
         _update(
             run_id,
@@ -293,7 +539,7 @@ def create_backup(*, label: str = "manual") -> dict[str, Any]:
             completed_at=completed,
             object_uri=object_result.get("uri") if object_result else None,
             object_key=object_result.get("key") if object_result else None,
-            details_json=json_dumps({"migration": migrations.get("current"), "manifest": manifest, "object_store": object_result}),
+            details_json=json_dumps({"migration": migrations.get("current"), "manifest": manifest, "object_store": object_result, "replication": replication_result}),
         )
         prune_backups(settings.backup_retention_count)
         return {
@@ -305,6 +551,7 @@ def create_backup(*, label: str = "manual") -> dict[str, Any]:
             "database_backend": backend,
             "created_at": completed,
             "object_store": object_result,
+            "replication": replication_result,
         }
     except Exception as exc:
         _update(run_id, status="failed", completed_at=_utcnow(), details_json=json_dumps({"error": str(exc)}))

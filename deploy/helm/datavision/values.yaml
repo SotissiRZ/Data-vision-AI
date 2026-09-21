@@ -4,15 +4,15 @@ fullnameOverride: ""
 images:
   api:
     repository: datavision-api
-    tag: "2.60.0"
+    tag: "2.62.0"
     pullPolicy: IfNotPresent
   web:
     repository: datavision-web
-    tag: "2.60.0"
+    tag: "2.62.0"
     pullPolicy: IfNotPresent
   sandbox:
     repository: datavision-sandbox
-    tag: "2.60.0"
+    tag: "2.62.0"
     pullPolicy: IfNotPresent
   otelCollector:
     repository: otel/opentelemetry-collector-contrib
@@ -84,6 +84,7 @@ secrets:
   backupObjectStoreSecretKey: ""
   backupObjectStoreSessionToken: ""
   redisPassword: ""
+  multiClusterFailoverWebhookSecret: ""
 
 persistence:
   enabled: true
@@ -173,3 +174,71 @@ backup:
     schedule: "30 3 * * 0"
     successfulJobsHistoryLimit: 3
     failedJobsHistoryLimit: 3
+
+# v2.61 — SRE automatisé & continuité multi-zone
+monitoring:
+  prometheusRule:
+    enabled: false
+    labels: {}
+  grafanaDashboard:
+    enabled: true
+    labelKey: grafana_dashboard
+    labelValue: "1"
+  slo:
+    apiAvailabilityRatio: 0.99
+    jobSuccessRatio: 0.95
+    apiP95LatencyMs: 1200
+    queueDepth: 25
+  alerts:
+    availabilityFor: 5m
+    jobSuccessFor: 10m
+    latencyFor: 10m
+    queueFor: 5m
+  # v2.62 — Prometheus Operator AlertmanagerConfig; credentials remain in an external Secret.
+  alertmanagerConfig:
+    enabled: false
+    secretName: ""
+    groupWait: 30s
+    groupInterval: 5m
+    repeatInterval: 4h
+    slack:
+      enabled: false
+      webhookKey: slack-webhook-url
+      channel: "#datavision-alerts"
+    webhook:
+      enabled: false
+      urlKey: webhook-url
+      maxAlerts: 20
+    email:
+      enabled: false
+      to: sre@example.com
+      from: datavision@example.com
+      smarthost: smtp.example.com:587
+      authUsername: datavision
+      passwordKey: smtp-password
+      requireTLS: true
+  tracing:
+    externalOtlpHttpEnabled: false
+    externalOtlpHttpEndpoint: ""
+    externalOtlpHttpInsecure: false
+
+continuity:
+  multiZoneBackup:
+    enabled: false
+    # JSON array; prefer access_key_env / secret_key_env to avoid secrets in values.
+    targetsJson: '[]'
+  drDrill:
+    enabled: false
+    allowedEnvs: "development,test,staging"
+    includeDependencyLossChecks: true
+
+# v2.62 — multi-cluster control plane and two-phase failover.
+multiCluster:
+  enabled: false
+  sitesJson: '[]'
+  failoverExecutor: control_plane_only # control_plane_only | webhook
+  confirmationTtlMinutes: 10
+  requireVerifiedBackup: true
+  backupMaxAgeHours: 26
+  failoverWebhookUrl: ""
+  failoverWebhookTimeoutSeconds: 10

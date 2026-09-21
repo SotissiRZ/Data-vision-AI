@@ -1,15 +1,16 @@
-# DataVision AI — v2.60.0
+# DataVision AI — v2.62.0
 
 
-## Nouveau dans v2.60.0 — Exploitation avancée & SRE
-- **Budgets d’erreur** calculés à partir des SLO réels, alertes classées par sévérité et snapshots SRE persistés.
-- Propagation optionnelle des breaches vers **Governed Actions**, avec identifiant d’événement dédupliqué par fenêtre.
-- Réplication de backup vers stockage **S3-compatible** via Signature V4, sans dépendance SDK supplémentaire.
-- Manifest backup v2 avec checksum par fichier et **restore drill non destructif** automatisable.
-- Autoscaling worker au choix : **HPA CPU** ou **KEDA Redis** sur `datavision:jobs`.
-- Exercices de chaos contrôlés, désactivés par défaut, avec probes bornées et auditables.
-- Cockpit Operational Intelligence enrichi : error budget, backlog, backup, restore drill, object storage et alertes SRE.
-- Gate exécutable : `python scripts/sre_acceptance.py --root . --check` (`8/8`).
+## Nouveau dans v2.62.0 — Observabilité distribuée & opérations multi-cluster
+
+- contexte distribué W3C `traceparent`, `X-Trace-ID` et `X-Request-ID` sur les requêtes API ;
+- recherche des événements de télémétrie par `trace_id` dans chaque workspace ;
+- pipeline OpenTelemetry traces avec export OTLP HTTP optionnel ;
+- `AlertmanagerConfig` Helm multi-canaux Slack, webhook et email, avec secrets externes ;
+- réplication cross-region vérifiée à distance par SHA-256 sans confondre upload et vérification ;
+- control plane multi-cluster persistant et état du cluster actif ;
+- bascule contrôlée en deux phases : plan, préflight, jeton temporaire, confirmation explicite ;
+- runbooks CLI exécutables et gate `DISTRIBUTED_OPS_ACCEPTANCE 8/8`.
 
 ## Nouveau dans v2.59.0 — Résilience & exploitation HA
 - Probes **startup/readiness/liveness** distinctes, readiness sensible aux migrations.

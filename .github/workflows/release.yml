@@ -42,6 +42,8 @@ jobs:
       - run: python scripts/hardening_acceptance.py --root . --check
       - run: python scripts/resilience_acceptance.py --root . --check
       - run: python scripts/sre_acceptance.py --root . --check
+      - run: python scripts/sre_automation_acceptance.py --root . --check
+      - run: python scripts/distributed_ops_acceptance.py --root . --check
       - run: docker compose config -q
       - run: docker compose build api web sandbox
       - working-directory: frontend

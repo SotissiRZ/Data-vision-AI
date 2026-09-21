@@ -1,0 +1,25 @@
+{{- if .Values.monitoring.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "datavision.fullname" . }}-grafana-sre
+  labels:
+    {{- include "datavision.labels" . | nindent 4 }}
+    {{ .Values.monitoring.grafanaDashboard.labelKey }}: {{ .Values.monitoring.grafanaDashboard.labelValue | quote }}
+data:
+  datavision-sre.json: |-
+    {
+      "title": "DataVision AI — SRE & SLO",
+      "uid": "datavision-sre",
+      "schemaVersion": 39,
+      "refresh": "1m",
+      "time": {"from": "now-24h", "to": "now"},
+      "templating": {"list": [{"name":"workspace","type":"query","datasource":{"type":"prometheus","uid":"${DS_PROMETHEUS}"},"query":"label_values(datavision_http_availability_ratio, workspace_id)","includeAll":true,"multi":true}]},
+      "panels": [
+        {"id":1,"type":"stat","title":"API availability","datasource":{"type":"prometheus","uid":"${DS_PROMETHEUS}"},"targets":[{"expr":"datavision:slo:http_availability:ratio{workspace_id=~\"$workspace\"} * 100"}],"fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100}}},
+        {"id":2,"type":"stat","title":"Job success","datasource":{"type":"prometheus","uid":"${DS_PROMETHEUS}"},"targets":[{"expr":"datavision:slo:job_success:ratio{workspace_id=~\"$workspace\"} * 100"}],"fieldConfig":{"defaults":{"unit":"percent","min":0,"max":100}}},
+        {"id":3,"type":"timeseries","title":"API P95 latency","datasource":{"type":"prometheus","uid":"${DS_PROMETHEUS}"},"targets":[{"expr":"datavision:slo:http_p95_latency_ms{workspace_id=~\"$workspace\"}"}],"fieldConfig":{"defaults":{"unit":"ms"}}},
+        {"id":4,"type":"timeseries","title":"Worker queue depth","datasource":{"type":"prometheus","uid":"${DS_PROMETHEUS}"},"targets":[{"expr":"datavision:sre:queue_depth{workspace_id=~\"$workspace\"}"}]}
+      ]
+    }
+{{- end }}
