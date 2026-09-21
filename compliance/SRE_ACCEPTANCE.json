@@ -1,0 +1,54 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.60.0",
+  "items": [
+    {
+      "id": "error_budget_alerting",
+      "name": "Les SLO calculent un budget d'erreur et produisent des alertes gouvernées persistables",
+      "evidence": ["backend/app/services/sre_operations.py", "backend/app/api/routes/enterprise.py"],
+      "tests": ["backend/tests/test_sre_operations_v2600.py"]
+    },
+    {
+      "id": "governed_sre_notifications",
+      "name": "Les breaches SRE peuvent être propagés via Governed Actions avec déduplication horaire",
+      "evidence": ["backend/app/services/sre_operations.py", "backend/app/services/governed_actions.py"],
+      "tests": ["backend/tests/test_sre_operations_v2600.py"]
+    },
+    {
+      "id": "s3_compatible_backups",
+      "name": "Les sauvegardes peuvent être répliquées vers un stockage objet S3-compatible signé SigV4",
+      "evidence": ["backend/app/services/backup_service.py", ".env.example", "deploy/helm/datavision/templates/configmap.yaml"],
+      "tests": ["backend/tests/test_sre_operations_v2600.py"]
+    },
+    {
+      "id": "restore_drill",
+      "name": "Un restore drill non destructif vérifie extraction sûre, checksums et dump PostgreSQL",
+      "evidence": ["backend/app/services/backup_service.py", "backend/app/ops/backup.py", "deploy/helm/datavision/templates/backup-cronjob.yaml"],
+      "tests": ["backend/tests/test_sre_operations_v2600.py"]
+    },
+    {
+      "id": "queue_driven_autoscaling",
+      "name": "Le worker peut utiliser KEDA Redis sur la profondeur de datavision:jobs avec fallback borné",
+      "evidence": ["deploy/helm/datavision/templates/keda-worker.yaml", "deploy/helm/datavision/values.yaml"],
+      "tests": ["backend/tests/test_sre_operations_v2600.py"]
+    },
+    {
+      "id": "controlled_chaos",
+      "name": "Les exercices de chaos sont désactivés par défaut, explicitement activables et bornés",
+      "evidence": ["backend/app/services/sre_operations.py", "backend/app/core/config.py"],
+      "tests": ["backend/tests/test_sre_operations_v2600.py"]
+    },
+    {
+      "id": "sre_cockpit",
+      "name": "Operational Intelligence expose budget d'erreur, backlog, backup, restore drill et alertes SRE",
+      "evidence": ["frontend/app/page.tsx", "frontend/lib/api.ts", "frontend/app/globals.css"],
+      "tests": ["backend/tests/test_sre_operations_v2600.py"]
+    },
+    {
+      "id": "sre_ci_gate",
+      "name": "Le gate SRE est exécuté en CI et pendant les releases",
+      "evidence": ["scripts/sre_acceptance.py", ".github/workflows/ci.yml", ".github/workflows/release.yml"],
+      "tests": ["backend/tests/test_sre_operations_v2600.py"]
+    }
+  ]
+}

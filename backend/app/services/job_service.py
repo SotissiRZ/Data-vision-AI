@@ -33,7 +33,7 @@ def queue_status() -> dict[str, Any]:
 
 
 def submit_job(*, user_id: str, organization_id: str | None, workspace_id: str | None, job_type: str, dataset_id: str | None, payload: dict[str, Any], max_retries: int = 2, retry_backoff_seconds: int = 15) -> dict[str, Any]:
-    if job_type not in {"automl", "ai_analysis", "forecast", "report", "proactive_scan", "connector_refresh", "action_delivery", "model_monitor", "batch_scoring"}:
+    if job_type not in {"automl", "ai_analysis", "forecast", "report", "proactive_scan", "connector_refresh", "action_delivery", "model_monitor", "batch_scoring", "sre_probe"}:
         raise ValueError("Type de job non supporté")
     max_retries = max(0, min(int(max_retries), 5))
     retry_backoff_seconds = max(1, min(int(retry_backoff_seconds), 3600))
@@ -292,6 +292,14 @@ def run_job(job_id: str) -> dict[str, Any]:
                     payload.get("prediction_column") or "prediction"
                 ),
             )
+        elif job["job_type"] == "sre_probe":
+            _update(job_id, progress=60)
+            result = {
+                "probe": "ok",
+                "drill_id": payload.get("drill_id"),
+                "sequence": payload.get("sequence"),
+                "queue_key": QUEUE_KEY,
+            }
         elif job["job_type"] == "action_delivery":
             if not job.get("workspace_id"):
                 raise ValueError("workspace_id requis pour une action gouvernée")

@@ -1,5 +1,22 @@
 # Changelog
 
+## v2.60.0 — Exploitation avancée & SRE
+- Error budgets, alertes SLO et snapshots SRE.
+- Alertes SRE intégrables aux Governed Actions.
+- Backup S3-compatible signé SigV4 et manifest v2 avec checksum par fichier.
+- Restore drill hebdomadaire non destructif.
+- Autoscaling worker KEDA Redis optionnel.
+- Chaos contrôlé désactivé par défaut et jobs `sre_probe` bornés.
+- Cockpit SRE intégré à Operational Intelligence.
+- Gate `SRE_ACCEPTANCE 8/8`.
+
+## v2.59.0 — Résilience & exploitation HA
+- Probes avancées et readiness sensible aux migrations.
+- HPA, PDB, rolling update et topology spread Helm.
+- Migrations versionnées avec Job Helm explicite.
+- Sauvegarde/restauration manifestée et SHA-256, CronJob planifié.
+- Rotation Vault Transit auditée et runbook de reprise après sinistre.
+
 ## 2.58.0 — Hardening de production Entreprise
 - KMS externe via Vault Transit, compatible HSM selon le backend Vault déployé.
 - SCIM Groups avec membres et mapping de rôles.

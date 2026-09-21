@@ -1,0 +1,94 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.60.0",
+  "items": [
+    {
+      "id": "advanced_probes",
+      "name": "Startup, readiness et liveness sont distincts et la readiness inclut l'état des migrations",
+      "evidence": [
+        "backend/app/main.py",
+        "deploy/helm/datavision/templates/api.yaml"
+      ],
+      "tests": [
+        "backend/tests/test_resilience_ha_v2590.py"
+      ]
+    },
+    {
+      "id": "pod_disruption_budget",
+      "name": "Les composants stateless critiques disposent de PodDisruptionBudget",
+      "evidence": [
+        "deploy/helm/datavision/templates/pdb.yaml"
+      ],
+      "tests": [
+        "backend/tests/test_resilience_ha_v2590.py"
+      ]
+    },
+    {
+      "id": "horizontal_autoscaling",
+      "name": "API, web et workers disposent d'un HPA autoscaling/v2 configurable",
+      "evidence": [
+        "deploy/helm/datavision/templates/hpa.yaml",
+        "deploy/helm/datavision/values.yaml"
+      ],
+      "tests": [
+        "backend/tests/test_resilience_ha_v2590.py"
+      ]
+    },
+    {
+      "id": "schema_migrations",
+      "name": "Les migrations de schéma sont versionnées, inspectables et applicables par job explicite",
+      "evidence": [
+        "backend/app/services/schema_migrations.py",
+        "backend/app/ops/migrate.py",
+        "deploy/helm/datavision/templates/migration-job.yaml"
+      ],
+      "tests": [
+        "backend/tests/test_resilience_ha_v2590.py"
+      ]
+    },
+    {
+      "id": "verified_backup_restore",
+      "name": "Les sauvegardes contiennent un manifeste, un hash SHA-256, une politique de rétention et une restauration confirmée",
+      "evidence": [
+        "backend/app/services/backup_service.py",
+        "backend/app/ops/backup.py"
+      ],
+      "tests": [
+        "backend/tests/test_resilience_ha_v2590.py"
+      ]
+    },
+    {
+      "id": "scheduled_backups",
+      "name": "Le chart fournit un CronJob de sauvegarde avec concurrence interdite",
+      "evidence": [
+        "deploy/helm/datavision/templates/backup-cronjob.yaml",
+        "deploy/helm/datavision/values.yaml"
+      ],
+      "tests": [
+        "backend/tests/test_resilience_ha_v2590.py"
+      ]
+    },
+    {
+      "id": "kms_online_rotation",
+      "name": "Vault Transit peut être tourné en ligne avec audit de version de clé",
+      "evidence": [
+        "backend/app/services/secret_crypto.py",
+        "backend/app/api/routes/enterprise.py"
+      ],
+      "tests": [
+        "backend/tests/test_resilience_ha_v2590.py"
+      ]
+    },
+    {
+      "id": "disaster_recovery_runbook",
+      "name": "Un runbook de reprise documente RPO, RTO, restauration, validation et rollback",
+      "evidence": [
+        "docs/RUNBOOK_DISASTER_RECOVERY.md",
+        "docs/RESILIENCE_HA_V259.md"
+      ],
+      "tests": [
+        "backend/tests/test_resilience_ha_v2590.py"
+      ]
+    }
+  ]
+}

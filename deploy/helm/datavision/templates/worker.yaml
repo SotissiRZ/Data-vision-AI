@@ -3,7 +3,10 @@ kind: Deployment
 metadata:
   name: {{ include "datavision.fullname" . }}-worker
 spec:
-  replicas: {{ .Values.replicas.worker }}
+  replicas: {{ if .Values.autoscaling.worker.enabled }}{{ .Values.autoscaling.worker.minReplicas }}{{ else }}{{ .Values.replicas.worker }}{{ end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 1, maxSurge: 1}
   selector:
     matchLabels: {app.kubernetes.io/component: worker, app.kubernetes.io/instance: {{ .Release.Name }}}
   template:
@@ -18,6 +21,14 @@ spec:
           envFrom:
             - configMapRef: {name: {{ include "datavision.fullname" . }}-config}
             - secretRef: {name: {{ include "datavision.secretName" . }}}
+          startupProbe:
+            exec: {command: ["python", "-m", "app.ops.migrate", "status", "--json"]}
+            periodSeconds: 10
+            failureThreshold: 18
+          readinessProbe:
+            exec: {command: ["python", "-c", "import redis; from app.core.config import get_settings; raise SystemExit(0 if redis.Redis.from_url(get_settings().redis_url, socket_connect_timeout=2).ping() else 1)"]}
+            periodSeconds: 15
+            failureThreshold: 4
           resources: {{- toYaml .Values.resources.worker | nindent 12 }}
           volumeMounts:
             - {name: data, mountPath: /app/data}

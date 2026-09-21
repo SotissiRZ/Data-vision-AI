@@ -1,0 +1,39 @@
+{{- if and .Values.autoscaling.worker.enabled (eq .Values.autoscaling.worker.mode "keda_redis") }}
+{{- if .Values.autoscaling.worker.redisAuthSecretKey }}
+apiVersion: keda.sh/v1alpha1
+kind: TriggerAuthentication
+metadata:
+  name: {{ include "datavision.fullname" . }}-worker-redis
+spec:
+  secretTargetRef:
+    - parameter: password
+      name: {{ include "datavision.secretName" . }}
+      key: {{ .Values.autoscaling.worker.redisAuthSecretKey | quote }}
+---
+{{- end }}
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: {{ include "datavision.fullname" . }}-worker
+spec:
+  scaleTargetRef:
+    name: {{ include "datavision.fullname" . }}-worker
+  minReplicaCount: {{ .Values.autoscaling.worker.minReplicas }}
+  maxReplicaCount: {{ .Values.autoscaling.worker.maxReplicas }}
+  pollingInterval: 15
+  cooldownPeriod: 120
+  fallback:
+    failureThreshold: 3
+    replicas: {{ .Values.autoscaling.worker.minReplicas }}
+  triggers:
+    - type: redis
+      metadata:
+        address: {{ .Values.autoscaling.worker.redisAddress | quote }}
+        listName: {{ .Values.autoscaling.worker.redisListName | quote }}
+        listLength: {{ .Values.autoscaling.worker.redisListLength | quote }}
+        activationListLength: {{ .Values.autoscaling.worker.redisActivationListLength | quote }}
+      {{- if .Values.autoscaling.worker.redisAuthSecretKey }}
+      authenticationRef:
+        name: {{ include "datavision.fullname" . }}-worker-redis
+      {{- end }}
+{{- end }}

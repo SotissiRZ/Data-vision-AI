@@ -45,6 +45,8 @@ jobs:
       - run: python ../scripts/governance_acceptance.py --root .. --check
       - run: python ../scripts/entreprise_acceptance.py --root .. --check
       - run: python ../scripts/hardening_acceptance.py --root .. --check
+      - run: python ../scripts/resilience_acceptance.py --root .. --check
+      - run: python ../scripts/sre_acceptance.py --root .. --check
       - run: python ../scripts/cdc_audit.py --check
 
   frontend:

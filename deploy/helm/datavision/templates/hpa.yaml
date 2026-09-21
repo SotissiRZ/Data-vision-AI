@@ -1,0 +1,29 @@
+{{- range $component := list "api" "web" "worker" }}
+{{- $cfg := index $.Values.autoscaling $component }}
+{{- if and $cfg.enabled (or (ne $component "worker") (ne $cfg.mode "keda_redis")) }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "datavision.fullname" $ }}-{{ $component }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "datavision.fullname" $ }}-{{ $component }}
+  minReplicas: {{ $cfg.minReplicas }}
+  maxReplicas: {{ $cfg.maxReplicas }}
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 300
+    scaleUp:
+      stabilizationWindowSeconds: 30
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $cfg.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- end }}

@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-EXPECTED_VERSION = "2.58.0"
+EXPECTED_VERSION = "2.60.0"
 EXPECTED_CRYPTOGRAPHY = "cryptography==46.0.5"
 REQUIRED_FILES = (
     "VERSION",
@@ -32,6 +32,8 @@ REQUIRED_FILES = (
     "compliance/ENTREPRISE_ACCEPTANCE.json",
     "compliance/ASSISTANT_WINDOW_ACCEPTANCE.json",
     "compliance/HARDENING_ACCEPTANCE.json",
+    "compliance/RESILIENCE_ACCEPTANCE.json",
+    "compliance/SRE_ACCEPTANCE.json",
     "frontend/package.json",
     "frontend/next.config.mjs",
     "frontend/lib/assistant/orchestrator-adapter.ts",
@@ -55,8 +57,16 @@ REQUIRED_FILES = (
     "scripts/entreprise_acceptance.py",
     "scripts/assistant_window_acceptance.py",
     "scripts/hardening_acceptance.py",
+    "scripts/resilience_acceptance.py",
+    "scripts/sre_acceptance.py",
     "backend/tests/test_frontend_assistant_window_v2570.py",
     "backend/tests/test_entreprise_hardening_v2580.py",
+    "backend/tests/test_resilience_ha_v2590.py",
+    "backend/tests/test_sre_operations_v2600.py",
+    "backend/app/services/sre_operations.py",
+    "deploy/helm/datavision/templates/keda-worker.yaml",
+    "backend/app/services/schema_migrations.py",
+    "backend/app/services/backup_service.py",
     "backend/app/services/session_security.py",
     "infra/otel-collector-config.yaml",
     "deploy/helm/datavision/Chart.yaml",
@@ -156,7 +166,7 @@ def check(root: Path) -> list[str]:
                 if not scripts.get(script):
                     errors.append(f"Missing frontend npm script: {script}")
 
-    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json", "compliance/SEMANTIC_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/XAI_ACCEPTANCE.json", "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json", "compliance/TYPOGRAPHY_ACCEPTANCE.json", "compliance/COLLABORATION_ACCEPTANCE.json", "compliance/ENTREPRISE_ACCEPTANCE.json", "compliance/ASSISTANT_WINDOW_ACCEPTANCE.json", "compliance/HARDENING_ACCEPTANCE.json"):
+    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json", "compliance/SEMANTIC_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/XAI_ACCEPTANCE.json", "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json", "compliance/TYPOGRAPHY_ACCEPTANCE.json", "compliance/COLLABORATION_ACCEPTANCE.json", "compliance/ENTREPRISE_ACCEPTANCE.json", "compliance/ASSISTANT_WINDOW_ACCEPTANCE.json", "compliance/HARDENING_ACCEPTANCE.json", "compliance/RESILIENCE_ACCEPTANCE.json", "compliance/SRE_ACCEPTANCE.json"):
         path = root / rel
         if not path.is_file():
             continue

@@ -33,6 +33,9 @@ from app.services.operational_intelligence import (
     create_evaluation_suite, list_evaluation_suites, get_evaluation_suite, add_evaluation_case,
     run_evaluation_suite, list_evaluation_runs, get_evaluation_run,
 )
+from app.services.sre_operations import (
+    sre_status, capture_sre_snapshot, emit_sre_alerts, list_sre_snapshots, run_chaos_drill, list_chaos_drills,
+)
 from app.services.data_reliability import (
     save_contract, get_contract, list_contracts, delete_contract, run_contract, list_contract_runs,
     build_lineage_graph, impact_analysis, publication_gate, reliability_summary,
@@ -52,7 +55,8 @@ from app.services.mfa_service import (
     begin_password_login, begin_registration, finish_registration,
     finish_password_login, mfa_status, disable_credential,
 )
-from app.services.secret_crypto import kms_status
+from app.services.secret_crypto import kms_status, rotate_kms_key, vault_key_status
+from app.services.schema_migrations import migration_status
 from app.services.upload_security import antivirus_status
 from app.services.identity_service import (
     create_oidc_provider, list_oidc_providers, list_public_oidc_providers, delete_oidc_provider, oidc_start, oidc_exchange,
@@ -131,6 +135,11 @@ class PluginUpdateRequest(BaseModel):
     auth_header: str | None = Field(default=None, max_length=120)
     context_policy: str | None = Field(default=None, pattern="^(none|semantic)$")
     timeout_seconds: int | None = Field(default=None, ge=2, le=30)
+
+class ChaosDrillRequest(BaseModel):
+    scenario: str = Field(pattern="^(queue_backlog|readiness_snapshot)$")
+    intensity: int = Field(default=5, ge=1, le=20)
+
 
 class BootstrapRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
@@ -714,6 +723,7 @@ def enterprise_status():
             },
             "secret_vault": "versioned_local_env_vault_kv2_aesgcm_envelope",
             "kms": kms_status(),
+            "schema_migrations": migration_status(),
             "upload_antivirus": antivirus_status(),
             "rbac": "implemented_for_enterprise_resources",
             "row_column_policies": "policy_metadata_and_preview_ready",
@@ -733,6 +743,30 @@ def enterprise_status():
             "refresh_token_days": get_settings().refresh_token_days,
             "security_warning": "AUTH_SECRET doit être remplacé avant tout déploiement partagé." if get_settings().auth_secret.startswith("change-") else None,
         }
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/organizations/{organization_id}/kms/status")
+def organization_kms_status(organization_id: str, user=Depends(current_user)):
+    try:
+        member = fetch_one("SELECT role FROM organization_members WHERE organization_id=:org AND user_id=:user", {"org": organization_id, "user": user["id"]})
+        if not member or member.get("role") not in {"owner", "admin"}:
+            raise PermissionError("Administration de l’organisation requise.")
+        return {"kms": kms_status(), "external_key": vault_key_status() if get_settings().secret_kms_provider == "vault_transit" else None}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/organizations/{organization_id}/kms/rotate")
+def organization_kms_rotate(organization_id: str, user=Depends(current_user)):
+    try:
+        member = fetch_one("SELECT role FROM organization_members WHERE organization_id=:org AND user_id=:user", {"org": organization_id, "user": user["id"]})
+        if not member or member.get("role") not in {"owner", "admin"}:
+            raise PermissionError("Administration de l’organisation requise.")
+        result = rotate_kms_key(actor_user_id=user["id"], organization_id=organization_id)
+        record_event("security.kms_rotate", user_id=user["id"], organization_id=organization_id, resource_type="kms_key", resource_id=str(result.get("key_id")), payload=result)
+        return result
     except Exception as exc:
         _handle(exc)
 
@@ -1248,6 +1282,65 @@ def operational_workspace_overview(workspace_id: str, hours: int = Query(default
     try:
         _workspace_permission(user["id"], workspace_id, "observability:read")
         return operational_overview(workspace_id, hours=hours)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/sre")
+def operational_sre_status(workspace_id: str, hours: int = Query(default=24, ge=1, le=720), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return sre_status(workspace_id, hours=hours)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/operational/sre/snapshot")
+def operational_sre_snapshot(workspace_id: str, hours: int = Query(default=24, ge=1, le=720), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return capture_sre_snapshot(workspace_id, hours=hours)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/operational/sre/emit")
+def operational_sre_emit(workspace_id: str, hours: int = Query(default=24, ge=1, le=720), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        result = emit_sre_alerts(user["id"], workspace_id, hours=hours)
+        record_event("sre.alerts.evaluate", user_id=user["id"], workspace_id=workspace_id, resource_type="workspace", resource_id=workspace_id, payload={"alerts": len(result.get("alerts") or []), "status": result.get("status")})
+        return result
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/sre/snapshots")
+def operational_sre_snapshots(workspace_id: str, limit: int = Query(default=50, ge=1, le=200), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"snapshots": list_sre_snapshots(workspace_id, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/operational/chaos")
+def operational_chaos_run(workspace_id: str, req: ChaosDrillRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        ws = fetch_one("SELECT organization_id FROM workspaces WHERE id=:id", {"id": workspace_id}) or {}
+        result = run_chaos_drill(user["id"], workspace_id, scenario=req.scenario, intensity=req.intensity, organization_id=ws.get("organization_id"))
+        record_event("sre.chaos_drill", user_id=user["id"], workspace_id=workspace_id, resource_type="chaos_drill", resource_id=result["id"], payload={"scenario": req.scenario, "intensity": req.intensity})
+        return {"drill": result}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/chaos")
+def operational_chaos_list(workspace_id: str, limit: int = Query(default=25, ge=1, le=100), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"drills": list_chaos_drills(workspace_id, limit=limit)}
     except Exception as exc:
         _handle(exc)
 

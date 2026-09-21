@@ -1,0 +1,15 @@
+{{- if .Values.availability.podDisruptionBudget.enabled }}
+{{- range $component := list "api" "web" }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "datavision.fullname" $ }}-{{ $component }}
+spec:
+  minAvailable: {{ $.Values.availability.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: {{ $component }}
+      app.kubernetes.io/instance: {{ $.Release.Name }}
+{{- end }}
+{{- end }}

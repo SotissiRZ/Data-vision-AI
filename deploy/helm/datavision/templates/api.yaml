@@ -3,13 +3,24 @@ kind: Deployment
 metadata:
   name: {{ include "datavision.fullname" . }}-api
 spec:
-  replicas: {{ .Values.replicas.api }}
+  replicas: {{ if .Values.autoscaling.api.enabled }}{{ .Values.autoscaling.api.minReplicas }}{{ else }}{{ .Values.replicas.api }}{{ end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
   selector:
     matchLabels: {app.kubernetes.io/component: api, app.kubernetes.io/instance: {{ .Release.Name }}}
   template:
     metadata:
       labels: {app.kubernetes.io/component: api, app.kubernetes.io/instance: {{ .Release.Name }}}
     spec:
+      {{- if .Values.availability.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: {{ .Values.availability.topologySpread.topologyKey }}
+          whenUnsatisfiable: {{ .Values.availability.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels: {app.kubernetes.io/component: api, app.kubernetes.io/instance: {{ .Release.Name }}}
+      {{- end }}
       containers:
         - name: api
           image: "{{ .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
@@ -18,8 +29,21 @@ spec:
           envFrom:
             - configMapRef: {name: {{ include "datavision.fullname" . }}-config}
             - secretRef: {name: {{ include "datavision.secretName" . }}}
-          readinessProbe: {httpGet: {path: /health/ready, port: 8005}, initialDelaySeconds: 10, periodSeconds: 10}
-          livenessProbe: {httpGet: {path: /health/live, port: 8005}, initialDelaySeconds: 20, periodSeconds: 20}
+          startupProbe:
+            httpGet: {path: /health/startup, port: 8005}
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: {{ .Values.probes.api.startupFailureThreshold }}
+          readinessProbe:
+            httpGet: {path: /health/ready, port: 8005}
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: {{ .Values.probes.api.readinessFailureThreshold }}
+          livenessProbe:
+            httpGet: {path: /health/live, port: 8005}
+            periodSeconds: 20
+            timeoutSeconds: 5
+            failureThreshold: {{ .Values.probes.api.livenessFailureThreshold }}
           resources: {{- toYaml .Values.resources.api | nindent 12 }}
           volumeMounts:
             - {name: data, mountPath: /app/data}

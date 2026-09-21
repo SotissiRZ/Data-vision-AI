@@ -1,0 +1,84 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "datavision.fullname" . }}-backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.backup.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      template:
+        metadata:
+          labels:
+            {{- include "datavision.labels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: "{{ .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
+              imagePullPolicy: {{ .Values.images.api.pullPolicy }}
+              command: ["python", "-m", "app.ops.backup", "create", "--label", "scheduled"]
+              envFrom:
+                - configMapRef: {name: {{ include "datavision.fullname" . }}-config}
+                - secretRef: {name: {{ include "datavision.secretName" . }}}
+              resources:
+                requests: {cpu: 100m, memory: 256Mi}
+                limits: {cpu: "1", memory: 1Gi}
+              volumeMounts:
+                - {name: data, mountPath: /app/data}
+          volumes:
+            - name: data
+              {{- if .Values.persistence.enabled }}
+              persistentVolumeClaim: {claimName: {{ include "datavision.fullname" . }}-data}
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+{{- end }}
+
+{{- if and .Values.backup.enabled .Values.backup.restoreDrill.enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "datavision.fullname" . }}-restore-drill
+spec:
+  schedule: {{ .Values.backup.restoreDrill.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.backup.restoreDrill.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.backup.restoreDrill.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        metadata:
+          labels:
+            {{- include "datavision.labels" . | nindent 12 }}
+            app.kubernetes.io/component: restore-drill
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: restore-drill
+              image: "{{ .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
+              imagePullPolicy: {{ .Values.images.api.pullPolicy }}
+              command: ["python", "-m", "app.ops.backup", "drill-latest"]
+              envFrom:
+                - configMapRef: {name: {{ include "datavision.fullname" . }}-config}
+                - secretRef: {name: {{ include "datavision.secretName" . }}}
+              resources:
+                requests: {cpu: 100m, memory: 256Mi}
+                limits: {cpu: "1", memory: 1Gi}
+              volumeMounts:
+                - {name: data, mountPath: /app/data}
+          volumes:
+            - name: data
+              {{- if .Values.persistence.enabled }}
+              persistentVolumeClaim: {claimName: {{ include "datavision.fullname" . }}-data}
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+{{- end }}

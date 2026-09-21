@@ -4,6 +4,7 @@ import base64
 import hashlib
 import json
 import os
+import uuid
 from typing import Any
 
 import httpx
@@ -76,6 +77,15 @@ def _vault_url(action: str) -> str:
     mount = settings.vault_transit_mount.strip().strip("/")
     key = settings.vault_transit_key.strip().strip("/")
     return f"{base}/v1/{mount}/{action}/{key}"
+
+
+def _vault_key_url(suffix: str = "") -> str:
+    settings = get_settings()
+    base = settings.vault_addr.strip().rstrip("/")
+    mount = settings.vault_transit_mount.strip().strip("/")
+    key = settings.vault_transit_key.strip().strip("/")
+    tail = f"/{suffix.strip('/')}" if suffix else ""
+    return f"{base}/v1/{mount}/keys/{key}{tail}"
 
 
 def _vault_encrypt(value: str, *, aad: str) -> str:
@@ -209,3 +219,64 @@ def kms_status() -> dict[str, Any]:
         "legacy_fernet_decrypt": True,
         "production_ready": dedicated,
     }
+
+
+def vault_key_status() -> dict[str, Any]:
+    if not _vault_configured():
+        raise RuntimeError("Vault Transit non configuré")
+    settings = get_settings()
+    try:
+        response = httpx.get(
+            _vault_key_url(), headers=_vault_headers(), timeout=max(1, int(settings.vault_timeout_seconds))
+        )
+        response.raise_for_status()
+        data = response.json().get("data") or {}
+        return {
+            "name": data.get("name") or settings.vault_transit_key,
+            "latest_version": int(data.get("latest_version") or 0),
+            "min_decryption_version": int(data.get("min_decryption_version") or 1),
+            "min_encryption_version": int(data.get("min_encryption_version") or 0),
+            "supports_rotation": True,
+        }
+    except Exception as exc:
+        raise RuntimeError("Impossible de lire l’état de la clé Vault Transit") from exc
+
+
+def rotate_kms_key(*, actor_user_id: str | None = None, organization_id: str | None = None) -> dict[str, Any]:
+    settings = get_settings()
+    provider = str(settings.secret_kms_provider or "local").strip().lower()
+    if provider != "vault_transit":
+        raise RuntimeError("La rotation opérable automatique nécessite SECRET_KMS_PROVIDER=vault_transit")
+    before = vault_key_status()
+    try:
+        response = httpx.post(
+            _vault_key_url("rotate"), headers=_vault_headers(), json={}, timeout=max(1, int(settings.vault_timeout_seconds))
+        )
+        response.raise_for_status()
+        after = vault_key_status()
+        result = {
+            "provider": "vault_transit",
+            "key_id": settings.vault_transit_key,
+            "previous_version": before.get("latest_version"),
+            "new_version": after.get("latest_version"),
+            "rotated": int(after.get("latest_version") or 0) > int(before.get("latest_version") or 0),
+        }
+        try:
+            from app.services.metadata_store import execute, json_dumps, utcnow
+            execute(
+                """INSERT INTO kms_rotation_events(
+                    id,provider,key_id,previous_version,new_version,actor_user_id,organization_id,status,created_at,details_json
+                ) VALUES(:id,:provider,:key_id,:previous,:new,:actor,:org,:status,:created,:details)""",
+                {
+                    "id": str(uuid.uuid4()), "provider": "vault_transit", "key_id": settings.vault_transit_key,
+                    "previous": result["previous_version"], "new": result["new_version"],
+                    "actor": actor_user_id, "org": organization_id,
+                    "status": "success" if result["rotated"] else "unchanged", "created": utcnow(),
+                    "details": json_dumps(result),
+                },
+            )
+        except Exception:
+            pass
+        return result
+    except Exception as exc:
+        raise RuntimeError("Échec de la rotation Vault Transit") from exc

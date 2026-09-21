@@ -1192,6 +1192,9 @@ def init_metadata_store() -> Engine:
     with engine.begin() as conn:
         for ddl in SCHEMA_SQL:
             conn.execute(text(ddl))
+        from app.services.schema_migrations import apply_pending_migrations
+        if get_settings().schema_auto_migrate:
+            apply_pending_migrations(conn)
     return engine
 
 

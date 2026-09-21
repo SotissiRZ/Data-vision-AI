@@ -1,4 +1,4 @@
-.PHONY: up down logs test typecheck build-web compose-check e2e-smoke hygiene assistant-acceptance assistant-window-acceptance assistant-multimodal-acceptance typography-acceptance collaboration-acceptance governance-acceptance hardening-acceptance release verify-release
+.PHONY: up down logs test typecheck build-web compose-check e2e-smoke hygiene assistant-acceptance assistant-window-acceptance assistant-multimodal-acceptance typography-acceptance collaboration-acceptance governance-acceptance hardening-acceptance resilience-acceptance release verify-release
 
 up:
 	cp -n .env.example .env || true
@@ -52,6 +52,9 @@ entreprise-acceptance:
 
 hardening-acceptance:
 	python scripts/hardening_acceptance.py --root . --check
+
+resilience-acceptance:
+	python scripts/resilience_acceptance.py --root . --check
 
 release:
 	python scripts/release.py --output dist

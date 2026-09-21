@@ -122,6 +122,48 @@ services:
       start_period: 15s
     restart: unless-stopped
 
+  migrate:
+    profiles: ["ops"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    command: ["python", "-m", "app.ops.migrate", "apply", "--json"]
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  backup:
+    profiles: ["ops"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    command: ["python", "-m", "app.ops.backup", "create", "--label", "manual"]
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  restore-drill:
+    profiles: ["ops"]
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file: .env
+    command: ["python", "-m", "app.ops.backup", "drill-latest"]
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.161.0
     command: ["--config=/etc/otelcol-contrib/config.yaml"]

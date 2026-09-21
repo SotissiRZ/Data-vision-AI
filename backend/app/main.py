@@ -27,8 +27,9 @@ from app.services.tenant_access import (
 settings = get_settings()
 from app.services.upload_security import antivirus_status
 from app.services.secret_crypto import kms_status
+from app.services.schema_migrations import migration_status
 
-app = FastAPI(title=settings.app_name, version="2.58.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.60.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -264,8 +265,19 @@ def health_live():
     return {
         "status": "alive",
         "product": settings.app_name,
-        "version": "2.58.0",
+        "version": "2.60.0",
     }
+
+
+@app.get("/health/startup")
+def health_startup():
+    try:
+        migrations = migration_status()
+        ok = bool(migrations.get("ready"))
+        payload = {"status": "started" if ok else "migrations_pending", "ready": ok, "version": "2.60.0", "schema_migrations": migrations}
+        return payload if ok else JSONResponse(status_code=503, content=payload)
+    except Exception as exc:
+        return JSONResponse(status_code=503, content={"status": "startup_failed", "ready": False, "version": "2.60.0", "error": type(exc).__name__})
 
 
 @app.get("/health/ready")
@@ -319,10 +331,16 @@ def health_ready():
         "dedicated_key": bool(kms.get("dedicated_key")),
         "key_id": kms.get("key_id"),
     }
+    try:
+        migrations = migration_status()
+    except Exception as exc:
+        migrations = {"ready": False, "pending": [], "error": type(exc).__name__}
+    components["schema_migrations"] = migrations
 
     ready = (
         database_ok
         and redis_ok
+        and bool(migrations.get("ready"))
         and (not av.get("required") or bool(av.get("available")))
         and (not kms_required or bool(kms.get("production_ready")))
     )
@@ -330,7 +348,7 @@ def health_ready():
         "status": "ready" if ready else "not_ready",
         "ready": ready,
         "product": settings.app_name,
-        "version": "2.58.0",
+        "version": "2.60.0",
         "components": components,
     }
     if ready:
@@ -343,7 +361,7 @@ def health():
     return {
         "status": "ok",
         "product": settings.app_name,
-        "version": "2.58.0",
+        "version": "2.60.0",
     }
 
 
@@ -407,7 +425,7 @@ def capabilities():
             "oidc_sso", "oidc_authorization_code_pkce", "oidc_rs256_validation", "oidc_jit_provisioning", "oidc_domain_discovery",
             "scim_provisioning", "scim_token_hash_storage", "scim_user_lifecycle", "scim_groups", "scim_group_role_mapping", "mfa_webauthn",
             "versioned_secret_vault", "environment_secret_references", "hashicorp_vault_kv2_references",
-            "private_ai_policy", "on_premise_profile", "prometheus_workspace_metrics", "opentelemetry_collector", "kubernetes_helm_packaging", "external_kms_vault_transit", "session_device_policies", "managed_devices", "entreprise_readiness", "upload_antivirus",
+            "private_ai_policy", "on_premise_profile", "prometheus_workspace_metrics", "opentelemetry_collector", "kubernetes_helm_packaging", "external_kms_vault_transit", "kms_online_rotation", "schema_versioned_migrations", "verified_backup_restore", "ha_kubernetes_runtime", "session_device_policies", "managed_devices", "entreprise_readiness", "upload_antivirus",
             "floating_voice_assistant", "semantic_context_engine", "assistant_tool_registry",
             "assistant_action_lifecycle", "assistant_plan_validation", "assistant_turn_resume",
             "assistant_model_gateway", "assistant_privacy_routing",

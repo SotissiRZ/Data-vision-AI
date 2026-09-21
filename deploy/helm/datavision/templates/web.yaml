@@ -3,20 +3,42 @@ kind: Deployment
 metadata:
   name: {{ include "datavision.fullname" . }}-web
 spec:
-  replicas: {{ .Values.replicas.web }}
+  replicas: {{ if .Values.autoscaling.web.enabled }}{{ .Values.autoscaling.web.minReplicas }}{{ else }}{{ .Values.replicas.web }}{{ end }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: {maxUnavailable: 0, maxSurge: 1}
   selector:
     matchLabels: {app.kubernetes.io/component: web, app.kubernetes.io/instance: {{ .Release.Name }}}
   template:
     metadata:
       labels: {app.kubernetes.io/component: web, app.kubernetes.io/instance: {{ .Release.Name }}}
     spec:
+      {{- if .Values.availability.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: {{ .Values.availability.topologySpread.topologyKey }}
+          whenUnsatisfiable: {{ .Values.availability.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels: {app.kubernetes.io/component: web, app.kubernetes.io/instance: {{ .Release.Name }}}
+      {{- end }}
       containers:
         - name: web
           image: "{{ .Values.images.web.repository }}:{{ .Values.images.web.tag }}"
           imagePullPolicy: {{ .Values.images.web.pullPolicy }}
           ports: [{containerPort: 3005}]
           envFrom: [{configMapRef: {name: {{ include "datavision.fullname" . }}-config}}]
-          readinessProbe: {httpGet: {path: /api/health, port: 3005}, initialDelaySeconds: 10, periodSeconds: 10}
+          startupProbe:
+            httpGet: {path: /api/health, port: 3005}
+            periodSeconds: 5
+            failureThreshold: {{ .Values.probes.web.startupFailureThreshold }}
+          readinessProbe:
+            httpGet: {path: /api/health, port: 3005}
+            periodSeconds: 10
+            failureThreshold: {{ .Values.probes.web.readinessFailureThreshold }}
+          livenessProbe:
+            httpGet: {path: /api/health, port: 3005}
+            periodSeconds: 20
+            failureThreshold: {{ .Values.probes.web.livenessFailureThreshold }}
           resources: {{- toYaml .Values.resources.web | nindent 12 }}
 ---
 apiVersion: v1

@@ -787,11 +787,13 @@ def entreprise_readiness(actor_id: str, workspace_id: str) -> dict[str, Any]:
         {"id": "observability", "label": "Observabilité Prometheus", "status": "pass", "detail": "Endpoints workspace-scoped et scrape interne disponibles."},
         {"id": "otel", "label": "OpenTelemetry Collector", "status": "pass", "detail": "Collector Contrib packagé, receiver Prometheus et export OTLP/Prometheus prêts."},
         {"id": "kubernetes", "label": "Kubernetes / Helm", "status": "pass", "detail": "Chart Helm on-prem fourni sans retirer Docker Compose."},
+        {"id": "sre", "label": "SRE & résilience avancée", "status": "pass", "detail": f"SLO/error budget, restore drills et autoscaling worker={cfg.sre_worker_autoscaling_mode}."},
+        {"id": "object_backup", "label": "Backup objet", "status": "pass" if cfg.backup_object_store_provider != "disabled" else "warn", "detail": f"Provider={cfg.backup_object_store_provider} · auto-upload={'oui' if cfg.backup_object_store_auto_upload else 'non'}."},
     ]
     pass_count = sum(1 for c in checks if c["status"] == "pass")
     return {
         "product": "DataVision AI",
-        "version": "2.58.0",
+        "version": "2.60.0",
         "edition": "Entreprise",
         "workspace_id": workspace_id,
         "organization_id": ws["organization_id"],
@@ -810,6 +812,9 @@ def entreprise_readiness(actor_id: str, workspace_id: str) -> dict[str, Any]:
             "docker_compose": True,
             "kubernetes_helm": True,
             "opentelemetry_collector": True,
+            "worker_autoscaling": cfg.sre_worker_autoscaling_mode,
+            "object_backup": cfg.backup_object_store_provider,
+            "restore_drills": True,
             "external_egress_policy": cfg.external_egress_policy,
             "external_ai_opt_in_only": cfg.external_egress_policy == "explicit_opt_in",
             "persistent_postgres": metadata_backend().get("dialect") == "postgresql",

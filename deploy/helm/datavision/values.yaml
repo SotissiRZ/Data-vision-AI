@@ -4,15 +4,15 @@ fullnameOverride: ""
 images:
   api:
     repository: datavision-api
-    tag: "2.58.0"
+    tag: "2.60.0"
     pullPolicy: IfNotPresent
   web:
     repository: datavision-web
-    tag: "2.58.0"
+    tag: "2.60.0"
     pullPolicy: IfNotPresent
   sandbox:
     repository: datavision-sandbox
-    tag: "2.58.0"
+    tag: "2.60.0"
     pullPolicy: IfNotPresent
   otelCollector:
     repository: otel/opentelemetry-collector-contrib
@@ -55,6 +55,23 @@ config:
   vaultTransitMount: transit
   vaultTransitKey: datavision
   vaultTransitHsmBacked: false
+  schemaAutoMigrate: false
+  backupRequireDatabaseDump: true
+  backupObjectStoreProvider: disabled
+  backupObjectStoreEndpoint: ""
+  backupObjectStoreBucket: ""
+  backupObjectStorePrefix: datavision/backups
+  backupObjectStoreRegion: us-east-1
+  backupObjectStoreVerifyTls: true
+  backupObjectStoreAutoUpload: false
+  sreQueueAlertDepth: 25
+  sreBackupMaxAgeHours: 26
+  sreRestoreDrillMaxAgeHours: 168
+  sreErrorBudgetBurnAlert: 2.0
+  sreAutoAlertsEnabled: false
+  sreCheckIntervalSeconds: 300
+  sreChaosEnabled: false
+  sreChaosMaxProbeJobs: 20
 
 secrets:
   create: true
@@ -63,6 +80,10 @@ secrets:
   connectorSecretKey: CHANGE_ME_32_CHARS_MINIMUM
   vaultToken: CHANGE_ME
   otelInternalMetricsToken: CHANGE_ME
+  backupObjectStoreAccessKey: ""
+  backupObjectStoreSecretKey: ""
+  backupObjectStoreSessionToken: ""
+  redisPassword: ""
 
 persistence:
   enabled: true
@@ -93,3 +114,62 @@ ingress:
   className: nginx
   host: datavision.example.com
   tlsSecret: ""
+
+# v2.59 — Résilience & exploitation HA
+availability:
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 1
+  topologySpread:
+    enabled: true
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+
+autoscaling:
+  api:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  web:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 70
+  worker:
+    enabled: true
+    mode: cpu # cpu | keda_redis
+    minReplicas: 1
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 75
+    redisAddress: redis.example.internal:6379
+    redisListName: datavision:jobs
+    redisListLength: "5"
+    redisActivationListLength: "1"
+    redisAuthSecretKey: ""
+
+probes:
+  api:
+    startupFailureThreshold: 30
+    readinessFailureThreshold: 6
+    livenessFailureThreshold: 3
+  web:
+    startupFailureThreshold: 30
+    readinessFailureThreshold: 6
+    livenessFailureThreshold: 3
+
+migrations:
+  enabled: true
+  backoffLimit: 3
+
+backup:
+  enabled: true
+  schedule: "0 2 * * *"
+  retentionCount: 7
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  restoreDrill:
+    enabled: true
+    schedule: "30 3 * * 0"
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3

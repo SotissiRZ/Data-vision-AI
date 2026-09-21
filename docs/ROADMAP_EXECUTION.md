@@ -1,5 +1,31 @@
 # Roadmap d’exécution
 
+## Livré — v2.60.0 Exploitation avancée & SRE
+
+- budgets d’erreur calculés sur les SLO réels ;
+- alertes SRE persistées et routables via Governed Actions ;
+- stockage objet S3-compatible signé SigV4 pour les backups ;
+- manifest backup v2 et restore drills non destructifs automatisés ;
+- autoscaling worker KEDA/Redis optionnel en complément du HPA CPU ;
+- chaos contrôlé désactivé par défaut et borné à des probes SRE ;
+- cockpit Operational Intelligence enrichi ;
+- gate `SRE_ACCEPTANCE 8/8`.
+
+La prochaine priorité est **v2.61 — SRE automatisé & continuité multi-zone** : dashboards/recording rules Prometheus packagés, alert routing enrichi, réplication de sauvegardes multi-cibles, exercices DR orchestrés et tests de perte de dépendance en environnement de staging.
+
+## Livré — v2.59.0 Résilience & exploitation HA
+
+- probes startup/readiness/liveness distinctes ;
+- PodDisruptionBudget et autoscaling HPA ;
+- rolling updates et répartition multi-nœuds ;
+- migrations de schéma versionnées et Job Helm pré-upgrade ;
+- sauvegarde/restauration vérifiée SHA-256 et CronJob planifié ;
+- rotation KMS Vault Transit opérable et auditée ;
+- runbook de reprise après sinistre avec RPO/RTO ;
+- gate `RESILIENCE_ACCEPTANCE 8/8`.
+
+Cette priorité est livrée en **v2.60.0**.
+
 ## Livré — v2.58.0 Hardening de production Entreprise
 
 - KMS/HSM externe via Vault Transit ;

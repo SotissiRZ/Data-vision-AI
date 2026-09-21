@@ -1,14 +1,31 @@
-# DataVision AI — v2.58.0
+# DataVision AI — v2.60.0
 
+
+## Nouveau dans v2.60.0 — Exploitation avancée & SRE
+- **Budgets d’erreur** calculés à partir des SLO réels, alertes classées par sévérité et snapshots SRE persistés.
+- Propagation optionnelle des breaches vers **Governed Actions**, avec identifiant d’événement dédupliqué par fenêtre.
+- Réplication de backup vers stockage **S3-compatible** via Signature V4, sans dépendance SDK supplémentaire.
+- Manifest backup v2 avec checksum par fichier et **restore drill non destructif** automatisable.
+- Autoscaling worker au choix : **HPA CPU** ou **KEDA Redis** sur `datavision:jobs`.
+- Exercices de chaos contrôlés, désactivés par défaut, avec probes bornées et auditables.
+- Cockpit Operational Intelligence enrichi : error budget, backlog, backup, restore drill, object storage et alertes SRE.
+- Gate exécutable : `python scripts/sre_acceptance.py --root . --check` (`8/8`).
+
+## Nouveau dans v2.59.0 — Résilience & exploitation HA
+- Probes **startup/readiness/liveness** distinctes, readiness sensible aux migrations.
+- **HPA**, **PodDisruptionBudget**, rolling update sans indisponibilité API/web et topology spread.
+- Migrations versionnées avec Job Helm pré-install/pré-upgrade.
+- Backup/restauration avec manifeste, SHA-256, rétention et CronJob Kubernetes.
+- Rotation Vault Transit opérable et journalisée.
+- Runbook DR avec RPO/RTO, validation et rollback.
+- Gate `RESILIENCE_ACCEPTANCE 8/8`.
 
 ## Nouveau dans v2.58.0 — Hardening de production Entreprise
-- **KMS/HSM externe** via HashiCorp Vault Transit, avec conservation du chiffrement local AES-256-GCM et compatibilité des ciphertexts historiques.
-- **SCIM Groups 2.0** : création, lecture, mise à jour, suppression, synchronisation des membres et mapping optionnel vers les rôles DataVision.
-- **Politiques session/appareil** par organisation : inactivité, durée maximale, plafond de sessions, appareils approuvés et révocation immédiate.
-- **OpenTelemetry Collector** packagé dans Docker Compose avec scrape Prometheus protégé et endpoints OTLP.
-- **Helm/Kubernetes** optionnel pour API, worker, frontend, sandbox et collector, sans suppression du mode Docker Compose.
-- Cockpit Entreprise enrichi avec KMS/HSM, SCIM Groups, sessions/appareils, OpenTelemetry et Kubernetes.
-- Gate exécutable : `python scripts/hardening_acceptance.py --root . --check` (`8/8`).
+- **KMS/HSM externe** via HashiCorp Vault Transit.
+- **SCIM Groups 2.0** avec membres et mapping de rôles.
+- Politiques session/appareil, appareils approuvés et révocation.
+- OpenTelemetry Collector, Helm/Kubernetes optionnel et Docker Compose conservé.
+- Gate `HARDENING_ACCEPTANCE 8/8`.
 
 
 ## Nouveau dans v2.57.0 — Fenêtre d’assistant dynamique

@@ -891,6 +891,15 @@ export async function getOperationalTelemetry(token:string, workspace_id:string,
   const p=new URLSearchParams({hours:String(hours),limit:String(limit)}); if(event_kind)p.set('event_kind',event_kind);
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/telemetry?${p.toString()}`, { headers:enterpriseHeaders(token) }), 'Événements de télémétrie indisponibles');
 }
+export async function getSREStatus(token:string, workspace_id:string, hours=24) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/sre?hours=${hours}`, { headers:enterpriseHeaders(token) }), 'Posture SRE indisponible');
+}
+export async function emitSREAlerts(token:string, workspace_id:string, hours=24) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/sre/emit?hours=${hours}`, { method:'POST', headers:enterpriseHeaders(token) }), 'Évaluation SRE impossible');
+}
+export async function runSREChaosDrill(token:string, workspace_id:string, scenario:'queue_backlog'|'readiness_snapshot', intensity=5) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/chaos`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({scenario,intensity}) }), 'Exercice SRE impossible');
+}
 export async function getJobAttempts(token:string, job_id:string) {
   return parse<any>(await apiFetch(`${API}/jobs/${job_id}/attempts`, { headers:enterpriseHeaders(token) }), 'Tentatives du job indisponibles');
 }

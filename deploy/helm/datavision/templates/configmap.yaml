@@ -20,5 +20,24 @@ data:
   VAULT_TRANSIT_MOUNT: {{ .Values.config.vaultTransitMount | quote }}
   VAULT_TRANSIT_KEY: {{ .Values.config.vaultTransitKey | quote }}
   VAULT_TRANSIT_HSM_BACKED: {{ .Values.config.vaultTransitHsmBacked | quote }}
+  SCHEMA_AUTO_MIGRATE: {{ .Values.config.schemaAutoMigrate | quote }}
+  BACKUP_RETENTION_COUNT: {{ .Values.backup.retentionCount | quote }}
+  BACKUP_REQUIRE_DATABASE_DUMP: {{ .Values.config.backupRequireDatabaseDump | quote }}
+  BACKUP_OBJECT_STORE_PROVIDER: {{ .Values.config.backupObjectStoreProvider | quote }}
+  BACKUP_OBJECT_STORE_ENDPOINT: {{ .Values.config.backupObjectStoreEndpoint | quote }}
+  BACKUP_OBJECT_STORE_BUCKET: {{ .Values.config.backupObjectStoreBucket | quote }}
+  BACKUP_OBJECT_STORE_PREFIX: {{ .Values.config.backupObjectStorePrefix | quote }}
+  BACKUP_OBJECT_STORE_REGION: {{ .Values.config.backupObjectStoreRegion | quote }}
+  BACKUP_OBJECT_STORE_VERIFY_TLS: {{ .Values.config.backupObjectStoreVerifyTls | quote }}
+  BACKUP_OBJECT_STORE_AUTO_UPLOAD: {{ .Values.config.backupObjectStoreAutoUpload | quote }}
+  SRE_QUEUE_ALERT_DEPTH: {{ .Values.config.sreQueueAlertDepth | quote }}
+  SRE_BACKUP_MAX_AGE_HOURS: {{ .Values.config.sreBackupMaxAgeHours | quote }}
+  SRE_RESTORE_DRILL_MAX_AGE_HOURS: {{ .Values.config.sreRestoreDrillMaxAgeHours | quote }}
+  SRE_ERROR_BUDGET_BURN_ALERT: {{ .Values.config.sreErrorBudgetBurnAlert | quote }}
+  SRE_AUTO_ALERTS_ENABLED: {{ .Values.config.sreAutoAlertsEnabled | quote }}
+  SRE_CHECK_INTERVAL_SECONDS: {{ .Values.config.sreCheckIntervalSeconds | quote }}
+  SRE_WORKER_AUTOSCALING_MODE: {{ .Values.autoscaling.worker.mode | quote }}
+  SRE_CHAOS_ENABLED: {{ .Values.config.sreChaosEnabled | quote }}
+  SRE_CHAOS_MAX_PROBE_JOBS: {{ .Values.config.sreChaosMaxProbeJobs | quote }}
   NEXT_PUBLIC_API_URL: "/api/backend"
   INTERNAL_API_URL: "http://{{ include "datavision.fullname" . }}-api:8005/api/v1"

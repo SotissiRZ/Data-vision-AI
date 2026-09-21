@@ -66,6 +66,32 @@ class Settings(BaseSettings):
     # v2.58 OpenTelemetry collector scrape protection
     otel_internal_metrics_token: str = "change-this-otel-metrics-token"
 
+    # v2.59 resilience / disaster recovery
+    schema_auto_migrate: bool = True
+    backup_retention_count: int = 7
+    backup_require_database_dump: bool = True
+
+    # v2.60 SRE / object storage / controlled chaos
+    backup_object_store_provider: str = "disabled"  # disabled | s3_compatible
+    backup_object_store_endpoint: str = ""
+    backup_object_store_bucket: str = ""
+    backup_object_store_prefix: str = "datavision/backups"
+    backup_object_store_region: str = "us-east-1"
+    backup_object_store_access_key: str = ""
+    backup_object_store_secret_key: str = ""
+    backup_object_store_session_token: str = ""
+    backup_object_store_verify_tls: bool = True
+    backup_object_store_auto_upload: bool = False
+    sre_queue_alert_depth: int = 25
+    sre_backup_max_age_hours: int = 26
+    sre_restore_drill_max_age_hours: int = 168
+    sre_error_budget_burn_alert: float = 2.0
+    sre_auto_alerts_enabled: bool = False
+    sre_check_interval_seconds: int = 300
+    sre_worker_autoscaling_mode: str = "cpu"  # cpu | keda_redis
+    sre_chaos_enabled: bool = False
+    sre_chaos_max_probe_jobs: int = 20
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property
