@@ -32,6 +32,20 @@ type Message = {
 
 type ProactiveVoiceMode = "off" | "critical_only" | "important" | "active";
 
+type AssistantWindowSize = {
+  width: number;
+  height: number;
+};
+
+const ASSISTANT_WINDOW_STORAGE_KEY = "datavision.assistant.window.size";
+const DEFAULT_ASSISTANT_WINDOW_SIZE: AssistantWindowSize = { width: 500, height: 760 };
+const COMPACT_ASSISTANT_WINDOW_SIZE: AssistantWindowSize = { width: 390, height: 560 };
+const LARGE_ASSISTANT_WINDOW_SIZE: AssistantWindowSize = { width: 760, height: 860 };
+const MIN_ASSISTANT_WIDTH = 340;
+const MIN_ASSISTANT_HEIGHT = 420;
+const MAX_ASSISTANT_WIDTH = 960;
+const MAX_ASSISTANT_HEIGHT = 980;
+
 export function FloatingDataVisionAssistant({
   adapter,
   locale = "fr-FR",
@@ -42,6 +56,8 @@ export function FloatingDataVisionAssistant({
   proactiveVoiceMode?: ProactiveVoiceMode;
 }) {
   const [open, setOpen] = useState(false);
+  const [assistantWindowSize, setAssistantWindowSizeState] = useState<AssistantWindowSize>(DEFAULT_ASSISTANT_WINDOW_SIZE);
+  const [isResizingWindow, setIsResizingWindow] = useState(false);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
@@ -71,6 +87,7 @@ export function FloatingDataVisionAssistant({
   ]);
 
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const assistantWindowSizeRef = useRef<AssistantWindowSize>(DEFAULT_ASSISTANT_WINDOW_SIZE);
   const observeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingObservationRef = useRef<{ event: any; context: AssistantContextSnapshot } | null>(null);
   const lastObservationKeyRef = useRef("");
@@ -102,6 +119,72 @@ export function FloatingDataVisionAssistant({
   const hasGroundedContext = Boolean(
     context.activeDatasetId || context.activeModelId || context.selectedEntity,
   );
+
+  function clampAssistantWindowSize(size: AssistantWindowSize): AssistantWindowSize {
+    if (typeof window === "undefined") return size;
+
+    const horizontalMargin = window.innerWidth <= 680 ? 16 : 32;
+    const verticalReserve = window.innerWidth <= 680 ? 90 : 112;
+    const availableWidth = Math.max(280, window.innerWidth - horizontalMargin);
+    const availableHeight = Math.max(360, window.innerHeight - verticalReserve);
+    const minWidth = Math.min(MIN_ASSISTANT_WIDTH, availableWidth);
+    const minHeight = Math.min(MIN_ASSISTANT_HEIGHT, availableHeight);
+
+    return {
+      width: Math.round(Math.min(Math.max(size.width, minWidth), Math.min(MAX_ASSISTANT_WIDTH, availableWidth))),
+      height: Math.round(Math.min(Math.max(size.height, minHeight), Math.min(MAX_ASSISTANT_HEIGHT, availableHeight))),
+    };
+  }
+
+  function applyAssistantWindowSize(size: AssistantWindowSize, persist = true) {
+    const next = clampAssistantWindowSize(size);
+    assistantWindowSizeRef.current = next;
+    setAssistantWindowSizeState(next);
+    if (!persist) return;
+    try {
+      window.localStorage.setItem(ASSISTANT_WINDOW_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Local persistence is optional; resizing still works for the current session.
+    }
+  }
+
+  function beginAssistantWindowResize(event: React.PointerEvent<HTMLButtonElement>) {
+    if (typeof window === "undefined") return;
+    event.preventDefault();
+    const startX = event.clientX;
+    const startY = event.clientY;
+    const start = assistantWindowSizeRef.current;
+    setIsResizingWindow(true);
+
+    const onPointerMove = (moveEvent: PointerEvent) => {
+      applyAssistantWindowSize(
+        {
+          width: start.width + (startX - moveEvent.clientX),
+          height: start.height + (startY - moveEvent.clientY),
+        },
+        false,
+      );
+    };
+
+    const finishResize = () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", finishResize);
+      window.removeEventListener("pointercancel", finishResize);
+      setIsResizingWindow(false);
+      try {
+        window.localStorage.setItem(
+          ASSISTANT_WINDOW_STORAGE_KEY,
+          JSON.stringify(assistantWindowSizeRef.current),
+        );
+      } catch {
+        // Best-effort persistence only.
+      }
+    };
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", finishResize, { once: true });
+    window.addEventListener("pointercancel", finishResize, { once: true });
+  }
 
   const voice = useMemo(
     () =>
@@ -136,6 +219,35 @@ useEffect(() => {
     setSpeechEnabled(false);
   }
 }, []);
+
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(ASSISTANT_WINDOW_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored) as Partial<AssistantWindowSize>;
+        if (Number.isFinite(parsed.width) && Number.isFinite(parsed.height)) {
+          applyAssistantWindowSize(
+            { width: Number(parsed.width), height: Number(parsed.height) },
+            false,
+          );
+        } else {
+          applyAssistantWindowSize(DEFAULT_ASSISTANT_WINDOW_SIZE, false);
+        }
+      } else {
+        applyAssistantWindowSize(DEFAULT_ASSISTANT_WINDOW_SIZE, false);
+      }
+    } catch {
+      applyAssistantWindowSize(DEFAULT_ASSISTANT_WINDOW_SIZE, false);
+    }
+
+    const keepInsideViewport = () => {
+      applyAssistantWindowSize(assistantWindowSizeRef.current, false);
+    };
+    window.addEventListener("resize", keepInsideViewport);
+    return () => window.removeEventListener("resize", keepInsideViewport);
+    // Size helpers intentionally use the current viewport and local storage only.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const offContext = assistantEventBus.onContext(setContext);
@@ -593,10 +705,20 @@ useEffect(() => {
 
       {open && (
         <section
-          className={styles.panel}
+          className={`${styles.panel} ${isResizingWindow ? styles.panelResizing : ""}`}
           role="dialog"
           aria-label="Assistant DataVision AI"
+          style={{ width: assistantWindowSize.width, height: assistantWindowSize.height }}
         >
+          <button
+            type="button"
+            className={styles.resizeHandle}
+            onPointerDown={beginAssistantWindowResize}
+            aria-label="Redimensionner la fenêtre de l’assistant"
+            title="Glisser pour agrandir ou réduire"
+          >
+            <span aria-hidden="true">↖</span>
+          </button>
           <header className={styles.header}>
             <div className={styles.headerIdentity}>
               <div className={styles.logo}>DV</div>
@@ -608,17 +730,47 @@ useEffect(() => {
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                voice.stopSpeaking();
-                setOpen(false);
-              }}
-              className={styles.closeButton}
-              aria-label="Fermer"
-            >
-              ×
-            </button>
+            <div className={styles.headerActions} role="group" aria-label="Taille de la fenêtre de l’assistant">
+              <button
+                type="button"
+                onClick={() => applyAssistantWindowSize(COMPACT_ASSISTANT_WINDOW_SIZE)}
+                className={styles.windowButton}
+                aria-label="Réduire la fenêtre"
+                title="Taille compacte"
+              >
+                −
+              </button>
+              <button
+                type="button"
+                onClick={() => applyAssistantWindowSize(DEFAULT_ASSISTANT_WINDOW_SIZE)}
+                className={styles.windowButton}
+                aria-label="Rétablir la taille normale"
+                title="Taille normale"
+              >
+                □
+              </button>
+              <button
+                type="button"
+                onClick={() => applyAssistantWindowSize(LARGE_ASSISTANT_WINDOW_SIZE)}
+                className={styles.windowButton}
+                aria-label="Agrandir la fenêtre"
+                title="Taille agrandie"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  voice.stopSpeaking();
+                  setOpen(false);
+                }}
+                className={styles.closeButton}
+                aria-label="Fermer"
+                title="Fermer"
+              >
+                ×
+              </button>
+            </div>
           </header>
 
           <div className={styles.contextStrip}>

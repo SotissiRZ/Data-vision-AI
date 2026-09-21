@@ -1,0 +1,49 @@
+receivers:
+  prometheus:
+    config:
+      scrape_configs:
+        - job_name: datavision-api
+          scrape_interval: 30s
+          metrics_path: /api/v1/metrics/internal
+          authorization:
+            type: Bearer
+            credentials: ${env:OTEL_INTERNAL_METRICS_TOKEN}
+          static_configs:
+            - targets: ["api:8005"]
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 5s
+    limit_mib: 256
+    spike_limit_mib: 64
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:9464
+    namespace: datavision
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  telemetry:
+    logs:
+      level: info
+  pipelines:
+    metrics:
+      receivers: [prometheus, otlp]
+      processors: [memory_limiter, batch]
+      exporters: [prometheus, debug]

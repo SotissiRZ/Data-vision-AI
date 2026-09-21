@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from typing import Any
+import asyncio
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
@@ -16,8 +18,10 @@ from app.services.job_service import get_job, list_jobs, request_cancel, submit_
 from app.services.metadata_store import metadata_backend, fetch_one
 from app.services.collaboration import (
     add_comment, assign_review, create_review, get_review, list_notifications, list_reviews,
-    mark_notification_read, resolve_comment, review_summary, transition_review,
+    mark_notification_read, mark_all_notifications_read, resolve_comment, review_summary, transition_review,
     certify_review, list_certifications, revoke_certification,
+    list_teams, create_team, set_team_member, create_artifact_share, list_artifact_shares, revoke_artifact_share,
+    review_snapshot_diff, decision_ledger, collaboration_activity, create_realtime_ticket, consume_realtime_ticket,
 )
 from app.services.connector_service import (
     create_connector, update_connector, get_connector, list_connectors, delete_connector, test_connector, discover_connector, connectors_catalog,
@@ -53,6 +57,17 @@ from app.services.upload_security import antivirus_status
 from app.services.identity_service import (
     create_oidc_provider, list_oidc_providers, list_public_oidc_providers, delete_oidc_provider, oidc_start, oidc_exchange,
     create_secret, list_secrets, rotate_secret, test_secret,
+)
+from app.services.governance_control import control_plane_overview, capture_governance_snapshot, list_governance_snapshots
+from app.services.entreprise_platform import (
+    authenticate_scim_token, create_scim_token, deactivate_scim_user, discover_oidc_for_email,
+    enforce_private_ai, entreprise_readiness, get_scim_user, list_scim_tokens, list_scim_users,
+    patch_scim_user, private_ai_posture, prometheus_metrics, prometheus_all_metrics, provision_scim_user, revoke_scim_token,
+    delete_scim_group, get_scim_group, list_scim_groups, patch_scim_group, provision_scim_group,
+)
+from app.services.session_security import (
+    get_organization_security_policy, save_organization_security_policy, list_trusted_devices,
+    trust_session_device, revoke_trusted_device, internal_metrics_token_valid,
 )
 from app.services.workspace_service import (
     bind_dataset,
@@ -198,6 +213,25 @@ class WorkspaceCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=160)
 
 
+class ScimTokenRequest(BaseModel):
+    workspace_id: str
+    name: str = Field(default="Identity Provider SCIM", min_length=1, max_length=160)
+    default_role: str = Field(default="viewer", pattern="^(owner|admin|data_scientist|analyst|viewer)$")
+
+
+class SessionSecurityPolicyRequest(BaseModel):
+    idle_timeout_minutes: int = Field(default=480, ge=5, le=10080)
+    max_session_hours: int = Field(default=336, ge=1, le=2160)
+    max_active_sessions: int = Field(default=10, ge=1, le=100)
+    trusted_device_days: int = Field(default=30, ge=1, le=365)
+    require_managed_device: bool = False
+
+
+class TrustDeviceRequest(BaseModel):
+    session_id: str = Field(min_length=1, max_length=160)
+    label: str = Field(default="Appareil approuvé", max_length=160)
+
+
 class MemberRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     role: str = Field(pattern="^(owner|admin|data_scientist|analyst|viewer)$")
@@ -281,6 +315,23 @@ class CertificationRequest(BaseModel):
 
 class CertificationRevokeRequest(BaseModel):
     note: str = Field(default="", max_length=2000)
+
+
+class CollaborationTeamCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    description: str = Field(default="", max_length=2000)
+    member_user_ids: list[str] = Field(default_factory=list, max_length=200)
+
+
+class CollaborationShareRequest(BaseModel):
+    resource_type: str = Field(pattern="^(dataset|semantic_metric|analysis|dashboard|report|model|visualization)$")
+    resource_id: str = Field(min_length=1, max_length=240)
+    resource_version: str | None = Field(default=None, max_length=120)
+    recipient_user_id: str | None = None
+    recipient_team_id: str | None = None
+    permission: str = Field(default="view", pattern="^(view|comment|review)$")
+    note: str = Field(default="", max_length=2000)
+    expires_at: str | None = None
 
 
 class ActionDestinationRequest(BaseModel):
@@ -412,9 +463,9 @@ def auth_bootstrap(req: BootstrapRequest):
 
 
 @router.post("/auth/login")
-def auth_login(req: LoginRequest):
+def auth_login(req: LoginRequest, request: Request):
     try:
-        out = begin_password_login(req.email, req.password)
+        out = begin_password_login(req.email, req.password, user_agent=request.headers.get("user-agent", ""))
         user = out.get("user") or {}
         record_event(
             "auth.login_mfa_challenge" if out.get("mfa_required") else "auth.login",
@@ -494,9 +545,9 @@ def auth_mfa_disable(credential_id: str, user=Depends(current_user)):
 
 
 @router.post("/auth/mfa/webauthn/login/verify")
-def auth_mfa_login_verify(req: WebAuthnLoginVerifyRequest):
+def auth_mfa_login_verify(req: WebAuthnLoginVerifyRequest, request: Request):
     try:
-        out = finish_password_login(req.challenge_id, req.credential)
+        out = finish_password_login(req.challenge_id, req.credential, user_agent=request.headers.get("user-agent", ""))
         record_event(
             "auth.mfa_login",
             user_id=out["user"]["id"],
@@ -570,10 +621,61 @@ def auth_logout_all(authorization: str | None = Header(default=None), user=Depen
         _handle(exc)
 
 
+@router.get("/organizations/{organization_id}/security/session-policy")
+def organization_session_policy(organization_id: str, user=Depends(current_user)):
+    try:
+        # list_trusted_devices enforces organization admin; use it as the authorization guard.
+        list_trusted_devices(user["id"], organization_id)
+        return get_organization_security_policy(organization_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.put("/organizations/{organization_id}/security/session-policy")
+def organization_session_policy_update(organization_id: str, req: SessionSecurityPolicyRequest, user=Depends(current_user)):
+    try:
+        return save_organization_security_policy(user["id"], organization_id, **req.model_dump())
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/organizations/{organization_id}/security/trusted-devices")
+def organization_trusted_devices(organization_id: str, user=Depends(current_user)):
+    try:
+        return {"devices": list_trusted_devices(user["id"], organization_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/organizations/{organization_id}/security/trusted-devices")
+def organization_trust_device(organization_id: str, req: TrustDeviceRequest, user=Depends(current_user)):
+    try:
+        return trust_session_device(user["id"], organization_id, req.session_id, label=req.label)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/organizations/{organization_id}/security/trusted-devices/{device_id}")
+def organization_revoke_trusted_device(organization_id: str, device_id: str, user=Depends(current_user)):
+    try:
+        revoke_trusted_device(user["id"], organization_id, device_id)
+        return {"status": "revoked", "id": device_id}
+    except Exception as exc:
+        _handle(exc)
+
+
 @router.get("/auth/oidc/providers")
 def auth_oidc_public_providers():
     try:
         return {"providers": list_public_oidc_providers()}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/auth/oidc/discover")
+def auth_oidc_discover(email: str = Query(min_length=3, max_length=254)):
+    try:
+        return {"providers": discover_oidc_for_email(email), "email": email.strip().lower()}
     except Exception as exc:
         _handle(exc)
 
@@ -587,9 +689,9 @@ def auth_oidc_start(provider_id: str, req: OIDCStartRequest):
 
 
 @router.post("/auth/oidc/exchange")
-def auth_oidc_exchange(req: OIDCExchangeRequest):
+def auth_oidc_exchange(req: OIDCExchangeRequest, request: Request):
     try:
-        out = oidc_exchange(req.provider_id, req.code, req.state, req.redirect_uri)
+        out = oidc_exchange(req.provider_id, req.code, req.state, req.redirect_uri, user_agent=request.headers.get("user-agent", ""))
         record_event("auth.oidc_login", user_id=out["user"]["id"], organization_id=out.get("organization_id"), workspace_id=out.get("workspace_id"), resource_type="oidc_provider", resource_id=req.provider_id, payload={"email": out["user"]["email"]})
         return out
     except Exception as exc:
@@ -597,6 +699,7 @@ def auth_oidc_exchange(req: OIDCExchangeRequest):
 
 
 @router.get("/enterprise/status")
+@router.get("/entreprise/status")
 def enterprise_status():
     try:
         return {
@@ -630,6 +733,180 @@ def enterprise_status():
             "refresh_token_days": get_settings().refresh_token_days,
             "security_warning": "AUTH_SECRET doit être remplacé avant tout déploiement partagé." if get_settings().auth_secret.startswith("change-") else None,
         }
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/organizations/{organization_id}/scim/tokens")
+def scim_tokens_list(organization_id: str, user=Depends(current_user)):
+    try:
+        return {"tokens": list_scim_tokens(user["id"], organization_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/organizations/{organization_id}/scim/tokens")
+def scim_token_create(organization_id: str, req: ScimTokenRequest, user=Depends(current_user)):
+    try:
+        return create_scim_token(user["id"], organization_id, req.workspace_id, name=req.name, default_role=req.default_role)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/organizations/{organization_id}/scim/tokens/{token_id}")
+def scim_token_revoke(organization_id: str, token_id: str, user=Depends(current_user)):
+    try:
+        revoke_scim_token(user["id"], organization_id, token_id)
+        return {"status": "revoked", "id": token_id}
+    except Exception as exc:
+        _handle(exc)
+
+
+def _scim_auth_context(authorization: str | None) -> dict[str, Any]:
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(status_code=401, detail="Jeton SCIM requis")
+    try:
+        return authenticate_scim_token(authorization.split(" ", 1)[1].strip())
+    except Exception as exc:
+        raise HTTPException(status_code=401, detail=str(exc)) from exc
+
+
+@router.get("/scim/v2/Users")
+def scim_users_list(
+    startIndex: int = Query(default=1, ge=1),
+    count: int = Query(default=100, ge=1, le=200),
+    authorization: str | None = Header(default=None),
+):
+    try:
+        return list_scim_users(_scim_auth_context(authorization), start_index=startIndex, count=count)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/scim/v2/Users", status_code=201)
+def scim_users_create(payload: dict[str, Any], authorization: str | None = Header(default=None)):
+    try:
+        return provision_scim_user(_scim_auth_context(authorization), payload)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/scim/v2/Users/{user_id}")
+def scim_users_get(user_id: str, authorization: str | None = Header(default=None)):
+    try:
+        return get_scim_user(_scim_auth_context(authorization), user_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.patch("/scim/v2/Users/{user_id}")
+def scim_users_patch(user_id: str, payload: dict[str, Any], authorization: str | None = Header(default=None)):
+    try:
+        return patch_scim_user(_scim_auth_context(authorization), user_id, payload)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/scim/v2/Users/{user_id}", status_code=204)
+def scim_users_delete(user_id: str, authorization: str | None = Header(default=None)):
+    try:
+        deactivate_scim_user(_scim_auth_context(authorization), user_id)
+        return None
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/scim/v2/Groups")
+def scim_groups_list(
+    startIndex: int = Query(default=1, ge=1),
+    count: int = Query(default=100, ge=1, le=200),
+    authorization: str | None = Header(default=None),
+):
+    try:
+        return list_scim_groups(_scim_auth_context(authorization), start_index=startIndex, count=count)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/scim/v2/Groups", status_code=201)
+def scim_groups_create(payload: dict[str, Any], authorization: str | None = Header(default=None)):
+    try:
+        return provision_scim_group(_scim_auth_context(authorization), payload)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/scim/v2/Groups/{group_id}")
+def scim_groups_get(group_id: str, authorization: str | None = Header(default=None)):
+    try:
+        return get_scim_group(_scim_auth_context(authorization), group_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.patch("/scim/v2/Groups/{group_id}")
+def scim_groups_patch(group_id: str, payload: dict[str, Any], authorization: str | None = Header(default=None)):
+    try:
+        return patch_scim_group(_scim_auth_context(authorization), group_id, payload)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/scim/v2/Groups/{group_id}", status_code=204)
+def scim_groups_delete(group_id: str, authorization: str | None = Header(default=None)):
+    try:
+        delete_scim_group(_scim_auth_context(authorization), group_id)
+        return None
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/entreprise/readiness")
+def entreprise_workspace_readiness(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return entreprise_readiness(user["id"], workspace_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/entreprise/private-ai")
+def entreprise_private_ai(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return private_ai_posture(workspace_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/entreprise/private-ai/enforce")
+def entreprise_private_ai_enforce(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return enforce_private_ai(user["id"], workspace_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/metrics/internal", response_class=PlainTextResponse, include_in_schema=False)
+def internal_prometheus_metrics(
+    hours: int = Query(default=24, ge=1, le=720),
+    x_datavision_metrics_token: str = Header(default="", alias="X-DataVision-Metrics-Token"),
+    authorization: str | None = Header(default=None),
+):
+    bearer = ""
+    if authorization and authorization.lower().startswith("bearer "):
+        bearer = authorization.split(" ", 1)[1].strip()
+    if not internal_metrics_token_valid(x_datavision_metrics_token or bearer):
+        raise HTTPException(status_code=401, detail="Jeton de métriques interne invalide")
+    return PlainTextResponse(prometheus_all_metrics(hours=hours), media_type="text/plain; version=0.0.4; charset=utf-8")
+
+
+@router.get("/workspaces/{workspace_id}/metrics/prometheus", response_class=PlainTextResponse)
+def workspace_prometheus_metrics(workspace_id: str, hours: int = Query(default=24, ge=1, le=720), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return PlainTextResponse(prometheus_metrics(workspace_id, hours=hours), media_type="text/plain; version=0.0.4; charset=utf-8")
     except Exception as exc:
         _handle(exc)
 
@@ -871,6 +1148,34 @@ def governed_dataset_preview(workspace_id: str, dataset_id: str, limit: int = Qu
         _handle(exc)
 
 
+@router.get("/workspaces/{workspace_id}/governance/control-plane")
+def governance_control_plane(workspace_id: str, dataset_id: str | None = Query(default=None), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "audit:read")
+        return control_plane_overview(user["id"], workspace_id, dataset_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/governance/snapshots")
+def governance_snapshot_capture(workspace_id: str, req: BindDatasetRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "audit:read")
+        dataset_id = req.dataset_id or None
+        return {"snapshot": capture_governance_snapshot(user["id"], workspace_id, dataset_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/governance/snapshots")
+def governance_snapshots(workspace_id: str, limit: int = Query(default=30, ge=1, le=200), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "audit:read")
+        return {"snapshots": list_governance_snapshots(user["id"], workspace_id, limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
 @router.get("/audit")
 def audit_list(workspace_id: str | None = Query(default=None), organization_id: str | None = Query(default=None), limit: int = Query(default=200, ge=1, le=1000), user=Depends(current_user)):
     if workspace_id:
@@ -1054,6 +1359,11 @@ def reviews_create(workspace_id: str, req: ReviewCreateRequest, user=Depends(cur
         )
         ws = get_workspace(user["id"], workspace_id)
         record_event("review.create", user_id=user["id"], organization_id=ws["organization_id"], workspace_id=workspace_id, resource_type="review", resource_id=review["id"], payload={"resource_type":req.resource_type,"resource_id":req.resource_id})
+        if req.reviewer_user_id:
+            try:
+                dispatch_event(user["id"], workspace_id, event_type="review_assigned", event_id=review["id"], dataset_id=review.get("dataset_id"), payload={"review_id":review["id"],"title":review.get("title"),"reviewer_user_id":req.reviewer_user_id})
+            except Exception:
+                pass
         return {"review": review}
     except Exception as exc:
         _handle(exc)
@@ -1072,6 +1382,11 @@ def reviews_assign(workspace_id: str, review_id: str, req: ReviewAssignRequest, 
     try:
         review = assign_review(user["id"], workspace_id, review_id, owner_user_id=req.owner_user_id, reviewer_user_id=req.reviewer_user_id, due_at=req.due_at, priority=req.priority)
         record_event("review.assign", user_id=user["id"], workspace_id=workspace_id, resource_type="review", resource_id=review_id, payload={"reviewer_user_id":req.reviewer_user_id,"owner_user_id":req.owner_user_id})
+        if req.reviewer_user_id:
+            try:
+                dispatch_event(user["id"], workspace_id, event_type="review_assigned", event_id=review_id, dataset_id=review.get("dataset_id"), payload={"review_id":review_id,"title":review.get("title"),"reviewer_user_id":req.reviewer_user_id})
+            except Exception:
+                pass
         return {"review": review}
     except Exception as exc:
         _handle(exc)
@@ -1082,9 +1397,10 @@ def reviews_transition(workspace_id: str, review_id: str, req: ReviewTransitionR
     try:
         review = transition_review(user["id"], workspace_id, review_id, req.action, req.note)
         record_event(f"review.{req.action}", user_id=user["id"], workspace_id=workspace_id, resource_type="review", resource_id=review_id, payload={"status":review["status"]})
-        if req.action == "approve":
+        event_type = {"approve":"review_approved","submit":"review_submitted","request_changes":"review_changes_requested"}.get(req.action)
+        if event_type:
             try:
-                dispatch_event(user["id"], workspace_id, event_type="review_approved", event_id=review_id, dataset_id=review.get("dataset_id"), payload={"review_id":review_id,"title":review.get("title"),"resource_type":review.get("resource_type"),"resource_id":review.get("resource_id"),"priority":review.get("priority"),"status":review.get("status")})
+                dispatch_event(user["id"], workspace_id, event_type=event_type, event_id=review_id, dataset_id=review.get("dataset_id"), payload={"review_id":review_id,"title":review.get("title"),"resource_type":review.get("resource_type"),"resource_id":review.get("resource_id"),"priority":review.get("priority"),"status":review.get("status"),"note":req.note})
             except Exception:
                 pass
         return {"review": review}
@@ -1097,6 +1413,13 @@ def reviews_comment(workspace_id: str, review_id: str, req: ReviewCommentRequest
     try:
         review = add_comment(user["id"], workspace_id, review_id, req.body, req.mention_user_ids)
         record_event("review.comment", user_id=user["id"], workspace_id=workspace_id, resource_type="review", resource_id=review_id)
+        try:
+            dispatch_event(user["id"], workspace_id, event_type="review_comment", event_id=str((review.get("comments") or [{}])[-1].get("id") or review_id), dataset_id=review.get("dataset_id"), payload={"review_id":review_id,"title":review.get("title"),"comment":req.body[:500]})
+            mentions = (review.get("comments") or [{}])[-1].get("mentions") or []
+            if mentions:
+                dispatch_event(user["id"], workspace_id, event_type="review_mention", event_id=str((review.get("comments") or [{}])[-1].get("id") or review_id), dataset_id=review.get("dataset_id"), payload={"review_id":review_id,"title":review.get("title"),"mention_user_ids":mentions})
+        except Exception:
+            pass
         return {"review": review}
     except Exception as exc:
         _handle(exc)
@@ -1124,6 +1447,144 @@ def collaboration_notification_read(workspace_id: str, notification_id: str, use
         return {"notification": mark_notification_read(user["id"], workspace_id, notification_id)}
     except Exception as exc:
         _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/collaboration/activity")
+def collaboration_activity_feed(workspace_id: str, since: str | None = Query(default=None), limit: int = Query(default=100, ge=1, le=300), user=Depends(current_user)):
+    try:
+        return collaboration_activity(user["id"], workspace_id, since=since, limit=limit)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/collaboration/decisions")
+def collaboration_decisions(workspace_id: str, limit: int = Query(default=200, ge=1, le=500), user=Depends(current_user)):
+    try:
+        return {"decisions": decision_ledger(user["id"], workspace_id, limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/collaboration/teams")
+def collaboration_teams(workspace_id: str, user=Depends(current_user)):
+    try:
+        return {"teams": list_teams(user["id"], workspace_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/collaboration/teams")
+def collaboration_team_create(workspace_id: str, req: CollaborationTeamCreateRequest, user=Depends(current_user)):
+    try:
+        team = create_team(user["id"], workspace_id, name=req.name, description=req.description, member_user_ids=req.member_user_ids)
+        record_event("collaboration.team.create", user_id=user["id"], workspace_id=workspace_id, resource_type="team", resource_id=team["id"], payload={"name": team["name"]})
+        return {"team": team}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/collaboration/teams/{team_id}/members/{member_user_id}")
+def collaboration_team_member_add(workspace_id: str, team_id: str, member_user_id: str, user=Depends(current_user)):
+    try:
+        return {"team": set_team_member(user["id"], workspace_id, team_id, member_user_id, present=True)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.delete("/workspaces/{workspace_id}/collaboration/teams/{team_id}/members/{member_user_id}")
+def collaboration_team_member_remove(workspace_id: str, team_id: str, member_user_id: str, user=Depends(current_user)):
+    try:
+        return {"team": set_team_member(user["id"], workspace_id, team_id, member_user_id, present=False)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/collaboration/shares")
+def collaboration_shares(workspace_id: str, scope: str = Query(default="received"), limit: int = Query(default=200, ge=1, le=500), user=Depends(current_user)):
+    try:
+        return {"shares": list_artifact_shares(user["id"], workspace_id, scope=scope, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/collaboration/shares")
+def collaboration_share_create(workspace_id: str, req: CollaborationShareRequest, user=Depends(current_user)):
+    try:
+        share = create_artifact_share(user["id"], workspace_id, **req.model_dump())
+        record_event("collaboration.share.create", user_id=user["id"], workspace_id=workspace_id, resource_type=req.resource_type, resource_id=req.resource_id, payload={"share_id": share["id"], "permission": req.permission})
+        try:
+            dispatch_event(user["id"], workspace_id, event_type="artifact_shared", event_id=share["id"], payload={"share_id":share["id"],"resource_type":req.resource_type,"resource_id":req.resource_id,"permission":req.permission})
+        except Exception:
+            pass
+        return {"share": share}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/collaboration/shares/{share_id}/revoke")
+def collaboration_share_revoke(workspace_id: str, share_id: str, user=Depends(current_user)):
+    try:
+        return {"share": revoke_artifact_share(user["id"], workspace_id, share_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/reviews/{review_id}/diff")
+def collaboration_review_diff(workspace_id: str, review_id: str, against_review_id: str | None = Query(default=None), user=Depends(current_user)):
+    try:
+        return {"diff": review_snapshot_diff(user["id"], workspace_id, review_id, against_review_id=against_review_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/collaboration/notifications/read-all")
+def collaboration_notifications_read_all(workspace_id: str, user=Depends(current_user)):
+    try:
+        return {"marked_read": mark_all_notifications_read(user["id"], workspace_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/collaboration/ws-ticket")
+def collaboration_ws_ticket(workspace_id: str, user=Depends(current_user)):
+    try:
+        return create_realtime_ticket(user["id"], workspace_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.websocket("/workspaces/{workspace_id}/collaboration/ws")
+async def collaboration_websocket(websocket: WebSocket, workspace_id: str):
+    ticket = str(websocket.query_params.get("ticket") or "")
+    try:
+        ticket_row = consume_realtime_ticket(ticket, workspace_id)
+        user = get_user(ticket_row["user_id"])
+        if not user or not user.get("is_active"):
+            raise PermissionError("Compte inactif.")
+    except Exception:
+        await websocket.close(code=4401)
+        return
+    await websocket.accept()
+    cursor = str(websocket.query_params.get("cursor") or "") or None
+    heartbeat = 0
+    try:
+        initial = collaboration_activity(user["id"], workspace_id, since=cursor, limit=100)
+        cursor = initial.get("cursor") or cursor
+        await websocket.send_json({"type":"collaboration.snapshot", **initial})
+        while True:
+            await asyncio.sleep(1.25)
+            update = collaboration_activity(user["id"], workspace_id, since=cursor, limit=100)
+            if update.get("items"):
+                cursor = update.get("cursor") or cursor
+                heartbeat = 0
+                await websocket.send_json({"type":"collaboration.activity", **update})
+            else:
+                heartbeat += 1
+                if heartbeat >= 12:
+                    heartbeat = 0
+                    await websocket.send_json({"type":"collaboration.heartbeat", "cursor": cursor, "summary": update.get("summary")})
+    except (WebSocketDisconnect, RuntimeError):
+        return
 
 
 @router.get("/workspaces/{workspace_id}/certifications")
@@ -1173,7 +1634,7 @@ def _connector_catalog_for_user(user_id: str, workspace_id: str) -> tuple[list[d
     return safe_connectors, safe_sources
 
 
-# ---------------------------- Enterprise action connectors v2.11 ----------------------------
+# ---------------------------- Connecteurs d’actions Entreprise v2.11 ----------------------------
 
 @router.get("/workspaces/{workspace_id}/actions/summary")
 def actions_summary(workspace_id: str, user=Depends(current_user)):

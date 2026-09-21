@@ -180,7 +180,7 @@ Semantic Query Engine
 API /semantic/query
 ```
 
-Toutes les tables liées passent par `storage.load_dataframe()`. En contexte Enterprise, elles reçoivent donc le même boundary tenant-aware (RBAC/RLS/CLS) que les autres moteurs.
+Toutes les tables liées passent par `storage.load_dataframe()`. En contexte Entreprise, elles reçoivent donc le même boundary tenant-aware (RBAC/RLS/CLS) que les autres moteurs.
 
 ## v2.4 — Semantic Orchestration Runtime
 
@@ -209,7 +209,7 @@ Le Dashboard Builder peut projeter après filtre les colonnes de la table de fai
 
 ## Collaboration & Review v2.6
 
-Le Review Center s'appuie sur le metadata store Enterprise :
+Le Review Center s'appuie sur le metadata store Entreprise :
 
 ```text
 Workspace
@@ -226,10 +226,14 @@ Workspace
 
 Les transitions et certifications passent par RBAC et génèrent des événements d'audit.
 
+### Extension v2.54
+
+Le plan collaboratif ajoute `collaboration_teams`, `collaboration_artifact_shares` et des tickets WebSocket éphémères. Le canal temps réel relit le journal persistant plutôt que de dépendre d'un bus mémoire, ce qui conserve la reprise après redémarrage. Les partages sont des pointeurs gouvernés et ne modifient jamais les permissions effectives.
+
 
 ## v2.7 — Ingestion gouvernée et refresh
 
-La couche d'ingestion persistante s'ajoute au plan de contrôle Enterprise :
+La couche d'ingestion persistante s'ajoute au plan de contrôle Entreprise :
 
 ```text
 External SQL → Data Connector → Connector Source → Refresh Run → Immutable Dataset Version
@@ -261,7 +265,7 @@ Data Reliability Plane
 Statistics / ML / AI / Dashboards / Reports / Review
 ```
 
-Le gate est fail-closed pour les contrats `block` : une nouvelle version doit être contrôlée explicitement avant certification ou export Enterprise. Les refresh et transformations gouvernées déclenchent automatiquement les contrats actifs de leur lignée.
+Le gate est fail-closed pour les contrats `block` : une nouvelle version doit être contrôlée explicitement avant certification ou export Entreprise. Les refresh et transformations gouvernées déclenchent automatiquement les contrats actifs de leur lignée.
 
 ## v2.9 — Operational Intelligence
 
@@ -321,7 +325,7 @@ Proactive / Reliability / Review / Certification / Manual event
 
 Les destinations webhook sont protégées par chiffrement du secret, HTTPS hors localhost, résolution DNS et garde SSRF. Chaque livraison utilise HMAC-SHA256, timestamp et clé d'idempotence. Les retries utilisent la mécanique asynchrone v2.9 et chaque tentative est persistée. Les connecteurs OAuth natifs Slack/Teams/Jira restent une extension prévue, et non simulée par cette version.
 
-## v2.11 — Enterprise Action Connectors
+## v2.11 — Entreprise Action Connectors
 
 La v2.11 remplace le transport webhook unique par un adaptateur de destinations gouverné :
 
@@ -373,7 +377,7 @@ Browser
          Data / SQL / ML / AI / Actions
 ```
 
-Les sessions sont validées côté serveur sur chaque requête Enterprise. Une révocation invalide donc un access token encore cryptographiquement valide dès la prochaine requête.
+Les sessions sont validées côté serveur sur chaque requête Entreprise. Une révocation invalide donc un access token encore cryptographiquement valide dès la prochaine requête.
 
 Le Secret Vault est séparé des configurations consommant les secrets :
 
@@ -386,4 +390,4 @@ secret_vault_versions
       └── vault_kv2       → encrypted Vault credential + external reference
 ```
 
-Les composants consommateurs ne doivent recevoir une valeur résolue qu'au moment de l'exécution. Les endpoints de catalogue ne retournent ni plaintext ni ciphertext. La v2.12 ne remplace pas encore la clé locale par un KMS/HSM externe ; cette intégration reste un prochain palier d'exploitation Enterprise.
+Les composants consommateurs ne doivent recevoir une valeur résolue qu'au moment de l'exécution. Les endpoints de catalogue ne retournent ni plaintext ni ciphertext. La v2.12 ne remplace pas encore la clé locale par un KMS/HSM externe ; cette intégration reste un prochain palier d'exploitation Entreprise.

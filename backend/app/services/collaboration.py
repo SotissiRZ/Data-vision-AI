@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 import re
+import secrets
 import uuid
 from datetime import datetime, timezone
 from typing import Any
@@ -429,3 +431,291 @@ def revoke_certification(actor_id: str, workspace_id: str, certification_id: str
     execute("UPDATE resource_certifications SET status='revoked',notes=:notes WHERE id=:id",{"notes":note.strip()[:2000] or cert.get("notes"),"id":certification_id})
     _event(cert["review_id"],workspace_id,actor_id,"certification_revoked",None,None,{"certification_id":certification_id,"note":note[:1000]})
     return get_certification(actor_id,workspace_id,certification_id)
+
+# ---------------------------------------------------------------------------
+# Collaboration v2.54: teams, governed shares, decision ledger and diff feed.
+# Shares are pointers only: they never grant permissions that the workspace/RBAC
+# layer does not already grant to the recipient.
+# ---------------------------------------------------------------------------
+
+SHARE_PERMISSIONS = {"view", "comment", "review"}
+
+
+def _hydrate_team(row: dict[str, Any]) -> dict[str, Any]:
+    item = dict(row)
+    members = fetch_all(
+        """SELECT u.id,u.email,u.display_name,wm.role,tm.created_at AS added_at
+           FROM collaboration_team_members tm
+           JOIN users u ON u.id=tm.user_id
+           JOIN workspace_members wm ON wm.workspace_id=tm.workspace_id AND wm.user_id=tm.user_id
+           WHERE tm.team_id=:team AND tm.workspace_id=:ws ORDER BY u.display_name,u.email""",
+        {"team": item["id"], "ws": item["workspace_id"]},
+    )
+    item["members"] = members
+    item["member_count"] = len(members)
+    return item
+
+
+def list_teams(user_id: str, workspace_id: str) -> list[dict[str, Any]]:
+    _require_member(user_id, workspace_id)
+    return [_hydrate_team(r) for r in fetch_all(
+        "SELECT * FROM collaboration_teams WHERE workspace_id=:ws ORDER BY name",
+        {"ws": workspace_id},
+    )]
+
+
+def create_team(actor_id: str, workspace_id: str, *, name: str, description: str = "", member_user_ids: list[str] | None = None) -> dict[str, Any]:
+    _require_permission(actor_id, workspace_id, "members:manage")
+    clean = name.strip()
+    if not clean:
+        raise ValueError("Le nom de l'équipe est requis.")
+    if fetch_one("SELECT id FROM collaboration_teams WHERE workspace_id=:ws AND lower(name)=lower(:name)", {"ws": workspace_id, "name": clean}):
+        raise ValueError("Une équipe portant ce nom existe déjà.")
+    member_ids = list(dict.fromkeys(member_user_ids or []))
+    for uid in member_ids:
+        if not _member(workspace_id, uid):
+            raise ValueError("Un membre de l'équipe n'appartient pas au workspace.")
+    now = utcnow(); team_id = str(uuid.uuid4())
+    execute(
+        "INSERT INTO collaboration_teams(id,workspace_id,name,description,created_by,created_at,updated_at) VALUES(:id,:ws,:name,:description,:by,:now,:now)",
+        {"id": team_id, "ws": workspace_id, "name": clean[:160], "description": description.strip()[:2000], "by": actor_id, "now": now},
+    )
+    for uid in member_ids:
+        execute(
+            "INSERT INTO collaboration_team_members(team_id,workspace_id,user_id,added_by,created_at) VALUES(:team,:ws,:user,:by,:now)",
+            {"team": team_id, "ws": workspace_id, "user": uid, "by": actor_id, "now": now},
+        )
+    return _hydrate_team(fetch_one("SELECT * FROM collaboration_teams WHERE id=:id", {"id": team_id}) or {})
+
+
+def set_team_member(actor_id: str, workspace_id: str, team_id: str, user_id: str, *, present: bool) -> dict[str, Any]:
+    _require_permission(actor_id, workspace_id, "members:manage")
+    team = fetch_one("SELECT * FROM collaboration_teams WHERE id=:id AND workspace_id=:ws", {"id": team_id, "ws": workspace_id})
+    if not team:
+        raise KeyError("Équipe introuvable.")
+    if not _member(workspace_id, user_id):
+        raise ValueError("Le membre n'appartient pas au workspace.")
+    if present:
+        exists = fetch_one("SELECT user_id FROM collaboration_team_members WHERE team_id=:team AND user_id=:user", {"team": team_id, "user": user_id})
+        if not exists:
+            execute(
+                "INSERT INTO collaboration_team_members(team_id,workspace_id,user_id,added_by,created_at) VALUES(:team,:ws,:user,:by,:now)",
+                {"team": team_id, "ws": workspace_id, "user": user_id, "by": actor_id, "now": utcnow()},
+            )
+    else:
+        execute("DELETE FROM collaboration_team_members WHERE team_id=:team AND workspace_id=:ws AND user_id=:user", {"team": team_id, "ws": workspace_id, "user": user_id})
+    execute("UPDATE collaboration_teams SET updated_at=:now WHERE id=:id", {"now": utcnow(), "id": team_id})
+    return _hydrate_team(fetch_one("SELECT * FROM collaboration_teams WHERE id=:id", {"id": team_id}) or team)
+
+
+def _share_recipients(workspace_id: str, *, recipient_user_id: str | None, recipient_team_id: str | None) -> list[str]:
+    if bool(recipient_user_id) == bool(recipient_team_id):
+        raise ValueError("Choisissez soit un membre, soit une équipe comme destinataire.")
+    if recipient_user_id:
+        if not _member(workspace_id, recipient_user_id):
+            raise ValueError("Le destinataire n'appartient pas au workspace.")
+        return [recipient_user_id]
+    team = fetch_one("SELECT id FROM collaboration_teams WHERE id=:id AND workspace_id=:ws", {"id": recipient_team_id, "ws": workspace_id})
+    if not team:
+        raise ValueError("Équipe destinataire introuvable.")
+    return [r["user_id"] for r in fetch_all("SELECT user_id FROM collaboration_team_members WHERE team_id=:team AND workspace_id=:ws", {"team": recipient_team_id, "ws": workspace_id})]
+
+
+def create_artifact_share(
+    actor_id: str, workspace_id: str, *, resource_type: str, resource_id: str, resource_version: str | None = None,
+    recipient_user_id: str | None = None, recipient_team_id: str | None = None, permission: str = "view",
+    note: str = "", expires_at: str | None = None,
+) -> dict[str, Any]:
+    _require_permission(actor_id, workspace_id, "publish:write")
+    if resource_type not in RESOURCE_TYPES:
+        raise ValueError("Type de ressource partagé invalide.")
+    if permission not in SHARE_PERMISSIONS:
+        raise ValueError("Permission de partage invalide.")
+    if not resource_id.strip():
+        raise ValueError("resource_id est requis.")
+    recipients = _share_recipients(workspace_id, recipient_user_id=recipient_user_id, recipient_team_id=recipient_team_id)
+    share_id = str(uuid.uuid4()); now = utcnow()
+    execute(
+        """INSERT INTO collaboration_artifact_shares(
+             id,workspace_id,resource_type,resource_id,resource_version,recipient_user_id,recipient_team_id,permission,note,created_by,expires_at,revoked_at,created_at,updated_at
+           ) VALUES(:id,:ws,:rtype,:rid,:version,:recipient,:team,:permission,:note,:by,:expires,NULL,:now,:now)""",
+        {"id": share_id, "ws": workspace_id, "rtype": resource_type, "rid": resource_id.strip(), "version": resource_version,
+         "recipient": recipient_user_id, "team": recipient_team_id, "permission": permission, "note": note.strip()[:2000], "by": actor_id,
+         "expires": expires_at, "now": now},
+    )
+    for uid in recipients:
+        if uid != actor_id:
+            _notify(workspace_id, uid, None, "artifact_shared", f"Ressource partagée avec vous : {resource_type} · {resource_id[:120]}")
+    return get_artifact_share(actor_id, workspace_id, share_id)
+
+
+def _hydrate_share(row: dict[str, Any]) -> dict[str, Any]:
+    item = dict(row)
+    item["created_by_user"] = _member(item["workspace_id"], item.get("created_by"))
+    item["recipient_user"] = _member(item["workspace_id"], item.get("recipient_user_id")) if item.get("recipient_user_id") else None
+    if item.get("recipient_team_id"):
+        team = fetch_one("SELECT * FROM collaboration_teams WHERE id=:id AND workspace_id=:ws", {"id": item["recipient_team_id"], "ws": item["workspace_id"]})
+        item["recipient_team"] = _hydrate_team(team) if team else None
+    else:
+        item["recipient_team"] = None
+    item["active"] = not bool(item.get("revoked_at"))
+    if item.get("expires_at"):
+        try:
+            exp = datetime.fromisoformat(str(item["expires_at"]).replace("Z", "+00:00"))
+            if exp.tzinfo is None: exp = exp.replace(tzinfo=timezone.utc)
+            item["active"] = item["active"] and exp > datetime.now(timezone.utc)
+        except Exception:
+            item["active"] = False
+    return item
+
+
+def get_artifact_share(user_id: str, workspace_id: str, share_id: str) -> dict[str, Any]:
+    _require_member(user_id, workspace_id)
+    row = fetch_one("SELECT * FROM collaboration_artifact_shares WHERE id=:id AND workspace_id=:ws", {"id": share_id, "ws": workspace_id})
+    if not row:
+        raise KeyError("Partage introuvable.")
+    share = _hydrate_share(row)
+    allowed = share.get("created_by") == user_id or share.get("recipient_user_id") == user_id
+    if not allowed and share.get("recipient_team_id"):
+        allowed = bool(fetch_one("SELECT user_id FROM collaboration_team_members WHERE team_id=:team AND user_id=:user", {"team": share["recipient_team_id"], "user": user_id}))
+    if not allowed and not has_permission(user_id, workspace_id, "review:manage"):
+        raise PermissionError("Ce partage ne vous est pas destiné.")
+    return share
+
+
+def list_artifact_shares(user_id: str, workspace_id: str, *, scope: str = "received", limit: int = 200) -> list[dict[str, Any]]:
+    _require_member(user_id, workspace_id)
+    rows = fetch_all("SELECT * FROM collaboration_artifact_shares WHERE workspace_id=:ws ORDER BY created_at DESC LIMIT :limit", {"ws": workspace_id, "limit": max(1, min(limit, 500))})
+    result: list[dict[str, Any]] = []
+    team_ids = {r["team_id"] for r in fetch_all("SELECT team_id FROM collaboration_team_members WHERE workspace_id=:ws AND user_id=:user", {"ws": workspace_id, "user": user_id})}
+    for row in rows:
+        if scope == "sent" and row.get("created_by") != user_id:
+            continue
+        if scope == "received" and row.get("recipient_user_id") != user_id and row.get("recipient_team_id") not in team_ids:
+            continue
+        if scope == "all" and not has_permission(user_id, workspace_id, "review:manage") and row.get("created_by") != user_id and row.get("recipient_user_id") != user_id and row.get("recipient_team_id") not in team_ids:
+            continue
+        if scope not in {"received", "sent", "all"}:
+            raise ValueError("Scope de partage invalide.")
+        result.append(_hydrate_share(row))
+    return result
+
+
+def revoke_artifact_share(actor_id: str, workspace_id: str, share_id: str) -> dict[str, Any]:
+    share = get_artifact_share(actor_id, workspace_id, share_id)
+    if share.get("created_by") != actor_id and not has_permission(actor_id, workspace_id, "review:manage"):
+        raise PermissionError("Seul l'auteur du partage ou un manager peut le révoquer.")
+    execute("UPDATE collaboration_artifact_shares SET revoked_at=:now,updated_at=:now WHERE id=:id", {"now": utcnow(), "id": share_id})
+    return _hydrate_share(fetch_one("SELECT * FROM collaboration_artifact_shares WHERE id=:id", {"id": share_id}) or share)
+
+
+def _flat_snapshot(value: Any, prefix: str = "") -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    if isinstance(value, dict):
+        for key in sorted(value):
+            child = f"{prefix}.{key}" if prefix else str(key)
+            out.update(_flat_snapshot(value[key], child))
+    elif isinstance(value, list):
+        out[prefix or "$root"] = json_dumps(value)
+    else:
+        out[prefix or "$root"] = value
+    return out
+
+
+def review_snapshot_diff(user_id: str, workspace_id: str, review_id: str, *, against_review_id: str | None = None) -> dict[str, Any]:
+    current = get_review(user_id, workspace_id, review_id)
+    if against_review_id:
+        baseline = get_review(user_id, workspace_id, against_review_id)
+        if baseline["resource_type"] != current["resource_type"] or baseline["resource_id"] != current["resource_id"]:
+            raise ValueError("Les deux revues ne concernent pas la même ressource.")
+    else:
+        row = fetch_one(
+            """SELECT id FROM review_items WHERE workspace_id=:ws AND resource_type=:rtype AND resource_id=:rid AND id<>:id AND created_at<:created
+               ORDER BY created_at DESC LIMIT 1""",
+            {"ws": workspace_id, "rtype": current["resource_type"], "rid": current["resource_id"], "id": review_id, "created": current["created_at"]},
+        )
+        baseline = get_review(user_id, workspace_id, row["id"]) if row else None
+    before_payload = {"resource_version": baseline.get("resource_version") if baseline else None, **((baseline or {}).get("snapshot") or {})}
+    after_payload = {"resource_version": current.get("resource_version"), **(current.get("snapshot") or {})}
+    before = _flat_snapshot(before_payload); after = _flat_snapshot(after_payload)
+    changes = []
+    for path in sorted(set(before) | set(after)):
+        old, new = before.get(path), after.get(path)
+        if old == new: continue
+        kind = "added" if path not in before else "removed" if path not in after else "changed"
+        changes.append({"path": path, "kind": kind, "before": old, "after": new})
+    digest = hashlib.sha256(json_dumps(changes).encode("utf-8")).hexdigest()
+    return {
+        "review_id": review_id, "baseline_review_id": baseline.get("id") if baseline else None,
+        "resource_type": current["resource_type"], "resource_id": current["resource_id"],
+        "from_version": baseline.get("resource_version") if baseline else None, "to_version": current.get("resource_version"),
+        "changed": bool(changes), "change_count": len(changes), "changes": changes[:500], "diff_sha256": digest,
+    }
+
+
+def decision_ledger(user_id: str, workspace_id: str, limit: int = 200) -> list[dict[str, Any]]:
+    _require_permission(user_id, workspace_id, "review:read")
+    rows = fetch_all(
+        """SELECT e.*,r.title,r.resource_type,r.resource_id,r.resource_version,u.display_name,u.email
+           FROM review_events e JOIN review_items r ON r.id=e.review_id JOIN users u ON u.id=e.actor_user_id
+           WHERE e.workspace_id=:ws AND e.action IN ('approve','request_changes','certified','certification_revoked')
+           ORDER BY e.created_at DESC LIMIT :limit""",
+        {"ws": workspace_id, "limit": max(1, min(limit, 500))},
+    )
+    for row in rows:
+        row["payload"] = json_loads(row.pop("payload_json", "{}"), {})
+    return rows
+
+
+def collaboration_activity(user_id: str, workspace_id: str, *, since: str | None = None, limit: int = 100) -> dict[str, Any]:
+    _require_member(user_id, workspace_id)
+    params: dict[str, Any] = {"ws": workspace_id, "limit": max(1, min(limit, 300))}
+    clause = " AND created_at>:since" if since else ""
+    if since: params["since"] = since
+    events = fetch_all(f"SELECT id,review_id,actor_user_id AS user_id,action AS kind,created_at FROM review_events WHERE workspace_id=:ws{clause} ORDER BY created_at DESC LIMIT :limit", params)
+    comments = fetch_all(f"SELECT id,review_id,user_id,'comment' AS kind,created_at FROM review_comments WHERE workspace_id=:ws{clause} ORDER BY created_at DESC LIMIT :limit", params)
+    shares = fetch_all(f"SELECT id,NULL AS review_id,created_by AS user_id,'artifact_shared' AS kind,created_at FROM collaboration_artifact_shares WHERE workspace_id=:ws{clause} ORDER BY created_at DESC LIMIT :limit", params)
+    items = sorted([*events, *comments, *shares], key=lambda x: str(x.get("created_at") or ""), reverse=True)[:params["limit"]]
+    cursor = max([str(x.get("created_at") or "") for x in items], default=since or "")
+    summary = review_summary(user_id, workspace_id) if has_permission(user_id, workspace_id, "review:read") else {"unread_notifications": 0}
+    return {"items": items, "cursor": cursor, "summary": summary}
+
+
+def mark_all_notifications_read(user_id: str, workspace_id: str) -> int:
+    _require_member(user_id, workspace_id)
+    unread = fetch_one("SELECT COUNT(*) AS n FROM collaboration_notifications WHERE workspace_id=:ws AND user_id=:user AND is_read=0", {"ws": workspace_id, "user": user_id}) or {"n": 0}
+    execute("UPDATE collaboration_notifications SET is_read=1,read_at=:now WHERE workspace_id=:ws AND user_id=:user AND is_read=0", {"now": utcnow(), "ws": workspace_id, "user": user_id})
+    return int(unread.get("n") or 0)
+
+
+def create_realtime_ticket(user_id: str, workspace_id: str, ttl_seconds: int = 60) -> dict[str, Any]:
+    _require_member(user_id, workspace_id)
+    now = datetime.now(timezone.utc)
+    expires = now.timestamp() + max(15, min(int(ttl_seconds), 120))
+    expires_dt = datetime.fromtimestamp(expires, tz=timezone.utc).isoformat()
+    ticket = secrets.token_urlsafe(36)
+    # Opportunistic cleanup keeps this table bounded without a scheduler.
+    execute("DELETE FROM collaboration_ws_tickets WHERE expires_at<:now OR used_at IS NOT NULL", {"now": now.isoformat()})
+    execute(
+        "INSERT INTO collaboration_ws_tickets(id,workspace_id,user_id,expires_at,used_at,created_at) VALUES(:id,:ws,:user,:expires,NULL,:created)",
+        {"id": ticket, "ws": workspace_id, "user": user_id, "expires": expires_dt, "created": now.isoformat()},
+    )
+    return {"ticket": ticket, "expires_at": expires_dt}
+
+
+def consume_realtime_ticket(ticket: str, workspace_id: str) -> dict[str, Any]:
+    row = fetch_one("SELECT * FROM collaboration_ws_tickets WHERE id=:id AND workspace_id=:ws", {"id": ticket, "ws": workspace_id})
+    if not row or row.get("used_at"):
+        raise PermissionError("Ticket temps réel invalide ou déjà utilisé.")
+    try:
+        exp = datetime.fromisoformat(str(row["expires_at"]).replace("Z", "+00:00"))
+        if exp.tzinfo is None: exp = exp.replace(tzinfo=timezone.utc)
+    except Exception as exc:
+        raise PermissionError("Ticket temps réel invalide.") from exc
+    if exp <= datetime.now(timezone.utc):
+        raise PermissionError("Ticket temps réel expiré.")
+    if not _member(workspace_id, row.get("user_id")):
+        raise PermissionError("Accès au workspace refusé.")
+    execute("UPDATE collaboration_ws_tickets SET used_at=:now WHERE id=:id", {"now": utcnow(), "id": ticket})
+    return row
+

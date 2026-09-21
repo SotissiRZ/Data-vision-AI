@@ -1,4 +1,71 @@
-# DataVision AI — v2.53.0
+# DataVision AI — v2.58.0
+
+
+## Nouveau dans v2.58.0 — Hardening de production Entreprise
+- **KMS/HSM externe** via HashiCorp Vault Transit, avec conservation du chiffrement local AES-256-GCM et compatibilité des ciphertexts historiques.
+- **SCIM Groups 2.0** : création, lecture, mise à jour, suppression, synchronisation des membres et mapping optionnel vers les rôles DataVision.
+- **Politiques session/appareil** par organisation : inactivité, durée maximale, plafond de sessions, appareils approuvés et révocation immédiate.
+- **OpenTelemetry Collector** packagé dans Docker Compose avec scrape Prometheus protégé et endpoints OTLP.
+- **Helm/Kubernetes** optionnel pour API, worker, frontend, sandbox et collector, sans suppression du mode Docker Compose.
+- Cockpit Entreprise enrichi avec KMS/HSM, SCIM Groups, sessions/appareils, OpenTelemetry et Kubernetes.
+- Gate exécutable : `python scripts/hardening_acceptance.py --root . --check` (`8/8`).
+
+
+## Nouveau dans v2.57.0 — Fenêtre d’assistant dynamique
+- Fenêtre flottante **redimensionnable** par poignée, ancrée en bas à droite.
+- Trois tailles accessibles immédiatement : **compacte**, **normale** et **agrandie**.
+- Bornes min/max et recalage automatique pour ne jamais sortir du viewport.
+- Taille choisie **mémorisée localement** entre les ouvertures.
+- Reflow interne via container query lorsque l’assistant devient étroit.
+- Respect de `prefers-reduced-motion` et animation désactivée pendant le drag.
+- Gate exécutable : `python scripts/assistant_window_acceptance.py --root . --check` (`6/6`).
+
+
+## Nouveau dans v2.56.0 — Plateforme Entreprise
+- Terminologie produit normalisée sur **Entreprise** tout en conservant les identifiants techniques historiques nécessaires à la compatibilité.
+- Provisioning **SCIM 2.0** avec jetons bruts affichés une seule fois et stockage SHA-256 uniquement.
+- Découverte SSO **OIDC par domaine email**, en complément du flux Authorization Code + PKCE existant.
+- **Private AI** exécutable : `local_only`, IA externe bloquée, aucune ligne brute ni valeur d’échantillon envoyée hors du workspace.
+- Profil **on-prem** et politique d’egress `explicit_opt_in` exposés dans la posture de sécurité.
+- Endpoint **Prometheus** workspace-scoped pour HTTP, erreurs, p95, jobs et consommation IA.
+- Cockpit **Posture Entreprise** dans Gouvernance & sécurité.
+- Gate exécutable : `python scripts/entreprise_acceptance.py --root . --check` (`8/8`).
+
+
+## Nouveau dans v2.55.0 — Governance & Control Plane
+- Control Plane consolidé : RBAC/RLS/CLS, audit, lineage, reliability, certifications, modèles et IA.
+- Matrice d’accès effective par rôle pour le dataset actif.
+- Snapshots de gouvernance hashés SHA-256 et auditables.
+- Publication readiness visible depuis Gouvernance & sécurité.
+
+## Nouveau dans v2.54.0 — Collaboration temps réel & partage gouverné
+
+- équipes persistantes par workspace et membres explicites ;
+- Review Center synchronisé par WebSocket avec ticket éphémère à usage unique ;
+- diff visuel entre snapshots de revues avec SHA-256 de changement ;
+- journal de décisions dérivé des événements append-only ;
+- partage ciblé membre/équipe, révocable, sans élévation RBAC/RLS/CLS ;
+- notifications internes actionnables et lecture globale ;
+- événements collaboration (`review_assigned`, `review_submitted`, `review_comment`, `review_mention`, `artifact_shared`, etc.) raccordés à Governed Actions pour notifications externes contrôlées ;
+- gate `COLLABORATION_ACCEPTANCE 8/8`.
+
+
+
+## Correctif v2.53.3 — Lisibilité globale de toute la plateforme
+
+- supprime les micro-textes historiques (< 12 px) dans les huit feuilles CSS de DataVision ;
+- normalise les textes courants vers une base lisible autour de 14–16 px ;
+- rend les modes **Normal / Confort / Grand texte** réellement distincts ;
+- applique la même échelle aux modules Data, Statistiques, AutoML, Registry, XAI, Forecasting, Reporting, Governance, Trust Center et Assistant ;
+- augmente la hauteur de ligne et l'espacement vertical des tableaux, contrôles et cartes ;
+- ajoute un gate `TYPOGRAPHY_ACCEPTANCE 8/8` pour empêcher la réintroduction de textes minuscules.
+
+## Correctif v2.53.2 — Trust Center versions contract
+
+- Corrige le crash `slice is not a function` à l'ouverture du Trust Center.
+- Aligne le frontend sur l'enveloppe `/datasets/{id}/versions` et son tableau `versions`.
+- Ajoute des garde-fous runtime pour `checks`, `warnings`, `policy` et le lineage.
+- Aucun changement de contrat API, de modèle de données ou de migration destructive.
 
 ## Nouveau dans v2.53.0 — Forecasting renforcé, anomalies par consensus & réconciliation CDC
 
@@ -233,7 +300,7 @@ Context Engine n'est supprimé par cette réorganisation.
 ## Nouveau dans v2.15.3 — Assistant agentique cumulatif v2.13 → v2.15
 
 Cette distribution est construite directement sur la base complète v2.12 et conserve
-tous les modules historiques et Enterprise existants.
+tous les modules historiques et Entreprise existants.
 
 Les évolutions intermédiaires sont cumulées :
 
@@ -322,7 +389,7 @@ DataVision dispose maintenant d'un Control Center natif pour :
 - autoriser explicitement l'IA externe ;
 - définir un budget mensuel ;
 - suivre les tokens et coûts estimés ;
-- référencer le Secret Vault Enterprise ou une variable d'environnement locale.
+- référencer le Secret Vault Entreprise ou une variable d'environnement locale.
 
 ### Compréhension hybride
 
@@ -1067,7 +1134,7 @@ production est ensuite détecté comme une violation d'intégrité.
 
 ### Gate de production
 
-En Enterprise, une promotion `staging → production` exige :
+En Entreprise, une promotion `staging → production` exige :
 
 - une certification active du modèle ;
 - aucun Responsible AI Gate persisté comme bloqué.
@@ -1108,7 +1175,7 @@ Le scheduler :
 
 - fonctionne avec un lock conditionnel en metadata store ;
 - ne lance qu'un seul job pour une échéance donnée ;
-- reste tenant-aware en Enterprise ;
+- reste tenant-aware en Entreprise ;
 - utilise le même moteur de monitoring que l'exécution manuelle.
 
 Le monitoring périodique ne peut être activé qu'en `staging` ou `production`.
@@ -1167,7 +1234,7 @@ Ctrl/Cmd + 0   revenir à 100 %
 
 Le zoom reste borné entre 90 % et 140 %.
 
-### Préférences utilisateur Enterprise
+### Préférences utilisateur Entreprise
 
 Lorsqu'un utilisateur est connecté, les préférences suivantes sont synchronisées
 avec son profil DataVision :
@@ -1179,7 +1246,7 @@ compact_navigation (réservé pour extension UI)
 ```
 
 Le navigateur conserve toujours un fallback `localStorage` pour le mode local
-et pour garantir une expérience fluide hors connexion Enterprise.
+et pour garantir une expérience fluide hors connexion Entreprise.
 
 ### Assistant plus réactif
 
@@ -1219,7 +1286,7 @@ Aucune logique backend ou analytique n'est modifiée dans ce hotfix.
 
 ### MFA / WebAuthn
 
-DataVision prend désormais en charge les passkeys WebAuthn pour les comptes Enterprise :
+DataVision prend désormais en charge les passkeys WebAuthn pour les comptes Entreprise :
 
 ```text
 mot de passe
@@ -1681,7 +1748,7 @@ Le batch scoring :
 - ajoute la prédiction et, en classification, les probabilités par classe ;
 - conserve le modèle et le Feature Contract dans la provenance de la version.
 
-Le job `batch_scoring` est également supporté par le worker Enterprise.
+Le job `batch_scoring` est également supporté par le worker Entreprise.
 
 ### Assistant
 
@@ -1712,7 +1779,7 @@ Les ports 3000 et 8000 ne sont pas utilisés.
 
 ## Nouveau dans v2.12.0 — Identity, SSO & Secret Management
 
-La zone **Gouverner → Identité & Secrets** ajoute une couche d'identité Enterprise complète au-dessus de l'authentification locale existante : sessions persistantes révocables, refresh tokens rotatifs, SSO OIDC Authorization Code + PKCE, provisioning JIT et coffre de secrets versionné.
+La zone **Gouverner → Identité & Secrets** ajoute une couche d'identité Entreprise complète au-dessus de l'authentification locale existante : sessions persistantes révocables, refresh tokens rotatifs, SSO OIDC Authorization Code + PKCE, provisioning JIT et coffre de secrets versionné.
 
 ### Sessions persistantes et refresh rotation
 
@@ -1744,7 +1811,7 @@ DataVision → IdP → authorization code → token endpoint
               session DataVision
 ```
 
-Le client secret OIDC reste chiffré au repos. Les fournisseurs actifs sont proposés directement sur l'écran de connexion Enterprise.
+Le client secret OIDC reste chiffré au repos. Les fournisseurs actifs sont proposés directement sur l'écran de connexion Entreprise.
 
 ### Secret Vault versionné
 
@@ -1785,7 +1852,7 @@ Ports                                : 3005 / 8005
 
 La documentation détaillée est dans `docs/IDENTITY_SSO_SECRETS_V2120.md` et `docs/VALIDATION_V2120.md`.
 
-## Nouveau dans v2.11.0 — Enterprise Action Connectors
+## Nouveau dans v2.11.0 — Entreprise Action Connectors
 
 La zone **Décider → Actions & Automation** devient un véritable hub d'intégration gouverné. Les règles v2.10 sont conservées, mais les destinations peuvent maintenant être des connecteurs natifs **Slack, Microsoft Teams, Jira, Email SMTP** ou un webhook générique.
 
@@ -1869,7 +1936,7 @@ DataVision enregistre désormais, en best-effort et sans bloquer les requêtes :
 - latence des appels HTTP ;
 - statut HTTP ;
 - feature concernée ;
-- utilisateur/workspace lorsque le contexte Enterprise existe ;
+- utilisateur/workspace lorsque le contexte Entreprise existe ;
 - exécutions de jobs et tentatives ;
 - runs d’évaluation AI Analyst ;
 - tokens/coûts lorsqu’un fournisseur LLM instrumenté les rapporte.
@@ -1956,7 +2023,7 @@ Le Data Reliability Gate exige aussi qu'un contrat en mode `block` ait été ex�
 Le gate est réellement branché sur deux flux critiques :
 
 - certification depuis le Review Center ;
-- export PDF/DOCX/HTML/Markdown d'un rapport en contexte Enterprise.
+- export PDF/DOCX/HTML/Markdown d'un rapport en contexte Entreprise.
 
 Si un contrat critique en mode `block` échoue, l'opération est refusée avec le contrat responsable. Les modes `monitor` et `warn` restent visibles comme avertissements.
 
@@ -2005,7 +2072,7 @@ La zone **Gouverner** s'ouvre désormais par défaut sur Fiabilité & Lineage, a
 
 ## Sécurité et gouvernance
 
-La v2.8 conserve la boundary Enterprise introduite en v2.2 :
+La v2.8 conserve la boundary Entreprise introduite en v2.2 :
 
 - organisations et workspaces ;
 - RBAC ;
@@ -2130,7 +2197,7 @@ Les documents principaux sont dans `docs/` :
 - analyses reproductibles ;
 - credentials non exposés par l'API ;
 - gouvernance appliquée au pipeline analytique complet ;
-- un contrat critique ne peut pas être contourné par un export Enterprise ;
+- un contrat critique ne peut pas être contourné par un export Entreprise ;
 - aucune fonctionnalité fictive présentée comme implémentée ;
 - décisions humaines documentées avant certification des actifs analytiques.
 
@@ -2284,13 +2351,13 @@ DataVision dispose maintenant d'une **mémoire projet gouvernée** distincte de 
 Principales capacités :
 
 - rappel d'une analyse ou d'un modèle produit lors d'une session précédente ;
-- isolation par workspace en mode Enterprise et scope local explicite en mode desktop/local ;
+- isolation par workspace en mode Entreprise et scope local explicite en mode desktop/local ;
 - recherche déterministe sur titres, résumés, aliases, colonnes et identifiants ;
 - rétention configurable (90 jours / 200 éléments par défaut) ;
 - épinglage et oubli explicites ;
 - rappel automatique désactivable ;
 - invalidation prudente au changement de dataset pour éviter les références croisées ;
-- gestion de la politique réservée aux rôles disposant de `workspace:manage` en mode Enterprise ;
+- gestion de la politique réservée aux rôles disposant de `workspace:manage` en mode Entreprise ;
 - aucun dump de lignes brutes dans la mémoire projet.
 
 L'assistant peut maintenant comprendre des demandes comme :

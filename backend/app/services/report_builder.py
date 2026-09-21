@@ -695,7 +695,7 @@ def build_report(
         order = {str(block_id): idx for idx, block_id in enumerate(block_order)}
         original = {id(block): idx for idx, block in enumerate(blocks)}
         blocks.sort(key=lambda b: (order.get(str(b.get("id")), len(order) + original[id(b)]), original[id(b)]))
-    outline = [{"number": i + 1, "key": str(block.get("id") or f"block:{i+1}"), "title": str(block.get("title") or "Section")} for i, block in enumerate(blocks)]
+    outline = [{"number": i + 1, "key": (str(block.get("id"))[8:] if str(block.get("id") or "").startswith("section:") else str(block.get("id") or f"block:{i+1}")), "block_id": str(block.get("id") or f"block:{i+1}"), "title": str(block.get("title") or "Section")} for i, block in enumerate(blocks)]
 
     report = {
         "id": str(uuid4()), "dataset_id": dataset_id,

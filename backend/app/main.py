@@ -28,7 +28,7 @@ settings = get_settings()
 from app.services.upload_security import antivirus_status
 from app.services.secret_crypto import kms_status
 
-app = FastAPI(title=settings.app_name, version="2.53.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.58.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -40,7 +40,7 @@ app.add_middleware(
 
 
 def _dataset_permission(path: str, method: str) -> str:
-    """Map every legacy dataset route to an Enterprise permission.
+    """Map every legacy dataset route to an Entreprise permission.
 
     The mapping is deliberately conservative: write/publish/model/analysis endpoints require
     their dedicated permission, while GET endpoints require dataset:read.
@@ -135,7 +135,7 @@ async def operational_telemetry(request: Request, call_next):
 
 @app.middleware("http")
 async def tenant_aware_data_access(request: Request, call_next):
-    """Apply RBAC/RLS/column security to every /datasets route when Enterprise headers exist.
+    """Apply RBAC/RLS/column security to every /datasets route when Entreprise headers exist.
 
     This is the v2.2 security boundary. Because the context is also consumed by storage.load_dataframe,
     the same governed frame reaches statistics, SQL, ML, XAI, dashboards, AI Analyst and reporting.
@@ -185,7 +185,7 @@ async def tenant_aware_data_access(request: Request, call_next):
 
 @app.middleware("http")
 async def notebook_tenant_access(request: Request, call_next):
-    """Propagate v2.12 Enterprise auth context into Notebook execution."""
+    """Propagate v2.12 Entreprise auth context into Notebook execution."""
     path = request.url.path
     if request.method.upper() == "OPTIONS" or not path.startswith("/api/v1/notebooks"):
         return await call_next(request)
@@ -232,7 +232,7 @@ async def notebook_tenant_access(request: Request, call_next):
 
 @app.middleware("http")
 async def assistant_tenant_access(request: Request, call_next):
-    """Propagate the existing v2.12 Enterprise auth context into assistant tools."""
+    """Propagate the existing v2.12 Entreprise auth context into assistant tools."""
     path = request.url.path
     if request.method.upper() == "OPTIONS" or not path.startswith("/api/v1/ai/assistant"):
         return await call_next(request)
@@ -264,7 +264,7 @@ def health_live():
     return {
         "status": "alive",
         "product": settings.app_name,
-        "version": "2.53.0",
+        "version": "2.58.0",
     }
 
 
@@ -330,7 +330,7 @@ def health_ready():
         "status": "ready" if ready else "not_ready",
         "ready": ready,
         "product": settings.app_name,
-        "version": "2.53.0",
+        "version": "2.58.0",
         "components": components,
     }
     if ready:
@@ -343,7 +343,7 @@ def health():
     return {
         "status": "ok",
         "product": settings.app_name,
-        "version": "2.53.0",
+        "version": "2.58.0",
     }
 
 
@@ -385,7 +385,7 @@ def capabilities():
             "local_authentication", "organizations", "enterprise_workspaces", "workspace_rbac", "member_provisioning",
             "postgres_metadata_store", "sqlite_metadata_fallback", "workspace_dataset_binding", "access_policy_registry",
             "governed_dataset_preview", "consolidated_audit_log", "redis_job_queue", "background_worker", "job_tracking",
-            "queued_job_cancellation", "governance_center_ui",
+            "queued_job_cancellation", "governance_center_ui", "governance_control_plane", "governance_role_matrix", "governance_snapshots", "governance_audit_digest",
             "tenant_aware_dataset_access", "global_row_level_security", "global_column_level_security",
             "workspace_catalog_isolation", "derived_version_policy_inheritance", "governed_background_jobs",
             "proactive_metric_watches", "analytical_inbox", "deterministic_change_detection", "semantic_metric_monitoring",
@@ -404,8 +404,10 @@ def capabilities():
             "native_slack_actions", "native_teams_actions", "native_jira_actions", "native_email_actions",
             "encrypted_action_credentials", "oauth2_client_credentials", "staged_action_approvals", "action_connector_tests",
             "persistent_auth_sessions", "rotating_refresh_tokens", "server_side_session_revocation",
-            "oidc_sso", "oidc_authorization_code_pkce", "oidc_rs256_validation", "oidc_jit_provisioning",
+            "oidc_sso", "oidc_authorization_code_pkce", "oidc_rs256_validation", "oidc_jit_provisioning", "oidc_domain_discovery",
+            "scim_provisioning", "scim_token_hash_storage", "scim_user_lifecycle", "scim_groups", "scim_group_role_mapping", "mfa_webauthn",
             "versioned_secret_vault", "environment_secret_references", "hashicorp_vault_kv2_references",
+            "private_ai_policy", "on_premise_profile", "prometheus_workspace_metrics", "opentelemetry_collector", "kubernetes_helm_packaging", "external_kms_vault_transit", "session_device_policies", "managed_devices", "entreprise_readiness", "upload_antivirus",
             "floating_voice_assistant", "semantic_context_engine", "assistant_tool_registry",
             "assistant_action_lifecycle", "assistant_plan_validation", "assistant_turn_resume",
             "assistant_model_gateway", "assistant_privacy_routing",
@@ -444,9 +446,8 @@ def capabilities():
             "external_cloud_model_serving",
         ],
         "planned": [
-            "advanced_multi_agent", "persistent_notebook_kernels",
-            "kubernetes_enterprise", "scim_provisioning",
-            "mfa_webauthn", "upload_antivirus",
+            "persistent_notebook_kernels",
+            "kubernetes_enterprise",
             "native_anthropic_gateway", "native_gemini_gateway",
             "full_i18n", "wcag_external_audit",
         ],

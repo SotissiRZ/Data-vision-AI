@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "datavision.fullname" . }}-config
+  labels:
+    {{- include "datavision.labels" . | nindent 4 }}
+data:
+  APP_ENV: {{ .Values.config.appEnv | quote }}
+  FRONTEND_URL: {{ .Values.config.frontendUrl | quote }}
+  CORS_ORIGINS: {{ .Values.config.corsOrigins | quote }}
+  DATABASE_URL: {{ .Values.config.databaseUrl | quote }}
+  REDIS_URL: {{ .Values.config.redisUrl | quote }}
+  DEPLOYMENT_PROFILE: {{ .Values.config.deploymentProfile | quote }}
+  EXTERNAL_EGRESS_POLICY: {{ .Values.config.externalEgressPolicy | quote }}
+  NOTEBOOK_SANDBOX_URL: {{ .Values.config.notebookSandboxUrl | quote }}
+  ANTIVIRUS_MODE: {{ .Values.config.antivirusMode | quote }}
+  CLAMAV_HOST: {{ .Values.config.clamavHost | quote }}
+  SECRET_KMS_PROVIDER: {{ .Values.config.secretKmsProvider | quote }}
+  VAULT_ADDR: {{ .Values.config.vaultAddr | quote }}
+  VAULT_TRANSIT_MOUNT: {{ .Values.config.vaultTransitMount | quote }}
+  VAULT_TRANSIT_KEY: {{ .Values.config.vaultTransitKey | quote }}
+  VAULT_TRANSIT_HSM_BACKED: {{ .Values.config.vaultTransitHsmBacked | quote }}
+  NEXT_PUBLIC_API_URL: "/api/backend"
+  INTERNAL_API_URL: "http://{{ include "datavision.fullname" . }}-api:8005/api/v1"

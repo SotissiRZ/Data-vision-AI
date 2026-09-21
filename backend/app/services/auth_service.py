@@ -12,6 +12,7 @@ from typing import Any
 
 from app.core.config import get_settings
 from app.services.metadata_store import execute, fetch_all, fetch_one, slugify, utcnow
+from app.services.session_security import register_session_posture, validate_session_security
 
 ROLES = ["owner", "admin", "data_scientist", "analyst", "viewer"]
 ROLE_PERMISSIONS = {
@@ -118,11 +119,12 @@ def validate_session_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
         raise ValueError("Session expirée")
     if str(row.get("user_id")) != str(payload.get("sub") or ""):
         raise ValueError("Session incohérente")
+    validate_session_security(str(row["user_id"]), sid, row)
     execute("UPDATE auth_sessions SET last_seen_at=:now WHERE id=:id", {"now": utcnow(), "id": sid})
     return row
 
 
-def create_authenticated_session(user_id: str, email: str, *, provider: str = "local", device_label: str = "", user_agent: str = "") -> dict[str, Any]:
+def create_authenticated_session(user_id: str, email: str, *, provider: str = "local", device_label: str = "", user_agent: str = "", mfa_verified: bool = False) -> dict[str, Any]:
     settings = get_settings()
     sid = str(uuid.uuid4())
     refresh_token = secrets.token_urlsafe(48)
@@ -135,12 +137,20 @@ def create_authenticated_session(user_id: str, email: str, *, provider: str = "l
          "device": (device_label or "")[:160], "ua": (user_agent or "")[:1000],
          "created": now.isoformat(), "seen": now.isoformat(), "expires": expires.isoformat()},
     )
+    try:
+        posture = register_session_posture(
+            user_id, sid, user_agent=user_agent, device_label=device_label, mfa_verified=mfa_verified
+        )
+    except Exception:
+        execute("UPDATE auth_sessions SET revoked_at=:now WHERE id=:id", {"now": utcnow(), "id": sid})
+        raise
     return {
         "access_token": issue_token(user_id, email, sid),
         "refresh_token": refresh_token,
         "token_type": "bearer",
         "expires_in": int(settings.access_token_minutes * 60),
         "session_id": sid,
+        "session_posture": posture,
     }
 
 
@@ -152,6 +162,7 @@ def refresh_authenticated_session(refresh_token: str) -> dict[str, Any]:
     exp = _parse_dt(row.get("expires_at"))
     if not exp or exp <= datetime.now(timezone.utc):
         raise ValueError("Session expirée")
+    validate_session_security(str(row["user_id"]), str(row["id"]), row)
     user = get_user(str(row["user_id"]))
     if not user or not user.get("is_active"):
         raise ValueError("Utilisateur introuvable ou inactif")

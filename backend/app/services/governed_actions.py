@@ -18,7 +18,7 @@ from app.core.config import get_settings
 from app.services.connector_service import encrypt_secret, decrypt_secret
 from app.services.metadata_store import execute, fetch_all, fetch_one, json_dumps, json_loads, utcnow
 
-ALLOWED_EVENT_TYPES = {"manual", "proactive_alert", "reliability_failure", "review_approved", "certification_created"}
+ALLOWED_EVENT_TYPES = {"manual", "proactive_alert", "reliability_failure", "review_approved", "review_submitted", "review_changes_requested", "review_assigned", "review_comment", "review_mention", "artifact_shared", "certification_created"}
 ALLOWED_APPROVAL_MODES = {"always", "critical_only", "none"}
 ALLOWED_OPERATORS = {"eq", "neq", "in", "contains", "gt", "gte", "lt", "lte", "exists"}
 
@@ -387,7 +387,7 @@ def action_summary(workspace_id: str) -> dict[str, Any]:
             'security':{'signed_webhooks':True,'ssrf_guard':True,'idempotency_keys':True,'human_approval':True}}
 
 # ============================================================================
-# DataVision AI v2.11 — Enterprise Action Connectors & staged approvals
+# DataVision AI v2.11 — Connecteurs d’actions Entreprise & staged approvals
 # These definitions intentionally override the v2.10 primitives above while
 # preserving their public API for backwards compatibility.
 # ============================================================================

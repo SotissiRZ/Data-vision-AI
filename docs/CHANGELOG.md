@@ -1,3 +1,58 @@
+# Changelog
+
+## 2.58.0 — Hardening de production Entreprise
+- KMS externe via Vault Transit, compatible HSM selon le backend Vault déployé.
+- SCIM Groups avec membres et mapping de rôles.
+- Politiques organisationnelles de session et appareils approuvés.
+- OpenTelemetry Collector + endpoint interne de métriques protégé.
+- Chart Helm/Kubernetes optionnel, sandbox durci et Docker Compose conservé.
+- Gate `HARDENING_ACCEPTANCE 8/8`.
+
+## 2.57.0 — Fenêtre d’assistant dynamique
+- Redimensionnement manuel bidimensionnel de la fenêtre flottante.
+- Presets compacte / normale / agrandie.
+- Persistance locale de la taille sélectionnée.
+- Bornage automatique selon le viewport et adaptation responsive du contenu.
+- Poignée tactile/souris et respect de `prefers-reduced-motion`.
+- Gate `ASSISTANT_WINDOW_ACCEPTANCE 6/6` intégré à CI/release/préflight.
+
+## 2.56.0 — Plateforme Entreprise
+- Terminologie visible normalisée sur « Entreprise ».
+- SCIM 2.0 : jetons hashés, provisioning, mise à jour des rôles et désactivation.
+- Découverte OIDC par domaine email.
+- Private AI strict réutilisant le moteur de politiques IA existant.
+- Posture on-prem et politique d’egress explicite.
+- Export Prometheus authentifié et isolé par workspace.
+- Cockpit de posture Entreprise et gate `ENTREPRISE_ACCEPTANCE 8/8`.
+
+## 2.55.0 — Governance & Control Plane
+- Control Plane consolidé et matrice d’accès effective par rôle.
+- Publication readiness Trust/Reliability/Certification.
+- Snapshots de gouvernance SHA-256 persistants et auditables.
+
+## 2.54.0 — Collaboration temps réel et partage gouverné
+
+- équipes workspace persistantes ;
+- WebSocket collaboration avec ticket à usage unique ;
+- diff de snapshots de revues ;
+- journal de décisions append-only ;
+- partage ciblé et révocable sans élévation de droits ;
+- événements collaboration raccordés à Governed Actions ;
+- gate `COLLABORATION_ACCEPTANCE 8/8`.
+
+## v2.53.3 — Lisibilité globale / Typography hotfix
+- Échelle typographique normalisée sur toutes les feuilles CSS de la plateforme.
+- Aucun `font-size` explicite avec base inférieure à 12 px.
+- Modes Normal/Confort/Grand texte : facteurs 1.00 / 1.10 / 1.22.
+- Hauteurs de ligne et densité des tableaux/contrôles ajustées.
+- Gate `TYPOGRAPHY_ACCEPTANCE 8/8` ajouté à CI, release et préflight.
+
+## v2.53.2 — Trust Center hotfix
+- Corrige le crash `slice is not a function` à l'ouverture du Trust Center.
+- Aligne le frontend sur le contrat `/datasets/{id}/versions` (`{ current_id, root_id, versions: [...] }`).
+- Ajoute des garde-fous runtime pour `checks`, `warnings`, `policy` et le lineage.
+- Ajoute un test de non-régression frontend dédié au Trust Center.
+
 # v2.51.0
 
 - ML Safety pré-entraînement et endpoint `/models/safety-audit`.
@@ -136,7 +191,7 @@
 - Aucun changement des moteurs analytiques ni des API métier.
 
 ## 2.12.0 — Identity, SSO & Secret Management
-- Sessions Enterprise persistantes avec identifiant serveur et révocation immédiate.
+- Sessions Entreprise persistantes avec identifiant serveur et révocation immédiate.
 - Access tokens courts et refresh tokens rotatifs ; seul le hash du refresh token est stocké.
 - Endpoints de liste/révocation de sessions et fermeture globale.
 - SSO OIDC Authorization Code + PKCE S256.
@@ -151,7 +206,7 @@
 - Garde SSRF/HTTPS pour appels externes OIDC et Vault.
 - 64 tests backend validés.
 
-## 2.11.0 — Enterprise Action Connectors
+## 2.11.0 — Entreprise Action Connectors
 - Connecteurs natifs Slack, Microsoft Teams, Jira et Email SMTP.
 - Slack Incoming Webhook et Slack Web API `chat.postMessage`.
 - Jira Cloud issue creation via REST v3.
@@ -192,7 +247,7 @@
 - événements de fiabilité persistants ;
 - Publication Gate fail-closed sur la version exacte ;
 - certification Review Center bloquée si un contrat critique en mode block échoue ;
-- export de rapports Enterprise bloqué par le même gate ;
+- export de rapports Entreprise bloqué par le même gate ;
 - lineage source → dataset → analyse / modèle / métrique / dashboard / rapport ;
 - impact analysis downstream ;
 - nouveau Reliability Center professionnel ;
@@ -295,7 +350,7 @@
 - Identité locale avec bootstrap, login, scrypt et bearer token signé.
 - Organisations et workspaces multi-utilisateurs.
 - RBAC owner/admin/data_scientist/analyst/viewer.
-- PostgreSQL comme metadata store Enterprise, fallback SQLite local.
+- PostgreSQL comme metadata store Entreprise, fallback SQLite local.
 - Provisionnement de membres.
 - Liaison dataset ↔ workspace.
 - Registre de politiques colonnes/lignes et governed preview exécuté réellement.

@@ -1,0 +1,70 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.58.0",
+  "gate": "assistant_dynamic_window",
+  "status": "pass",
+  "items": [
+    {
+      "id": "size_presets",
+      "name": "Tailles compacte, normale et agrandie accessibles depuis l'en-tête",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_window_v2570.py"
+      ]
+    },
+    {
+      "id": "manual_resize",
+      "name": "Redimensionnement manuel bidimensionnel par poignée",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx",
+        "frontend/components/assistant/FloatingDataVisionAssistant.module.css"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_window_v2570.py"
+      ]
+    },
+    {
+      "id": "viewport_bounds",
+      "name": "Bornes min/max et confinement dans le viewport",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx",
+        "frontend/components/assistant/FloatingDataVisionAssistant.module.css"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_window_v2570.py"
+      ]
+    },
+    {
+      "id": "size_persistence",
+      "name": "Taille utilisateur mémorisée localement entre les ouvertures",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_window_v2570.py"
+      ]
+    },
+    {
+      "id": "responsive_reflow",
+      "name": "Contenu de l'assistant réadapté quand la fenêtre devient étroite",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.module.css"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_window_v2570.py"
+      ]
+    },
+    {
+      "id": "motion_accessibility",
+      "name": "Animation neutralisée pendant le drag et en mode reduced-motion",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.module.css"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_window_v2570.py"
+      ]
+    }
+  ]
+}

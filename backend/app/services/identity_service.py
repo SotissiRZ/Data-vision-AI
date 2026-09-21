@@ -258,7 +258,7 @@ def _verify_id_token(id_token: str, provider: dict[str, Any], expected_nonce_has
     return claims
 
 
-def oidc_exchange(provider_id: str, code: str, state: str, redirect_uri: str) -> dict[str, Any]:
+def oidc_exchange(provider_id: str, code: str, state: str, redirect_uri: str, *, user_agent: str = "") -> dict[str, Any]:
     state_hash = _hash(state)
     state_row = fetch_one("SELECT * FROM oidc_login_states WHERE state_hash=:s AND provider_id=:p", {"s": state_hash, "p": provider_id})
     if not state_row or state_row.get("used_at"):
@@ -324,7 +324,7 @@ def oidc_exchange(provider_id: str, code: str, state: str, redirect_uri: str) ->
         execute("INSERT INTO workspace_members(workspace_id,user_id,role,created_at) VALUES(:ws,:u,:role,:now)", {"ws": provider["workspace_id"], "u": user["id"], "role": role, "now": utcnow()})
     execute("UPDATE external_identities SET last_login_at=:now,email=:e WHERE provider_id=:p AND subject=:s", {"now": utcnow(), "e": email, "p": provider_id, "s": subject})
     execute("UPDATE oidc_login_states SET used_at=:now WHERE state_hash=:s", {"now": utcnow(), "s": state_hash})
-    auth = create_authenticated_session(user["id"], user["email"], provider=f"oidc:{provider_id}", device_label=f"SSO {provider['name']}")
+    auth = create_authenticated_session(user["id"], user["email"], provider=f"oidc:{provider_id}", device_label=f"SSO {provider['name']}", user_agent=user_agent)
     return {**auth, "user": user, "workspace_id": provider["workspace_id"], "organization_id": provider["organization_id"], "provider": _provider_row(provider, public=True)}
 
 

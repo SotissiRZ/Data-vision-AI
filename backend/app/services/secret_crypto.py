@@ -6,12 +6,15 @@ import json
 import os
 from typing import Any
 
+import httpx
 from cryptography.fernet import Fernet, InvalidToken
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 from app.core.config import get_settings
 
-_PREFIX = "dvkms1"
+_PREFIX = "dvkms1"  # compatibility contract for local envelope v1
+_PREFIX_LOCAL = _PREFIX
+_PREFIX_EXTERNAL = "dvkms2"
 
 
 def _b64e(value: bytes) -> str:
@@ -29,11 +32,7 @@ def _derive(value: str) -> bytes:
 def _configured_keys() -> dict[str, bytes]:
     settings = get_settings()
     keys: dict[str, bytes] = {}
-    primary_material = (
-        settings.secret_kms_key
-        or settings.connector_secret_key
-        or settings.auth_secret
-    )
+    primary_material = settings.secret_kms_key or settings.connector_secret_key or settings.auth_secret
     keys[settings.secret_kms_key_id or "primary"] = _derive(primary_material)
     try:
         previous = json.loads(settings.secret_kms_previous_keys or "{}")
@@ -53,25 +52,106 @@ def _legacy_fernet() -> Fernet:
     return Fernet(base64.urlsafe_b64encode(raw))
 
 
+def _vault_configured() -> bool:
+    settings = get_settings()
+    return bool(
+        settings.vault_addr.strip()
+        and settings.vault_token.strip()
+        and settings.vault_transit_mount.strip()
+        and settings.vault_transit_key.strip()
+    )
+
+
+def _vault_headers() -> dict[str, str]:
+    settings = get_settings()
+    headers = {"X-Vault-Token": settings.vault_token.strip()}
+    if settings.vault_namespace.strip():
+        headers["X-Vault-Namespace"] = settings.vault_namespace.strip()
+    return headers
+
+
+def _vault_url(action: str) -> str:
+    settings = get_settings()
+    base = settings.vault_addr.strip().rstrip("/")
+    mount = settings.vault_transit_mount.strip().strip("/")
+    key = settings.vault_transit_key.strip().strip("/")
+    return f"{base}/v1/{mount}/{action}/{key}"
+
+
+def _vault_encrypt(value: str, *, aad: str) -> str:
+    if not _vault_configured():
+        raise RuntimeError("KMS Vault Transit sélectionné mais configuration incomplète.")
+    settings = get_settings()
+    payload = {
+        "plaintext": base64.b64encode(value.encode("utf-8")).decode("ascii"),
+        "context": base64.b64encode(aad.encode("utf-8")).decode("ascii"),
+    }
+    try:
+        response = httpx.post(
+            _vault_url("encrypt"),
+            headers=_vault_headers(),
+            json=payload,
+            timeout=max(1, int(settings.vault_timeout_seconds)),
+        )
+        response.raise_for_status()
+        ciphertext = str((response.json().get("data") or {}).get("ciphertext") or "")
+    except Exception as exc:
+        raise RuntimeError("Échec du chiffrement via Vault Transit") from exc
+    if not ciphertext.startswith("vault:"):
+        raise RuntimeError("Réponse Vault Transit invalide : ciphertext absent.")
+    return f"{_PREFIX_EXTERNAL}:vault_transit:{_b64e(ciphertext.encode('utf-8'))}"
+
+
+def _vault_decrypt(encoded: str, *, aad: str) -> str:
+    if not _vault_configured():
+        raise RuntimeError("Vault Transit requis pour déchiffrer ce secret.")
+    settings = get_settings()
+    ciphertext = _b64d(encoded).decode("utf-8")
+    payload = {
+        "ciphertext": ciphertext,
+        "context": base64.b64encode(aad.encode("utf-8")).decode("ascii"),
+    }
+    try:
+        response = httpx.post(
+            _vault_url("decrypt"),
+            headers=_vault_headers(),
+            json=payload,
+            timeout=max(1, int(settings.vault_timeout_seconds)),
+        )
+        response.raise_for_status()
+        plaintext = str((response.json().get("data") or {}).get("plaintext") or "")
+        if not plaintext:
+            raise RuntimeError("plaintext absent")
+        return base64.b64decode(plaintext).decode("utf-8")
+    except Exception as exc:
+        raise RuntimeError("Échec du déchiffrement via Vault Transit") from exc
+
+
 def encrypt_secret(value: str, *, aad: str = "datavision-secret") -> str:
     if not value:
         return ""
     settings = get_settings()
+    provider = str(settings.secret_kms_provider or "local").strip().lower()
+    if provider == "vault_transit":
+        return _vault_encrypt(value, aad=aad)
+    if provider != "local":
+        raise RuntimeError(f"Fournisseur KMS non supporté : {provider}")
     key_id = settings.secret_kms_key_id or "primary"
     key = _configured_keys()[key_id]
     nonce = os.urandom(12)
-    ciphertext = AESGCM(key).encrypt(
-        nonce,
-        value.encode("utf-8"),
-        aad.encode("utf-8"),
-    )
-    return f"{_PREFIX}:{key_id}:{_b64e(nonce)}:{_b64e(ciphertext)}"
+    ciphertext = AESGCM(key).encrypt(nonce, value.encode("utf-8"), aad.encode("utf-8"))
+    return f"{_PREFIX_LOCAL}:{key_id}:{_b64e(nonce)}:{_b64e(ciphertext)}"
 
 
 def decrypt_secret(value: str | None, *, aad: str = "datavision-secret") -> str:
     if not value:
         return ""
-    if value.startswith(_PREFIX + ":"):
+    if value.startswith(_PREFIX_EXTERNAL + ":"):
+        parts = value.split(":", 2)
+        if len(parts) != 3 or parts[1] != "vault_transit":
+            raise RuntimeError("Ciphertext KMS externe DataVision invalide")
+        return _vault_decrypt(parts[2], aad=aad)
+    if value.startswith(_PREFIX_LOCAL + ":"):
         parts = value.split(":", 3)
         if len(parts) != 4:
             raise RuntimeError("Ciphertext KMS DataVision invalide")
@@ -84,11 +164,7 @@ def decrypt_secret(value: str | None, *, aad: str = "datavision-secret") -> str:
                 "Configurez SECRET_KMS_PREVIOUS_KEYS avant rotation."
             )
         try:
-            plain = AESGCM(key).decrypt(
-                _b64d(nonce),
-                _b64d(ciphertext),
-                aad.encode("utf-8"),
-            )
+            plain = AESGCM(key).decrypt(_b64d(nonce), _b64d(ciphertext), aad.encode("utf-8"))
             return plain.decode("utf-8")
         except Exception as exc:
             raise RuntimeError("Impossible de déchiffrer le secret KMS") from exc
@@ -104,19 +180,32 @@ def decrypt_secret(value: str | None, *, aad: str = "datavision-secret") -> str:
 
 def kms_status() -> dict[str, Any]:
     settings = get_settings()
+    provider = str(settings.secret_kms_provider or "local").strip().lower()
+    if provider == "vault_transit":
+        configured = _vault_configured()
+        return {
+            "scheme": "Vault Transit envelope",
+            "provider": "vault_transit",
+            "key_id": settings.vault_transit_key or "datavision",
+            "dedicated_key": configured,
+            "material_source": "external_kms",
+            "external_kms": True,
+            "hsm_capable": True,
+            "hsm_backed": bool(settings.vault_transit_hsm_backed),
+            "legacy_fernet_decrypt": True,
+            "production_ready": configured,
+        }
     dedicated = bool(settings.secret_kms_key)
-    fallback = (
-        "secret_kms_key"
-        if dedicated
-        else "connector_secret_key"
-        if settings.connector_secret_key
-        else "auth_secret"
-    )
+    fallback = "secret_kms_key" if dedicated else "connector_secret_key" if settings.connector_secret_key else "auth_secret"
     return {
         "scheme": "AES-256-GCM envelope v1",
+        "provider": "local",
         "key_id": settings.secret_kms_key_id or "primary",
         "dedicated_key": dedicated,
         "material_source": fallback,
+        "external_kms": False,
+        "hsm_capable": False,
+        "hsm_backed": False,
         "legacy_fernet_decrypt": True,
         "production_ready": dedicated,
     }

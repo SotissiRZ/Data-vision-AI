@@ -23,6 +23,8 @@ class Settings(BaseSettings):
     oidc_state_minutes: int = 10
     frontend_url: str = "http://localhost:3005"
     metadata_fallback_sqlite: bool = True
+    deployment_profile: str = "onprem"  # onprem | hybrid
+    external_egress_policy: str = "explicit_opt_in"
     worker_poll_seconds: int = 5
     notebook_sandbox_url: str = "http://sandbox:8090"
     notebook_timeout_seconds: int = 20
@@ -45,6 +47,24 @@ class Settings(BaseSettings):
     secret_kms_key: str = ""
     secret_kms_key_id: str = "primary"
     secret_kms_previous_keys: str = "{}"
+    secret_kms_provider: str = "local"  # local | vault_transit
+    vault_addr: str = ""
+    vault_token: str = ""
+    vault_namespace: str = ""
+    vault_transit_mount: str = "transit"
+    vault_transit_key: str = "datavision"
+    vault_transit_hsm_backed: bool = False
+    vault_timeout_seconds: int = 5
+
+    # v2.58 session/device hardening
+    session_idle_minutes: int = 480
+    session_max_hours: int = 336
+    session_max_active_per_user: int = 10
+    trusted_device_days: int = 30
+    managed_device_default_required: bool = False
+
+    # v2.58 OpenTelemetry collector scrape protection
+    otel_internal_metrics_token: str = "change-this-otel-metrics-token"
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 

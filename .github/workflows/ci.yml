@@ -30,6 +30,7 @@ jobs:
       - run: python ../scripts/preparation_acceptance.py --root .. --check
       - run: python ../scripts/workspace_acceptance.py --root .. --check
       - run: python ../scripts/assistant_acceptance.py --root .. --check
+      - run: python ../scripts/assistant_window_acceptance.py --root .. --check
       - run: python ../scripts/assistant_multimodal_acceptance.py --root .. --check
       - run: python ../scripts/multi_agent_acceptance.py --root .. --check
       - run: python ../scripts/semantic_acceptance.py --root .. --check
@@ -39,6 +40,11 @@ jobs:
       - run: python ../scripts/ml_safety_acceptance.py --root .. --check
       - run: python ../scripts/xai_acceptance.py --root .. --check
       - run: python ../scripts/forecasting_anomaly_acceptance.py --root .. --check
+      - run: python ../scripts/typography_acceptance.py --root .. --check
+      - run: python ../scripts/collaboration_acceptance.py --root .. --check
+      - run: python ../scripts/governance_acceptance.py --root .. --check
+      - run: python ../scripts/entreprise_acceptance.py --root .. --check
+      - run: python ../scripts/hardening_acceptance.py --root .. --check
       - run: python ../scripts/cdc_audit.py --check
 
   frontend:

@@ -22,13 +22,13 @@
   max-width: 780px;
   margin: 0;
   color: #718292;
-  font-size: 13px;
+  font-size:calc(16px * var(--dv-font-scale, 1));
   line-height: 1.55;
 }
 
 .eyebrow {
   color: #2889ae;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 800;
   letter-spacing: .14em;
 }
@@ -41,7 +41,7 @@
   color: #fff;
   background: #18bea9;
   font-weight: 800;
-  font-size: 11px;
+  font-size:calc(15px * var(--dv-font-scale, 1));
 }
 
 .primary:hover:not(:disabled) {
@@ -70,7 +70,7 @@
 .metric span {
   display: block;
   color: #8493a0;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 800;
   letter-spacing: .06em;
   text-transform: uppercase;
@@ -112,13 +112,13 @@
 .panelHeader h3 {
   margin: 0;
   color: #304654;
-  font-size: 14px;
+  font-size:calc(16px * var(--dv-font-scale, 1));
 }
 
 .panelHeader p {
   margin: 4px 0 0;
   color: #81919b;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .formGrid {
@@ -136,7 +136,7 @@
 
 .field > span {
   color: #526874;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 800;
 }
 
@@ -151,7 +151,7 @@
   outline: none;
   color: #314854;
   background: #fff;
-  font-size: 11px;
+  font-size:calc(15px * var(--dv-font-scale, 1));
 }
 
 .field input:focus,
@@ -172,7 +172,7 @@
   align-items: center;
   gap: 8px;
   color: #506672;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .check input {
@@ -187,7 +187,7 @@
   border-radius: 5px;
   color: #486a76;
   background: #f2fafb;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   line-height: 1.45;
 }
 
@@ -202,7 +202,7 @@
   gap: 20px;
   border-bottom: 1px solid #edf1f4;
   color: #60747f;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .usageRow strong {
@@ -218,7 +218,7 @@
   display: flex;
   justify-content: space-between;
   color: #667a85;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .track {
@@ -254,19 +254,19 @@
 
 .routeCard strong {
   color: #304654;
-  font-size: 11px;
+  font-size:calc(15px * var(--dv-font-scale, 1));
 }
 
 .routeCard p {
   margin: 4px 0 0;
   color: #84939d;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .routePreview {
   grid-column: 1 / -1;
   color: #268397;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 700;
 }
 
@@ -295,7 +295,7 @@
   border-radius: 50%;
   color: #34768b;
   background: #eaf4f7;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 900;
 }
 
@@ -306,13 +306,13 @@
 
 .fallbackItem strong {
   color: #344b57;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .fallbackItem small {
   margin-top: 2px;
   color: #87959e;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .fallbackButtons {
@@ -361,7 +361,7 @@
 .providerHead strong {
   overflow: hidden;
   color: #304653;
-  font-size: 11px;
+  font-size:calc(15px * var(--dv-font-scale, 1));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -386,7 +386,7 @@
   border-radius: 4px;
   color: #5c7885;
   background: #eef4f6;
-  font-size: 8px;
+  font-size:calc(14px * var(--dv-font-scale, 1));
   text-transform: uppercase;
 }
 
@@ -401,7 +401,7 @@
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
   gap: 8px;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .providerCard dt {
@@ -431,7 +431,7 @@
   cursor: pointer;
   color: #46606d;
   background: #fff;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 700;
 }
 
@@ -449,7 +449,7 @@
   border-radius: 4px;
   color: #28704d;
   background: #eef9f2;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .testFail {
@@ -462,7 +462,7 @@
   padding: 28px;
   color: #81909a;
   text-align: center;
-  font-size: 11px;
+  font-size:calc(15px * var(--dv-font-scale, 1));
 }
 
 .modalBackdrop {

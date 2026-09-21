@@ -22,13 +22,13 @@
   max-width: 760px;
   margin: 0;
   color: #738492;
-  font-size: 12px;
+  font-size:calc(15px * var(--dv-font-scale, 1));
   line-height: 1.5;
 }
 
 .eyebrow {
   color: #2189aa;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 900;
   letter-spacing: .13em;
 }
@@ -45,7 +45,7 @@
   gap: 6px;
   align-items: center;
   border-radius: 999px;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 800;
 }
 
@@ -82,7 +82,7 @@
   border-radius: 6px;
   color: #7e6028;
   background: #fff9e9;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .layout {
@@ -111,7 +111,7 @@
 
 .sidebarHead strong {
   color: #415964;
-  font-size: 11px;
+  font-size:calc(15px * var(--dv-font-scale, 1));
 }
 
 .sidebarHead button {
@@ -122,7 +122,7 @@
   cursor: pointer;
   color: #fff;
   background: #18bca7;
-  font-size: 18px;
+  font-size:calc(19px * var(--dv-font-scale, 1));
 }
 
 .notebookList {
@@ -152,7 +152,7 @@
 .notebookList > button strong {
   overflow: hidden;
   color: #3a505c;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -160,7 +160,7 @@
 .notebookList > button small {
   margin-top: 4px;
   color: #8a99a2;
-  font-size: 8px;
+  font-size:calc(14px * var(--dv-font-scale, 1));
 }
 
 .activeNotebook {
@@ -171,7 +171,7 @@
 .emptySide {
   padding: 18px 8px;
   color: #94a1a9;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   text-align: center;
 }
 
@@ -204,13 +204,13 @@
 .emptyWorkspace h3 {
   margin: 0;
   color: #425966;
-  font-size: 15px;
+  font-size:calc(17px * var(--dv-font-scale, 1));
 }
 
 .emptyWorkspace p {
   max-width: 360px;
   margin: 8px 0 15px;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .emptyWorkspace button {
@@ -220,7 +220,7 @@
   cursor: pointer;
   color: #fff;
   background: #18bca7;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 800;
 }
 
@@ -238,13 +238,13 @@
 .notebookHeader h2 {
   margin: 0;
   color: #344b57;
-  font-size: 16px;
+  font-size:calc(18px * var(--dv-font-scale, 1));
 }
 
 .notebookHeader p {
   margin: 4px 0 0;
   color: #8997a0;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .notebookHeader > div:last-child {
@@ -260,7 +260,7 @@
   cursor: pointer;
   color: #4c6672;
   background: #fff;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 700;
 }
 
@@ -281,7 +281,7 @@
 .cellToolbar span {
   margin-right: 4px;
   color: #83939c;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 800;
 }
 
@@ -317,7 +317,7 @@
 
 .cellNumber {
   color: #9aa7ae;
-  font-size: 8px;
+  font-size:calc(14px * var(--dv-font-scale, 1));
 }
 
 .language {
@@ -325,7 +325,7 @@
   border-radius: 4px;
   color: #246d83;
   background: #e9f3f6;
-  font-size: 8px;
+  font-size:calc(14px * var(--dv-font-scale, 1));
   font-weight: 900;
   text-transform: uppercase;
 }
@@ -337,7 +337,7 @@
   cursor: pointer;
   color: #fff;
   background: #254f61;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 800;
 }
 
@@ -352,7 +352,7 @@
   cursor: pointer;
   color: #9a5a54;
   background: transparent;
-  font-size: 18px;
+  font-size:calc(19px * var(--dv-font-scale, 1));
 }
 
 .editor {
@@ -365,7 +365,7 @@
   color: #263b48;
   background: #fff;
   font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
-  font-size: 11px;
+  font-size:calc(15px * var(--dv-font-scale, 1));
   line-height: 1.55;
 }
 
@@ -386,7 +386,7 @@
   gap: 10px;
   color: #7c8c96;
   background: #f3f6f8;
-  font-size: 8px;
+  font-size:calc(14px * var(--dv-font-scale, 1));
 }
 
 .outputMeta span:first-child {
@@ -408,7 +408,7 @@
   width: max-content;
   min-width: 100%;
   border-collapse: collapse;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .tableWrap th,
@@ -443,7 +443,7 @@
   padding: 10px 12px;
   color: #334a56;
   background: #fbfcfd;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   line-height: 1.5;
   white-space: pre-wrap;
 }
@@ -456,7 +456,7 @@
   padding: 7px 10px;
   cursor: pointer;
   color: #607783;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
   font-weight: 800;
 }
 
@@ -475,7 +475,7 @@
   cursor: pointer;
   color: #2d6b80;
   background: #fff;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .provenance {
@@ -508,7 +508,7 @@
   border-radius: 6px;
   color: #286c50;
   background: #f0faf5;
-  font-size: 10px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .headerActions {
@@ -523,7 +523,7 @@
   display: grid;
   gap: 3px;
   color: #7f909a;
-  font-size: 8px;
+  font-size:calc(14px * var(--dv-font-scale, 1));
   font-weight: 800;
 }
 
@@ -534,7 +534,7 @@
   padding: 5px 7px;
   color: #405b67;
   background: #fff;
-  font-size: 9px;
+  font-size:calc(14.5px * var(--dv-font-scale, 1));
 }
 
 .artifactActions {

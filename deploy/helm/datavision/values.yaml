@@ -1,0 +1,95 @@
+nameOverride: ""
+fullnameOverride: ""
+
+images:
+  api:
+    repository: datavision-api
+    tag: "2.58.0"
+    pullPolicy: IfNotPresent
+  web:
+    repository: datavision-web
+    tag: "2.58.0"
+    pullPolicy: IfNotPresent
+  sandbox:
+    repository: datavision-sandbox
+    tag: "2.58.0"
+    pullPolicy: IfNotPresent
+  otelCollector:
+    repository: otel/opentelemetry-collector-contrib
+    tag: "0.161.0"
+    pullPolicy: IfNotPresent
+
+replicas:
+  api: 2
+  web: 2
+  worker: 1
+  sandbox: 1
+
+service:
+  web:
+    type: ClusterIP
+    port: 3005
+  api:
+    type: ClusterIP
+    port: 8005
+  sandbox:
+    port: 8090
+  otel:
+    otlpGrpc: 4317
+    otlpHttp: 4318
+    prometheus: 9464
+
+config:
+  appEnv: production
+  frontendUrl: https://datavision.example.com
+  corsOrigins: https://datavision.example.com
+  databaseUrl: postgresql+psycopg://datavision:CHANGE_ME@postgres.example.internal:5432/datavision
+  redisUrl: redis://redis.example.internal:6379/0
+  deploymentProfile: onprem
+  externalEgressPolicy: explicit_opt_in
+  notebookSandboxUrl: http://datavision-sandbox:8090
+  antivirusMode: required
+  clamavHost: clamav.example.internal
+  secretKmsProvider: vault_transit
+  vaultAddr: https://vault.example.internal
+  vaultTransitMount: transit
+  vaultTransitKey: datavision
+  vaultTransitHsmBacked: false
+
+secrets:
+  create: true
+  existingSecret: ""
+  authSecret: CHANGE_ME_32_CHARS_MINIMUM
+  connectorSecretKey: CHANGE_ME_32_CHARS_MINIMUM
+  vaultToken: CHANGE_ME
+  otelInternalMetricsToken: CHANGE_ME
+
+persistence:
+  enabled: true
+  size: 50Gi
+  storageClass: ""
+  accessModes:
+    - ReadWriteMany
+
+resources:
+  api:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 2Gi}
+  web:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+  worker:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "2", memory: 2Gi}
+  sandbox:
+    requests: {cpu: 250m, memory: 512Mi}
+    limits: {cpu: "1500m", memory: 1Gi}
+  otel:
+    requests: {cpu: 100m, memory: 128Mi}
+    limits: {cpu: 500m, memory: 512Mi}
+
+ingress:
+  enabled: false
+  className: nginx
+  host: datavision.example.com
+  tlsSecret: ""

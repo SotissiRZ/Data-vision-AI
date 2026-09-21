@@ -212,14 +212,14 @@ def disable_credential(user_id: str, credential_row_id: str) -> dict[str, Any]:
     return mfa_status(user_id)
 
 
-def begin_password_login(email: str, password: str) -> dict[str, Any]:
+def begin_password_login(email: str, password: str, *, user_agent: str = "") -> dict[str, Any]:
     row = get_user_by_email(email)
     if not row or not row.get("is_active") or not verify_password(password, row["password_hash"]):
         raise ValueError("Email ou mot de passe incorrect.")
     credentials = _active_credential_rows(str(row["id"]))
     if not get_settings().webauthn_enabled or not credentials:
         auth = create_authenticated_session(
-            row["id"], row["email"], provider="local", device_label="password"
+            row["id"], row["email"], provider="local", device_label="password", user_agent=user_agent
         )
         return {**auth, "user": get_user(row["id"]), "mfa_required": False}
 
@@ -245,6 +245,8 @@ def begin_password_login(email: str, password: str) -> dict[str, Any]:
 def finish_password_login(
     challenge_id: str,
     credential: dict[str, Any],
+    *,
+    user_agent: str = "",
 ) -> dict[str, Any]:
     lib = _require_webauthn()
     settings = get_settings()
@@ -292,5 +294,7 @@ def finish_password_login(
         user["email"],
         provider="webauthn",
         device_label="passkey",
+        user_agent=user_agent,
+        mfa_verified=True,
     )
     return {**auth, "user": user, "mfa_required": False, "mfa_verified": True}

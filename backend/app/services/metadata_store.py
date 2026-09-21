@@ -236,6 +236,56 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS collaboration_teams (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL DEFAULT '',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE(workspace_id, name)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS collaboration_team_members (
+        team_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        added_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        PRIMARY KEY(team_id, user_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS collaboration_artifact_shares (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        resource_type TEXT NOT NULL,
+        resource_id TEXT NOT NULL,
+        resource_version TEXT,
+        recipient_user_id TEXT,
+        recipient_team_id TEXT,
+        permission TEXT NOT NULL DEFAULT 'view',
+        note TEXT NOT NULL DEFAULT '',
+        created_by TEXT NOT NULL,
+        expires_at TEXT,
+        revoked_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS collaboration_ws_tickets (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        used_at TEXT,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS model_registry_entries (
         id TEXT PRIMARY KEY,
         workspace_id TEXT NOT NULL,
@@ -981,6 +1031,34 @@ CREATE TABLE IF NOT EXISTS upload_security_scans (
         created_at TEXT NOT NULL,
         rotated_from INTEGER,
         UNIQUE(secret_id, version)
+    )
+    """,
+
+    """
+    CREATE TABLE IF NOT EXISTS organization_scim_tokens (
+        id TEXT PRIMARY KEY,
+        organization_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        token_prefix TEXT NOT NULL,
+        default_role TEXT NOT NULL DEFAULT 'viewer',
+        created_by TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        last_used_at TEXT,
+        revoked_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS scim_provisioned_users (
+        organization_id TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        external_id TEXT,
+        provisioned_by_token_id TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (organization_id, user_id)
     )
     """,
 

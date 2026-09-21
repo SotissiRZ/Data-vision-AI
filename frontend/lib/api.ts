@@ -11,7 +11,7 @@ function enterpriseContextHeaders(init?: RequestInit): Headers {
   return headers;
 }
 
-/** Every API call carries the active Enterprise context when one exists.
+/** Every API call carries the active Entreprise context when one exists.
  * This prevents legacy analysis calls from accidentally bypassing v2.2 governance.
  */
 let enterpriseRefreshPromise: Promise<any> | null = null;
@@ -478,7 +478,7 @@ function enterpriseHeaders(token?: string): Record<string,string> {
 }
 
 export async function bootstrapEnterprise(payload: { email:string; password:string; display_name:string; organization_name:string }) {
-  return parse<any>(await apiFetch(`${API}/auth/bootstrap`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }), 'Initialisation Enterprise impossible');
+  return parse<any>(await apiFetch(`${API}/auth/bootstrap`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }), 'Initialisation Entreprise impossible');
 }
 
 export async function loginEnterprise(payload: { email:string; password:string }) {
@@ -503,7 +503,7 @@ export async function verifyEnterpriseWebAuthnLogin(payload:{challenge_id:string
   return parse<any>(await apiFetch(`${API}/auth/mfa/webauthn/login/verify`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }), 'Validation MFA impossible');
 }
 export async function getEnterpriseSession(token:string) {
-  return parse<any>(await apiFetch(`${API}/auth/me`, { headers: enterpriseHeaders(token) }), 'Session Enterprise indisponible');
+  return parse<any>(await apiFetch(`${API}/auth/me`, { headers: enterpriseHeaders(token) }), 'Session Entreprise indisponible');
 }
 
 export async function getEnterprisePreferences(token:string) {
@@ -515,7 +515,55 @@ export async function saveEnterprisePreferences(token:string, payload:{accessibi
 }
 
 export async function getEnterpriseStatus() {
-  return parse<any>(await apiFetch(`${API}/enterprise/status`), 'Statut Enterprise indisponible');
+  return parse<any>(await apiFetch(`${API}/entreprise/status`), 'Statut Entreprise indisponible');
+}
+
+export async function discoverOIDCByEmail(email:string) {
+  return parse<any>(await apiFetch(`${API}/auth/oidc/discover?email=${encodeURIComponent(email)}`), 'Découverte SSO indisponible');
+}
+
+export async function getEntrepriseReadiness(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/entreprise/readiness`, { headers:enterpriseHeaders(token) }), 'Posture Entreprise indisponible');
+}
+
+export async function getEntreprisePrivateAI(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/entreprise/private-ai`, { headers:enterpriseHeaders(token) }), 'Posture Private AI indisponible');
+}
+
+export async function enforceEntreprisePrivateAI(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/entreprise/private-ai/enforce`, { method:'POST', headers:enterpriseHeaders(token) }), 'Activation Private AI impossible');
+}
+
+export async function getScimTokens(token:string, organization_id:string) {
+  return parse<any>(await apiFetch(`${API}/organizations/${organization_id}/scim/tokens`, { headers:enterpriseHeaders(token) }), 'Jetons SCIM indisponibles');
+}
+
+export async function createScimToken(token:string, organization_id:string, payload:{name:string;workspace_id?:string|null;default_role?:string}) {
+  return parse<any>(await apiFetch(`${API}/organizations/${organization_id}/scim/tokens`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Création du jeton SCIM impossible');
+}
+
+export async function revokeScimToken(token:string, organization_id:string, token_id:string) {
+  return parse<any>(await apiFetch(`${API}/organizations/${organization_id}/scim/tokens/${token_id}`, { method:'DELETE', headers:enterpriseHeaders(token) }), 'Révocation du jeton SCIM impossible');
+}
+
+export async function getOrganizationSessionPolicy(token:string, organization_id:string) {
+  return parse<any>(await apiFetch(`${API}/organizations/${organization_id}/security/session-policy`, { headers:enterpriseHeaders(token) }), 'Politique de session indisponible');
+}
+
+export async function saveOrganizationSessionPolicy(token:string, organization_id:string, payload:{idle_timeout_minutes:number;max_session_hours:number;max_active_sessions:number;trusted_device_days:number;require_managed_device:boolean}) {
+  return parse<any>(await apiFetch(`${API}/organizations/${organization_id}/security/session-policy`, { method:'PUT', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Enregistrement de la politique de session impossible');
+}
+
+export async function getOrganizationTrustedDevices(token:string, organization_id:string) {
+  return parse<any>(await apiFetch(`${API}/organizations/${organization_id}/security/trusted-devices`, { headers:enterpriseHeaders(token) }), 'Appareils approuvés indisponibles');
+}
+
+export async function trustOrganizationDevice(token:string, organization_id:string, session_id:string, label:string) {
+  return parse<any>(await apiFetch(`${API}/organizations/${organization_id}/security/trusted-devices`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({session_id,label}) }), 'Approbation de l’appareil impossible');
+}
+
+export async function revokeOrganizationTrustedDevice(token:string, organization_id:string, device_id:string) {
+  return parse<any>(await apiFetch(`${API}/organizations/${organization_id}/security/trusted-devices/${device_id}`, { method:'DELETE', headers:enterpriseHeaders(token) }), 'Révocation de l’appareil impossible');
 }
 
 export async function refreshEnterpriseSession(refresh_token:string) {
@@ -626,6 +674,20 @@ export async function getGovernedPreview(token:string, workspace_id:string, data
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/datasets/${dataset_id}/governed-preview?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Aperçu gouverné indisponible');
 }
 
+
+export async function getGovernanceControlPlane(token:string, workspace_id:string, dataset_id?:string) {
+  const suffix=dataset_id?`?dataset_id=${encodeURIComponent(dataset_id)}`:'';
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/governance/control-plane${suffix}`, { headers:enterpriseHeaders(token) }), 'Control Plane indisponible');
+}
+
+export async function captureGovernanceSnapshot(token:string, workspace_id:string, dataset_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/governance/snapshots`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({dataset_id}) }), 'Capture de gouvernance impossible');
+}
+
+export async function getGovernanceSnapshots(token:string, workspace_id:string, limit=30) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/governance/snapshots?limit=${limit}`, { headers:enterpriseHeaders(token) }), 'Snapshots de gouvernance indisponibles');
+}
+
 export async function getReviewSummary(token:string, workspace_id:string) {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reviews/summary`, { headers:enterpriseHeaders(token) }), 'Synthèse des revues indisponible');
 }
@@ -677,6 +739,54 @@ export async function certifyReview(token:string, workspace_id:string, review_id
 
 export async function revokeCertification(token:string, workspace_id:string, certification_id:string, note='') {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/certifications/${certification_id}/revoke`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({note}) }), 'Révocation impossible');
+}
+
+export async function getCollaborationTeams(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/collaboration/teams`, { headers:enterpriseHeaders(token) }), 'Équipes de collaboration indisponibles');
+}
+
+export async function createCollaborationTeam(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/collaboration/teams`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Création de l’équipe impossible');
+}
+
+export async function setCollaborationTeamMember(token:string, workspace_id:string, team_id:string, user_id:string, present=true) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/collaboration/teams/${team_id}/members/${user_id}`, { method:present?'POST':'DELETE', headers:enterpriseHeaders(token) }), 'Mise à jour de l’équipe impossible');
+}
+
+export async function getCollaborationShares(token:string, workspace_id:string, scope='received') {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/collaboration/shares?scope=${encodeURIComponent(scope)}`, { headers:enterpriseHeaders(token) }), 'Partages indisponibles');
+}
+
+export async function createCollaborationShare(token:string, workspace_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/collaboration/shares`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Partage impossible');
+}
+
+export async function revokeCollaborationShare(token:string, workspace_id:string, share_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/collaboration/shares/${share_id}/revoke`, { method:'POST', headers:enterpriseHeaders(token) }), 'Révocation du partage impossible');
+}
+
+export async function getCollaborationDecisions(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/collaboration/decisions`, { headers:enterpriseHeaders(token) }), 'Journal de décisions indisponible');
+}
+
+export async function getReviewDiff(token:string, workspace_id:string, review_id:string, against_review_id?:string) {
+  const suffix=against_review_id?`?against_review_id=${encodeURIComponent(against_review_id)}`:'';
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/reviews/${review_id}/diff${suffix}`, { headers:enterpriseHeaders(token) }), 'Diff de revue indisponible');
+}
+
+export async function markAllCollaborationNotificationsRead(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/collaboration/notifications/read-all`, { method:'POST', headers:enterpriseHeaders(token) }), 'Lecture des notifications impossible');
+}
+
+export async function createCollaborationRealtimeTicket(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/collaboration/ws-ticket`, { method:'POST', headers:enterpriseHeaders(token) }), 'Canal temps réel indisponible');
+}
+
+export function collaborationWebSocketUrl(workspace_id:string, ticket:string) {
+  if (typeof window === 'undefined') return '';
+  const configured=(process.env.NEXT_PUBLIC_WS_URL||'').replace(/\/$/,'');
+  const base=configured || `${window.location.protocol==='https:'?'wss':'ws'}://${window.location.hostname}:8005/api/v1`;
+  return `${base}/workspaces/${encodeURIComponent(workspace_id)}/collaboration/ws?ticket=${encodeURIComponent(ticket)}`;
 }
 
 // ---------------------------- Data connectors & refresh v2.7 ----------------------------
@@ -803,7 +913,7 @@ export async function getEvaluationRun(token:string, workspace_id:string, run_id
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/evaluations/runs/${run_id}`, { headers:enterpriseHeaders(token) }), "Run d'évaluation indisponible");
 }
 
-// ---------------------------- Enterprise Action Connectors v2.11 ----------------------------
+// ---------------------------- Connecteurs d’actions Entreprise v2.11 ----------------------------
 export async function getActionSummary(token:string, workspace_id:string) {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/summary`, { headers:enterpriseHeaders(token) }), 'Synthèse des actions indisponible');
 }
@@ -845,7 +955,7 @@ export async function replayActionRun(token:string, workspace_id:string, run_id:
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/runs/${run_id}/replay`, { method:'POST', headers:enterpriseHeaders(token) }), 'Replay impossible');
 }
 
-// ---------------------------- Enterprise Action Connectors v2.11 ----------------------------
+// ---------------------------- Connecteurs d’actions Entreprise v2.11 ----------------------------
 export async function testActionDestination(token:string, workspace_id:string, destination_id:string) {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/actions/destinations/${destination_id}/test`, { method:'POST', headers:enterpriseHeaders(token) }), 'Test de la destination impossible');
 }
