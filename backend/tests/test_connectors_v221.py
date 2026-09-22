@@ -64,6 +64,9 @@ def test_catalog_contains_all_cdc_connector_families():
         "snowflake",
         "databricks",
         "redshift",
+        "s3",
+        "gcs",
+        "azure_blob",
     }
     assert set(CONNECTOR_SPECS) == expected
     catalog = connector_catalog()

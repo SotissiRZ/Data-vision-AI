@@ -33,6 +33,10 @@ from app.services.notebook_sandbox import (
     sandbox_health,
     sandbox_packages,
 )
+from app.services.workspace_environment import (
+    merge_requirements,
+    workspace_environment_snapshot,
+)
 from app.services.storage import (
     get_lineage,
     get_meta,
@@ -209,13 +213,58 @@ def _environment_row(notebook_id: str, *, create: bool = True) -> dict[str, Any]
 
 
 def _environment_payload(row: dict[str, Any]) -> dict[str, Any]:
+    workspace = workspace_environment_snapshot()
+    notebook_python = json_loads(row.get("python_requirements_json"), [])
+    notebook_r = json_loads(row.get("r_requirements_json"), [])
+    effective_python = merge_requirements(workspace.get("python_requirements") or [], notebook_python)
+    effective_r = merge_requirements(workspace.get("r_requirements") or [], notebook_r)
+    python_lock = json_loads(row.get("python_lock_json"), {})
+    r_lock = json_loads(row.get("r_lock_json"), {})
+    policy = json_loads(row.get("policy_json"), {})
+    manifest = {
+        "schema": "datavision.notebook-environment/v2",
+        "workspace_environment_sha256": workspace.get("fingerprint_sha256"),
+        "workspace_status": workspace.get("status"),
+        "notebook_id": row["notebook_id"],
+        "notebook_python_requirements": notebook_python,
+        "notebook_r_requirements": notebook_r,
+        "effective_python_requirements": effective_python,
+        "effective_r_requirements": effective_r,
+        "python_lock": dict(sorted(python_lock.items())),
+        "r_lock": dict(sorted(r_lock.items())),
+        "policy": {
+            **policy,
+            "inherits_workspace": True,
+            "dynamic_install": False,
+        },
+    }
+    fingerprint = hashlib.sha256(
+        json.dumps(manifest, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    ).hexdigest()
+    python_names = {_requirement_name(item) for item in effective_python}
+    r_names = {_requirement_name(item) for item in effective_r}
+    locks_complete = python_names.issubset(set(python_lock)) and r_names.issubset(set(r_lock))
+    workspace_ready = not (workspace.get("python_requirements") or workspace.get("r_requirements")) or workspace.get("status") == "ready"
     return {
         "notebook_id": row["notebook_id"],
-        "python_requirements": json_loads(row.get("python_requirements_json"), []),
-        "r_requirements": json_loads(row.get("r_requirements_json"), []),
-        "python_lock": json_loads(row.get("python_lock_json"), {}),
-        "r_lock": json_loads(row.get("r_lock_json"), {}),
-        "policy": json_loads(row.get("policy_json"), {}),
+        "python_requirements": notebook_python,
+        "r_requirements": notebook_r,
+        "python_lock": python_lock,
+        "r_lock": r_lock,
+        "effective_python_requirements": effective_python,
+        "effective_r_requirements": effective_r,
+        "workspace_environment": {
+            "scope_type": workspace.get("scope_type"),
+            "scope_id": workspace.get("scope_id"),
+            "status": workspace.get("status"),
+            "fingerprint_sha256": workspace.get("fingerprint_sha256"),
+            "python_requirements": workspace.get("python_requirements") or [],
+            "r_requirements": workspace.get("r_requirements") or [],
+        },
+        "manifest": manifest,
+        "fingerprint_sha256": fingerprint,
+        "reproducible": bool(locks_complete and workspace_ready),
+        "policy": {**policy, "inherits_workspace": True, "dynamic_install": False},
         "created_at": row.get("created_at"),
         "updated_at": row.get("updated_at"),
     }
@@ -1018,6 +1067,17 @@ def run_cell(notebook_id: str, cell_id: str) -> dict[str, Any]:
     if dataset_id and language != "markdown":
         dataset_provenance = _dataset_run_provenance(dataset_id, frame)
 
+    environment_provenance = None
+    if language in {"python", "r"}:
+        environment = get_notebook_environment(notebook_id)
+        environment_provenance = {
+            "fingerprint_sha256": environment.get("fingerprint_sha256"),
+            "workspace_environment_sha256": (environment.get("workspace_environment") or {}).get("fingerprint_sha256"),
+            "reproducible": bool(environment.get("reproducible")),
+            "python_lock": environment.get("python_lock") or {},
+            "r_lock": environment.get("r_lock") or {},
+        }
+
     provenance = {
         **dataset_provenance,
         "dataset_id": dataset_id,
@@ -1036,6 +1096,7 @@ def run_cell(notebook_id: str, cell_id: str) -> dict[str, Any]:
         ),
         "kernel": runtime_result.get("kernel_tracking") if language in {"python", "r"} else None,
         "kernel_created": bool(runtime_result.get("kernel_created")) if language in {"python", "r"} else False,
+        "environment": environment_provenance,
         "workspace_id": scope_id if scope_type == "workspace" else None,
     }
 
@@ -1278,6 +1339,22 @@ def update_notebook_environment(
             "id": notebook_id,
         },
     )
+    invalidated = 0
+    for language in ("python", "r"):
+        tracked = _kernel_row(notebook_id, language)
+        if not tracked:
+            continue
+        try:
+            close_kernel_session(str(tracked.get("session_id") or _kernel_session_id(notebook_id, language)))
+        except Exception:
+            pass
+        execute(
+            """UPDATE notebook_kernel_sessions
+               SET state_status='reset',execution_count=0,last_seen_at=:seen
+               WHERE notebook_id=:notebook AND language=:language""",
+            {"seen": utcnow(), "notebook": notebook_id, "language": language},
+        )
+        invalidated += 1
     record_event(
         "notebook.environment_update",
         user_id=actor,
@@ -1288,6 +1365,8 @@ def update_notebook_environment(
             "python_requirements": python,
             "r_requirements": r,
             "install_mode": "image-managed",
+            "inherits_workspace": True,
+            "invalidated_kernels": invalidated,
         },
     )
     return get_notebook_environment(notebook_id)
@@ -1312,13 +1391,13 @@ def sync_notebook_environment(notebook_id: str) -> dict[str, Any]:
     r_lock: dict[str, str] = {}
     missing_python: list[str] = []
     missing_r: list[str] = []
-    for requirement in env["python_requirements"]:
+    for requirement in env["effective_python_requirements"]:
         name = _requirement_name(requirement)
         if name in python_inventory:
             python_lock[name] = python_inventory[name]
         else:
             missing_python.append(requirement)
-    for requirement in env["r_requirements"]:
+    for requirement in env["effective_r_requirements"]:
         name = _requirement_name(requirement)
         if name in r_inventory:
             r_lock[name] = r_inventory[name]
@@ -1437,5 +1516,9 @@ def runtime_status() -> dict[str, Any]:
         "environment": {
             "install_mode": "image-managed",
             "dynamic_install": False,
+            "network_install": False,
+            "workspace_manifests": True,
+            "notebook_overlay": True,
+            "reproducibility": "sha256-lock-manifest",
         },
     }

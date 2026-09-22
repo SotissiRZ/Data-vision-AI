@@ -687,14 +687,21 @@ export function AIProviderControlCenter({
                   onChange={(event) => {
                     const providerType = event.target.value as
                       | "ollama"
-                      | "openai_compatible";
+                      | "openai_compatible"
+                      | "anthropic"
+                      | "gemini";
+                    const defaults =
+                      providerType === "anthropic"
+                        ? { location: "external" as const, base_url: "https://api.anthropic.com", name: "Anthropic" }
+                        : providerType === "gemini"
+                          ? { location: "external" as const, base_url: "https://generativelanguage.googleapis.com/v1beta", name: "Gemini" }
+                          : providerType === "ollama"
+                            ? { location: "local" as const, base_url: "http://host.docker.internal:11434", name: "Modèle local" }
+                            : { location: current.location, base_url: current.base_url, name: current.name };
                     setProviderDraft((current) => ({
                       ...current,
                       provider_type: providerType,
-                      location:
-                        providerType === "ollama"
-                          ? current.location
-                          : current.location,
+                      ...defaults,
                     }));
                   }}
                 >
@@ -702,6 +709,8 @@ export function AIProviderControlCenter({
                   <option value="openai_compatible">
                     API OpenAI-compatible
                   </option>
+                  <option value="anthropic">Anthropic natif</option>
+                  <option value="gemini">Google Gemini natif</option>
                 </select>
               </Field>
 
@@ -722,7 +731,7 @@ export function AIProviderControlCenter({
 
               <Field label="Modèle">
                 <input
-                  placeholder="ex. llama3.2, modèle interne…"
+                  placeholder="ex. llama3.2, claude-…, gemini-…"
                   value={providerDraft.model}
                   onChange={(event) =>
                     setProviderDraft((current) => ({
@@ -850,7 +859,7 @@ export function AIProviderControlCenter({
             </div>
 
             <div className={styles.modalNote}>
-              Les secrets ne sont jamais enregistrés ici. En Enterprise,
+              Les secrets ne sont jamais enregistrés ici. En Entreprise,
               référencez un secret du module <b>Identité & Secrets</b>.
             </div>
 

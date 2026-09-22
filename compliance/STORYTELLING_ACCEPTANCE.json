@@ -1,0 +1,39 @@
+{
+  "product_version": "2.76.0",
+  "passed": 8,
+  "total": 8,
+  "checks": [
+    {
+      "id": "deterministic_multi-page_story_engine",
+      "ok": true
+    },
+    {
+      "id": "claim_evidence_linking",
+      "ok": true
+    },
+    {
+      "id": "audience_objective_tone_controls",
+      "ok": true
+    },
+    {
+      "id": "multi-format_story_rendering",
+      "ok": true
+    },
+    {
+      "id": "governed_immutable_publication",
+      "ok": true
+    },
+    {
+      "id": "story_preview_and_publish_api",
+      "ok": true
+    },
+    {
+      "id": "assistant_and_frontend_controls",
+      "ok": true
+    },
+    {
+      "id": "integration_tests_present",
+      "ok": true
+    }
+  ]
+}

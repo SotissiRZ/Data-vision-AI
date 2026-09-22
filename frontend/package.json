@@ -9,7 +9,8 @@
     "test:e2e": "playwright test",
     "test:e2e:smoke": "playwright test --grep @smoke",
     "test:e2e:mvp": "playwright test --grep @mvp",
-    "test:e2e:production": "playwright test --grep @production"
+    "test:e2e:production": "playwright test --grep @production",
+    "test:e2e:accessibility": "playwright test accessibility.spec.ts"
   },
   "dependencies": {
     "next": "15.5.2",

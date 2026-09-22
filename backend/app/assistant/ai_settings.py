@@ -36,11 +36,13 @@ from .model_gateway import (
     ProviderRegistry,
     RoutingPolicy,
 )
+from .providers.anthropic import AnthropicProvider
+from .providers.gemini import GeminiProvider
 from .providers.ollama import OllamaProvider
 from .providers.openai_compatible import OpenAICompatibleProvider
 
 ScopeType = Literal["local", "workspace"]
-ProviderType = Literal["ollama", "openai_compatible"]
+ProviderType = Literal["ollama", "openai_compatible", "anthropic", "gemini"]
 ProviderLocation = Literal["local", "external"]
 
 LOCAL_SCOPE_ID = "__local__"
@@ -356,7 +358,7 @@ def save_provider_profile(
 
     if scope_type == "workspace" and payload.api_key_env:
         raise ValueError(
-            "En workspace Enterprise, utilisez un secret du Secret Vault plutôt qu'une variable locale."
+            "En workspace Entreprise, utilisez un secret du Secret Vault plutôt qu'une variable locale."
         )
     if scope_type == "local" and payload.secret_id:
         raise ValueError(
@@ -486,7 +488,13 @@ def _instantiate_provider(
     scope_id: str,
 ) -> ModelProvider:
     _validate_provider_url(profile, resolve_dns=profile.location == "external")
-    kind = "local" if profile.location == "local" else "openai_compatible"
+    kind = (
+        "local"
+        if profile.location == "local"
+        else "cloud"
+        if profile.provider_type in {"anthropic", "gemini"}
+        else "openai_compatible"
+    )
     descriptor = ProviderDescriptor(
         id=profile.id,
         kind=kind,
@@ -516,10 +524,24 @@ def _instantiate_provider(
             base_url=profile.base_url,
         )
 
+    api_key = _resolve_api_key(profile, scope_type, scope_id)
+    if profile.provider_type == "anthropic":
+        return AnthropicProvider(
+            descriptor=descriptor,
+            base_url=profile.base_url,
+            api_key=api_key,
+        )
+    if profile.provider_type == "gemini":
+        return GeminiProvider(
+            descriptor=descriptor,
+            base_url=profile.base_url,
+            api_key=api_key,
+        )
+
     return OpenAICompatibleProvider(
         descriptor=descriptor,
         base_url=profile.base_url,
-        api_key=_resolve_api_key(profile, scope_type, scope_id),
+        api_key=api_key,
     )
 
 

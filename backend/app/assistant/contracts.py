@@ -112,19 +112,25 @@ class CreateVisualizationArgs(BaseModel):
 
 
 class AutoMLArgs(BaseModel):
-    task: Literal["classification", "regression", "clustering"]
+    task: Literal["classification", "regression", "clustering", "forecasting", "anomaly_detection"]
     target: str | None = None
     features: list[str] | None = None
     metric: str | None = None
     validation: Literal["holdout", "cross_validation", "time_split"] = "cross_validation"
     time_column: str | None = None
+    horizon: int = Field(default=12, ge=1, le=365)
+    frequency: Literal["auto", "daily", "weekly", "monthly", "quarterly", "yearly"] = "auto"
+    contamination: float = Field(default=0.05, ge=0.001, le=0.4)
+    threshold: float = Field(default=3.5, ge=1.0, le=10.0)
     max_models: int = Field(default=8, ge=1, le=50)
     explain: bool = True
 
     @model_validator(mode="after")
     def target_required(self):
-        if self.task in {"classification", "regression"} and not self.target:
+        if self.task in {"classification", "regression", "forecasting"} and not self.target:
             raise ValueError("Une cible est requise pour cette tâche AutoML.")
+        if self.task == "forecasting" and not self.time_column:
+            raise ValueError("Une colonne temporelle est requise pour le forecasting AutoML.")
         return self
 
 
@@ -245,6 +251,10 @@ class GenerateReportArgs(BaseModel):
     include_methodology: bool = True
     include_provenance: bool = True
     include_visualizations: bool = True
+    story_audience: Literal["executive", "operations", "analyst", "general"] = "executive"
+    story_objective: str | None = Field(default=None, max_length=500)
+    story_tone: Literal["concise", "balanced", "detailed"] = "balanced"
+    story_max_pages: int = Field(default=6, ge=3, le=8)
     custom_blocks: list[dict[str, Any]] = Field(default_factory=list)
     block_order: list[str] = Field(default_factory=list)
 

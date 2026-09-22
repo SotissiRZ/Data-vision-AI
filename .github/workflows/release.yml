@@ -55,6 +55,7 @@ jobs:
       - run: python scripts/notebook_runtime_acceptance.py --root . --check
       - run: python scripts/catalog_lineage_acceptance.py --root . --check
       - run: python scripts/visual_analytics_acceptance.py --root . --check
+      - run: python scripts/automl_unified_acceptance.py --root . --check
       - run: python scripts/deployment_policy_check.py --root . --check
       - uses: azure/setup-helm@v4
       - run: helm lint deploy/helm/datavision -f deploy/policy/ci-values.yaml

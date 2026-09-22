@@ -69,12 +69,37 @@ export type NotebookKernel = {
   variables?: string[];
 };
 
-export type NotebookEnvironment = {
-  notebook_id: string;
+export type WorkspaceEnvironment = {
+  scope_type: "local" | "workspace" | string;
+  scope_id: string;
   python_requirements: string[];
   r_requirements: string[];
   python_lock: Record<string, string>;
   r_lock: Record<string, string>;
+  manifest: Record<string, unknown>;
+  fingerprint_sha256: string;
+  inventory_sha256?: string | null;
+  status: string;
+  reproducible: boolean;
+  policy: Record<string, unknown>;
+  missing_python?: string[];
+  missing_r?: string[];
+  lock_drift?: Array<{ language: string; package: string; expected?: string | null; actual?: string | null }>;
+  verified?: boolean;
+};
+
+export type NotebookEnvironment = {
+  notebook_id: string;
+  python_requirements: string[];
+  r_requirements: string[];
+  effective_python_requirements?: string[];
+  effective_r_requirements?: string[];
+  python_lock: Record<string, string>;
+  r_lock: Record<string, string>;
+  fingerprint_sha256?: string;
+  reproducible?: boolean;
+  workspace_environment?: Pick<WorkspaceEnvironment, "scope_type" | "scope_id" | "status" | "fingerprint_sha256" | "python_requirements" | "r_requirements">;
+  manifest?: Record<string, unknown>;
   policy: Record<string, unknown>;
   created_at?: string | null;
   updated_at?: string | null;
@@ -391,6 +416,39 @@ export async function downloadNotebookArtifact(
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(href);
+}
+
+export async function getWorkspaceEnvironment() {
+  return parse<WorkspaceEnvironment>(
+    await fetch(`${API}/notebooks/workspace-environment`, { credentials: "include", headers: headers() }),
+    "Environnement workspace indisponible.",
+  );
+}
+
+export async function updateWorkspaceEnvironment(input: { python_requirements?: string[]; r_requirements?: string[] }) {
+  return parse<WorkspaceEnvironment>(
+    await fetch(`${API}/notebooks/workspace-environment`, {
+      method: "PUT",
+      credentials: "include",
+      headers: headers(true),
+      body: JSON.stringify(input),
+    }),
+    "Mise à jour de l'environnement workspace impossible.",
+  );
+}
+
+export async function syncWorkspaceEnvironment() {
+  return parse<WorkspaceEnvironment>(
+    await fetch(`${API}/notebooks/workspace-environment/sync`, { method: "POST", credentials: "include", headers: headers() }),
+    "Synchronisation de l'environnement workspace impossible.",
+  );
+}
+
+export async function verifyWorkspaceEnvironment() {
+  return parse<WorkspaceEnvironment>(
+    await fetch(`${API}/notebooks/workspace-environment/verify`, { method: "POST", credentials: "include", headers: headers() }),
+    "Vérification de reproductibilité impossible.",
+  );
 }
 
 export async function getNotebookEnvironment(notebookId: string) {

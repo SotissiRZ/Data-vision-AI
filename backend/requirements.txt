@@ -35,6 +35,9 @@ pymssql==2.4.1
 oracledb==26.0.0
 pymongo==4.18.0
 google-cloud-bigquery==3.45.2
+boto3==1.40.40
+google-cloud-storage==3.4.0
+azure-storage-blob==12.26.0
 snowflake-connector-python==4.7.4
 databricks-sql-connector==4.5.0
 redshift-connector==2.1.16

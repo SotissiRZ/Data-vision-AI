@@ -12,7 +12,8 @@ PlannerProvider
 Model Gateway
        ├── Local provider
        ├── OpenAI-compatible provider
-       └── providers futurs
+       ├── Anthropic natif
+       └── Gemini natif
 ```
 
 ## Invariant de sécurité
@@ -82,6 +83,23 @@ DATAVISION_OPENAI_COMPATIBLE_BASE_URL=
 DATAVISION_OPENAI_COMPATIBLE_MODEL=
 DATAVISION_OPENAI_COMPATIBLE_API_KEY=
 ```
+
+### Provider Anthropic natif
+```text
+DATAVISION_ANTHROPIC_MODEL=
+DATAVISION_ANTHROPIC_BASE_URL=https://api.anthropic.com
+DATAVISION_ANTHROPIC_API_KEY=
+```
+
+### Provider Gemini natif
+```text
+DATAVISION_GEMINI_MODEL=
+DATAVISION_GEMINI_BASE_URL=https://generativelanguage.googleapis.com/v1beta
+DATAVISION_GEMINI_API_KEY=
+```
+
+Les profils créés dans le Centre de contrôle IA peuvent utiliser ces quatre types.
+En workspace Entreprise, les clés externes restent référencées via le Secret Vault.
 
 Aucun secret n'est stocké dans le code.
 

@@ -57,6 +57,7 @@ jobs:
       - run: python ../scripts/notebook_runtime_acceptance.py --root .. --check
       - run: python ../scripts/catalog_lineage_acceptance.py --root .. --check
       - run: python ../scripts/visual_analytics_acceptance.py --root .. --check
+      - run: python ../scripts/automl_unified_acceptance.py --root .. --check
       - run: python ../scripts/deployment_policy_check.py --root .. --check
       - run: python ../scripts/cdc_audit.py --check
 

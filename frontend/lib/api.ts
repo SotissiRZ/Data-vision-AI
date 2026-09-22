@@ -89,6 +89,22 @@ export async function getQuality(id: string) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/quality`), 'Qualité impossible');
 }
 
+export async function getQualityRemediation(id: string) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/quality/remediation`), 'Plan de remédiation qualité indisponible');
+}
+
+export async function previewQualityRemediation(id: string, actionIds: string[] | null) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/quality/remediation/preview`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_ids: actionIds }),
+  }), 'Prévisualisation de remédiation impossible');
+}
+
+export async function applyQualityRemediation(id: string, actionIds: string[], expectedPlanId?: string | null) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/quality/remediation/apply`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action_ids: actionIds, expected_plan_id: expectedPlanId ?? null }),
+  }), 'Application de la remédiation qualité impossible');
+}
+
 export async function getDecision(id: string) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/decision-support`), 'Décision impossible');
 }
@@ -244,7 +260,7 @@ export async function composeVisualizations(id: string, payload: { columns?: str
   }), 'Composition de visualisations impossible');
 }
 
-export async function runAutoML(id: string, payload: { target?: string | null; task?: 'auto' | 'classification' | 'regression' | 'clustering'; features?: string[] | null; primary_metric?: string; cv_folds?: number; tune?: boolean; max_candidates?: number; split_strategy?: 'auto'|'random'|'temporal'; time_column?: string | null }) {
+export async function runAutoML(id: string, payload: { target?: string | null; task?: 'auto' | 'classification' | 'regression' | 'clustering' | 'forecasting' | 'anomaly_detection'; features?: string[] | null; primary_metric?: string; cv_folds?: number; tune?: boolean; max_candidates?: number; split_strategy?: 'auto'|'random'|'temporal'; time_column?: string | null; horizon?: number; frequency?: string; backtest_windows?: number; interval_level?: number; missing_strategy?: 'none'|'interpolate'|'ffill'|'zero'; contamination?: number; threshold?: number }) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/models/automl`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }), 'AutoML impossible');
@@ -309,10 +325,27 @@ export async function getReports(id: string) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/reports`), 'Rapports indisponibles');
 }
 
-export async function createReport(id: string, payload: { title: string; subtitle?: string | null; author?: string | null; organization?: string | null; template?: 'executive'|'analytical'|'technical'; sections: string[]; analysis_session_id?: string | null; visualization_ids?: string[]; auto_story?: boolean; auto_visualizations?: boolean; max_visualizations?: number; custom_blocks?: Record<string,unknown>[]; block_order?: string[] }) {
+export async function createReport(id: string, payload: { title: string; subtitle?: string | null; author?: string | null; organization?: string | null; template?: 'executive'|'analytical'|'technical'; sections: string[]; analysis_session_id?: string | null; visualization_ids?: string[]; auto_story?: boolean; auto_visualizations?: boolean; max_visualizations?: number; story_audience?: 'executive'|'operations'|'analyst'|'general'; story_objective?: string | null; story_tone?: 'concise'|'balanced'|'detailed'; story_max_pages?: number; custom_blocks?: Record<string,unknown>[]; block_order?: string[] }) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/reports`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
   }), 'Création du rapport impossible');
+}
+
+
+export async function previewStorytelling(id: string, payload: { audience?: 'executive'|'operations'|'analyst'|'general'; objective?: string | null; tone?: 'concise'|'balanced'|'detailed'; max_pages?: number; analysis_session_id?: string | null; visualization_ids?: string[] }) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/storytelling/preview`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }), 'Prévisualisation du storytelling impossible');
+}
+
+export async function publishReport(id: string, reportId: string, payload: { visibility?: 'private'|'workspace'|'external'; channel?: string; note?: string | null } = {}) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/reports/${reportId}/publish`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }), 'Publication du rapport impossible');
+}
+
+export async function getReportPublication(id: string, reportId: string) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/reports/${reportId}/publication`), 'Statut de publication indisponible');
 }
 
 export async function validateReport(id: string, reportId: string) {
@@ -522,7 +555,7 @@ export async function getEnterprisePreferences(token:string) {
   return parse<any>(await apiFetch(`${API}/auth/preferences`, { headers: enterpriseHeaders(token) }), 'Préférences utilisateur indisponibles');
 }
 
-export async function saveEnterprisePreferences(token:string, payload:{accessibility_mode?:'normal'|'comfortable'|'large';ui_zoom?:number;compact_navigation?:boolean}) {
+export async function saveEnterprisePreferences(token:string, payload:{accessibility_mode?:'normal'|'comfortable'|'large';ui_zoom?:number;compact_navigation?:boolean;locale?:'fr'|'en'|'es'|'ar';high_contrast?:boolean;reduce_motion?:boolean}) {
   return parse<any>(await apiFetch(`${API}/auth/preferences`, { method:'PUT', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Enregistrement des préférences impossible');
 }
 
@@ -901,6 +934,14 @@ export async function getRefreshRuns(token:string, workspace_id:string, source_i
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/refresh-runs?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Historique des refresh indisponible');
 }
 
+export async function getCdcSourceStatus(token:string, workspace_id:string, source_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/sources/${source_id}/cdc`, { headers:enterpriseHeaders(token) }), 'Statut CDC indisponible');
+}
+
+export async function ingestCdcEvents(token:string, workspace_id:string, source_id:string, events:Record<string,unknown>[], event_format='debezium-json', dry_run=false) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/sources/${source_id}/cdc/events`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({events,event_format,dry_run}) }), 'Ingestion CDC impossible');
+}
+
 // ---------------------------- Data Catalog & Discovery v2.68 ----------------------------
 export async function getDataCatalogAssets(token:string, workspace_id:string, query='', resource_type='') {
   const params=new URLSearchParams(); if(query)params.set('q',query); if(resource_type)params.set('resource_type',resource_type); params.set('limit','500');
@@ -1047,13 +1088,20 @@ export async function runModelBenchmark(
   datasetId: string,
   payload: {
     target?: string | null;
-    task?: 'auto' | 'classification' | 'regression' | 'clustering';
+    task?: 'auto' | 'classification' | 'regression' | 'clustering' | 'forecasting' | 'anomaly_detection';
     features?: string[] | null;
     primary_metric?: string;
     cv_folds?: number;
     max_candidates?: number;
     split_strategy?: 'auto'|'random'|'temporal';
     time_column?: string | null;
+    horizon?: number;
+    frequency?: string;
+    backtest_windows?: number;
+    interval_level?: number;
+    missing_strategy?: 'none'|'interpolate'|'ffill'|'zero';
+    contamination?: number;
+    threshold?: number;
   },
 ) {
   return parse<any>(
@@ -1071,7 +1119,7 @@ export async function runMLSafetyAudit(
   datasetId: string,
   payload: {
     target?: string | null;
-    task?: 'auto' | 'classification' | 'regression' | 'clustering';
+    task?: 'auto' | 'classification' | 'regression' | 'clustering' | 'forecasting' | 'anomaly_detection';
     features?: string[] | null;
     primary_metric?: string;
     split_strategy?: 'auto'|'random'|'temporal';

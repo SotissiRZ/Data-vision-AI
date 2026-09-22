@@ -12,6 +12,7 @@ from app.services.storage import (
 )
 from app.services.profiling import profile_dataframe
 from app.services.quality import quality_report
+from app.services.quality_remediation import build_quality_remediation_plan, preview_quality_remediation, apply_quality_remediation
 from app.services.modeling import train_model, algorithm_availability, predict, get_model_card, list_model_cards
 from app.services.automl_engine import run_automl_experiment, run_automl_benchmark, list_automl_experiments, get_automl_experiment, audit_automl_safety
 from app.services.decision import decision_support
@@ -32,7 +33,8 @@ from app.services.ai_analysis_runtime import (
     stream_analysis_events, submit_analysis_run,
 )
 from app.services.nlq_sql import run_nlq
-from app.services.report_builder import build_report, list_reports, get_report, export_report, validate_report
+from app.services.report_builder import build_report, list_reports, get_report, export_report, validate_report, publish_report, get_report_publication
+from app.services.storytelling import build_story_blueprint
 from app.services.dashboard import dashboard_overview
 from app.services.insight_engine import generate_insights, insight_history
 from app.services.saved_visualizations import save_visualization, list_visualizations
@@ -119,19 +121,26 @@ class TrainRequest(BaseModel):
 
 class AutoMLRequest(BaseModel):
     target: str | None = None
-    task: str = Field(default="auto", pattern="^(auto|classification|regression|clustering)$")
+    task: str = Field(default="auto", pattern="^(auto|classification|regression|clustering|forecasting|anomaly_detection)$")
     features: list[str] | None = None
-    primary_metric: str = Field(default="auto", pattern="^(auto|accuracy|balanced_accuracy|f1_weighted|roc_auc|rmse|mae|r2|silhouette|calinski_harabasz|davies_bouldin)$")
+    primary_metric: str = Field(default="auto", pattern="^(auto|accuracy|balanced_accuracy|f1_weighted|roc_auc|rmse|mae|r2|smape|silhouette|calinski_harabasz|davies_bouldin|quality_score|stability|agreement)$")
     cv_folds: int = Field(default=5, ge=2, le=10)
     tune: bool = True
     max_candidates: int = Field(default=7, ge=2, le=24)
     split_strategy: str = Field(default="auto", pattern="^(auto|random|temporal)$")
     time_column: str | None = None
+    horizon: int = Field(default=12, ge=1, le=365)
+    frequency: str = Field(default="auto", pattern="^(auto|daily|weekly|monthly|quarterly|yearly)$")
+    backtest_windows: int = Field(default=4, ge=1, le=8)
+    interval_level: float = Field(default=0.95, ge=0.5, le=0.99)
+    missing_strategy: str = Field(default="none", pattern="^(none|interpolate|ffill|zero)$")
+    contamination: float = Field(default=0.05, ge=0.001, le=0.4)
+    threshold: float = Field(default=3.5, ge=1.0, le=10.0)
 
 
 class MLSafetyAuditRequest(BaseModel):
     target: str | None = None
-    task: str = Field(default="auto", pattern="^(auto|classification|regression|clustering)$")
+    task: str = Field(default="auto", pattern="^(auto|classification|regression|clustering|forecasting|anomaly_detection)$")
     features: list[str] | None = None
     primary_metric: str = Field(default="auto")
     split_strategy: str = Field(default="auto", pattern="^(auto|random|temporal)$")
@@ -140,13 +149,20 @@ class MLSafetyAuditRequest(BaseModel):
 
 class BenchmarkRequest(BaseModel):
     target: str | None = None
-    task: str = Field(default="auto", pattern="^(auto|classification|regression|clustering)$")
+    task: str = Field(default="auto", pattern="^(auto|classification|regression|clustering|forecasting|anomaly_detection)$")
     features: list[str] | None = None
-    primary_metric: str = Field(default="auto", pattern="^(auto|accuracy|balanced_accuracy|f1_weighted|roc_auc|rmse|mae|r2|silhouette|calinski_harabasz|davies_bouldin)$")
+    primary_metric: str = Field(default="auto", pattern="^(auto|accuracy|balanced_accuracy|f1_weighted|roc_auc|rmse|mae|r2|smape|silhouette|calinski_harabasz|davies_bouldin|quality_score|stability|agreement)$")
     cv_folds: int = Field(default=5, ge=2, le=10)
     max_candidates: int = Field(default=10, ge=2, le=24)
     split_strategy: str = Field(default="auto", pattern="^(auto|random|temporal)$")
     time_column: str | None = None
+    horizon: int = Field(default=12, ge=1, le=365)
+    frequency: str = Field(default="auto", pattern="^(auto|daily|weekly|monthly|quarterly|yearly)$")
+    backtest_windows: int = Field(default=4, ge=1, le=8)
+    interval_level: float = Field(default=0.95, ge=0.5, le=0.99)
+    missing_strategy: str = Field(default="none", pattern="^(none|interpolate|ffill|zero)$")
+    contamination: float = Field(default=0.05, ge=0.001, le=0.4)
+    threshold: float = Field(default=3.5, ge=1.0, le=10.0)
 
 
 class PredictRequest(BaseModel):
@@ -176,6 +192,15 @@ class ClusterRequest(BaseModel):
 
 class TransformRequest(BaseModel):
     operation: dict
+
+
+class QualityRemediationPreviewRequest(BaseModel):
+    action_ids: list[str] | None = None
+
+
+class QualityRemediationApplyRequest(BaseModel):
+    action_ids: list[str] = Field(default_factory=list)
+    expected_plan_id: str | None = None
 
 
 class CombineRequest(BaseModel):
@@ -443,9 +468,27 @@ class ReportCreateRequest(BaseModel):
     auto_story: bool = False
     auto_visualizations: bool = False
     max_visualizations: int = Field(default=6, ge=1, le=10)
+    story_audience: str = Field(default="executive", pattern="^(executive|operations|analyst|general)$")
+    story_objective: str | None = Field(default=None, max_length=500)
+    story_tone: str = Field(default="balanced", pattern="^(concise|balanced|detailed)$")
+    story_max_pages: int = Field(default=6, ge=3, le=8)
     custom_blocks: list[dict] = Field(default_factory=list)
     block_order: list[str] = Field(default_factory=list)
 
+
+class StoryPreviewRequest(BaseModel):
+    audience: str = Field(default="executive", pattern="^(executive|operations|analyst|general)$")
+    objective: str | None = Field(default=None, max_length=500)
+    tone: str = Field(default="balanced", pattern="^(concise|balanced|detailed)$")
+    max_pages: int = Field(default=6, ge=3, le=8)
+    analysis_session_id: str | None = None
+    visualization_ids: list[str] = Field(default_factory=list)
+
+
+class ReportPublishRequest(BaseModel):
+    visibility: str = Field(default="workspace", pattern="^(private|workspace|external)$")
+    channel: str = Field(default="report_studio", min_length=1, max_length=80)
+    note: str | None = Field(default=None, max_length=1000)
 
 
 class SaveVisualizationRequest(BaseModel):
@@ -772,6 +815,9 @@ def dataset_automl(dataset_id: str, request: AutoMLRequest):
             primary_metric=request.primary_metric, cv_folds=request.cv_folds, tune=request.tune,
             max_candidates=request.max_candidates, dataset_context=_dataset_payload(meta),
             split_strategy=request.split_strategy, time_column=request.time_column,
+            horizon=request.horizon, frequency=request.frequency, backtest_windows=request.backtest_windows,
+            interval_level=request.interval_level, missing_strategy=request.missing_strategy,
+            contamination=request.contamination, threshold=request.threshold,
         )
         actor_id, workspace_id = _registry_identity("model:run")
         result["registry"] = register_model(actor_id, workspace_id, result["model_id"])
@@ -796,6 +842,9 @@ def dataset_model_benchmark(
             load_dataframe(dataset_id), target=request.target, task=request.task, features=request.features,
             primary_metric=request.primary_metric, cv_folds=request.cv_folds, max_candidates=request.max_candidates,
             split_strategy=request.split_strategy, time_column=request.time_column,
+            horizon=request.horizon, frequency=request.frequency, backtest_windows=request.backtest_windows,
+            interval_level=request.interval_level, missing_strategy=request.missing_strategy,
+            contamination=request.contamination, threshold=request.threshold,
         )
     except FileNotFoundError as exc:
         raise HTTPException(
@@ -2076,6 +2125,25 @@ def model_sensitivity_route(model_id: str, body: SensitivityRequest):
         raise HTTPException(status_code=404 if isinstance(exc, FileNotFoundError) else 400, detail=str(exc)) from exc
 
 
+@router.post("/{dataset_id}/storytelling/preview")
+def dataset_storytelling_preview(dataset_id: str, request: StoryPreviewRequest):
+    try:
+        get_meta(dataset_id)
+        return build_story_blueprint(
+            dataset_id,
+            audience=request.audience,
+            objective=request.objective,
+            tone=request.tone,
+            max_pages=request.max_pages,
+            analysis_session_id=request.analysis_session_id,
+            visualization_ids=request.visualization_ids or None,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset ou analyse introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/{dataset_id}/reports")
 def dataset_reports(dataset_id: str):
     try:
@@ -2095,6 +2163,8 @@ def dataset_report_create(dataset_id: str, request: ReportCreateRequest):
             visualization_ids=request.visualization_ids or None, auto_story=request.auto_story,
             auto_visualizations=request.auto_visualizations, max_visualizations=request.max_visualizations,
             custom_blocks=request.custom_blocks or None, block_order=request.block_order or None,
+            story_audience=request.story_audience, story_objective=request.story_objective,
+            story_tone=request.story_tone, story_max_pages=request.story_max_pages,
         )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset ou analyse introuvable") from exc
@@ -2124,6 +2194,45 @@ def dataset_report_validate(dataset_id: str, report_id: str):
         return validate_report(report_id)
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Rapport introuvable") from exc
+
+
+@router.get("/{dataset_id}/reports/{report_id}/publication")
+def dataset_report_publication(dataset_id: str, report_id: str):
+    try:
+        report = get_report(report_id)
+        if report.get("dataset_id") != dataset_id:
+            raise HTTPException(status_code=404, detail="Rapport introuvable pour ce dataset")
+        return get_report_publication(report_id) or {"report_id": report_id, "status": "draft"}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Rapport introuvable") from exc
+
+
+@router.post("/{dataset_id}/reports/{report_id}/publish")
+def dataset_report_publish(dataset_id: str, request: ReportPublishRequest, report_id: str):
+    try:
+        report = get_report(report_id)
+        if report.get("dataset_id") != dataset_id:
+            raise HTTPException(status_code=404, detail="Rapport introuvable pour ce dataset")
+        ctx = current_access_context()
+        gate = publication_gate(ctx.workspace_id, dataset_id) if ctx is not None else {"allowed": True, "policy": "local_mode", "dataset_id": dataset_id}
+        if not gate.get("allowed", True):
+            names = ", ".join(str(x.get("name") or x.get("contract_id")) for x in gate.get("blockers", []))
+            raise HTTPException(status_code=409, detail=f"Publication bloquée par le Data Reliability Gate: {names or 'contrat critique en échec'}")
+        return publish_report(
+            report_id,
+            visibility=request.visibility,
+            channel=request.channel,
+            note=request.note,
+            actor_id=(ctx.user_id if ctx is not None else None),
+            workspace_id=(ctx.workspace_id if ctx is not None else None),
+            governance_gate=gate,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Rapport introuvable") from exc
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get("/{dataset_id}/reports/{report_id}/export/{fmt}")
@@ -2171,6 +2280,52 @@ def dataset_versions(dataset_id: str):
         }
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.get("/{dataset_id}/quality/remediation")
+def dataset_quality_remediation(dataset_id: str):
+    try:
+        df = load_dataframe(dataset_id)
+        meta = get_meta(dataset_id)
+        plan = build_quality_remediation_plan(df, dataset_id=dataset_id, version=int(meta.get("version", 1)))
+        plan["default_preview"] = preview_quality_remediation(df, plan=plan, action_ids=None)
+        return plan
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/quality/remediation/preview")
+def dataset_quality_remediation_preview(dataset_id: str, request: QualityRemediationPreviewRequest):
+    try:
+        df = load_dataframe(dataset_id)
+        meta = get_meta(dataset_id)
+        plan = build_quality_remediation_plan(df, dataset_id=dataset_id, version=int(meta.get("version", 1)))
+        return preview_quality_remediation(df, plan=plan, action_ids=request.action_ids)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/quality/remediation/apply")
+def dataset_quality_remediation_apply(dataset_id: str, request: QualityRemediationApplyRequest):
+    try:
+        df = load_dataframe(dataset_id)
+        meta = get_meta(dataset_id)
+        plan = build_quality_remediation_plan(df, dataset_id=dataset_id, version=int(meta.get("version", 1)))
+        transformed, operation, preview = apply_quality_remediation(
+            df, plan=plan, action_ids=request.action_ids, expected_plan_id=request.expected_plan_id
+        )
+        next_meta = save_dataframe_version(dataset_id, transformed, operation)
+        return {**_bundle(next_meta, transformed), "remediation": {"plan_id": plan["plan_id"], "preview": preview, "operation": operation}}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except (ValueError, TypeError) as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Remédiation qualité impossible: {exc}") from exc
 
 
 @router.post("/{dataset_id}/transform")

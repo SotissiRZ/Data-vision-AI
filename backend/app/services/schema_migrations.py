@@ -325,6 +325,33 @@ MIGRATIONS: tuple[Migration, ...] = (
     ),
 
     Migration(
+        version="2.76.0-001",
+        name="workspace_runtime_environments",
+        statements=(
+            """CREATE TABLE IF NOT EXISTS workspace_runtime_environments (
+                scope_type TEXT NOT NULL,
+                scope_id TEXT NOT NULL,
+                python_requirements_json TEXT NOT NULL,
+                r_requirements_json TEXT NOT NULL,
+                python_lock_json TEXT NOT NULL,
+                r_lock_json TEXT NOT NULL,
+                manifest_json TEXT NOT NULL,
+                fingerprint_sha256 TEXT NOT NULL,
+                status TEXT NOT NULL,
+                policy_json TEXT NOT NULL,
+                inventory_sha256 TEXT,
+                created_by TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                synced_at TEXT,
+                PRIMARY KEY(scope_type, scope_id)
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_workspace_runtime_env_status
+               ON workspace_runtime_environments(status, updated_at)""",
+        ),
+    ),
+
+    Migration(
         version="2.68.0-001",
         name="data_catalog_discovery",
         statements=(

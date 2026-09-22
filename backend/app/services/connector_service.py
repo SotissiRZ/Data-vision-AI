@@ -25,7 +25,7 @@ from app.services.connector_backends import (
 )
 
 SUPPORTED_CONNECTORS = set(CONNECTOR_SPECS)
-SUPPORTED_REFRESH_MODES = {"full", "incremental"}
+SUPPORTED_REFRESH_MODES = {"full", "incremental", "cdc"}
 
 
 def _retry_policy(connector: dict[str, Any]) -> tuple[int, float]:
@@ -350,14 +350,19 @@ def create_source(
     ctype = connector["connector_type"]
     spec = CONNECTOR_SPECS[ctype]
 
-    allowed_kinds = {"collection"} if ctype == "mongodb" else {"table", "query"}
+    if spec.family == "object_storage":
+        allowed_kinds = {"object"}
+    elif ctype == "mongodb":
+        allowed_kinds = {"collection"}
+    else:
+        allowed_kinds = {"table", "query"}
     if source_kind not in allowed_kinds:
         raise ValueError(
             f"source_kind invalide pour {spec.label}: "
             + ", ".join(sorted(allowed_kinds))
         )
 
-    if source_kind in {"table", "collection"}:
+    if source_kind in {"table", "collection", "object"}:
         if not table_name or not str(table_name).strip():
             raise ValueError("Nom de table/collection requis.")
         if len(str(table_name)) > 500:
@@ -389,6 +394,17 @@ def create_source(
             )
         if not incremental_column:
             raise ValueError("incremental_column requis en mode incremental")
+    if refresh_mode == "cdc":
+        if spec.family == "object_storage" or source_kind == "query":
+            raise ValueError("Le mode CDC requiert une table/collection issue d'un journal transactionnel.")
+        primary_key = (source_options or {}).get("primary_key")
+        if isinstance(primary_key, str):
+            primary_key = [item.strip() for item in primary_key.split(",") if item.strip()]
+        if not isinstance(primary_key, list) or not primary_key:
+            raise ValueError("source_options.primary_key est requis en mode CDC.")
+        if any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_.$]*", str(col)) for col in primary_key):
+            raise ValueError("source_options.primary_key contient un champ invalide.")
+        incremental_column = None
     if incremental_column and not re.fullmatch(
         r"[A-Za-z_][A-Za-z0-9_.$]*",
         incremental_column,
@@ -442,6 +458,9 @@ def list_sources(workspace_id: str) -> list[dict[str, Any]]:
 
 def delete_source(workspace_id: str, source_id: str) -> None:
     execute("DELETE FROM refresh_schedules WHERE source_id=:id AND workspace_id=:ws", {"id":source_id,"ws":workspace_id})
+    execute("DELETE FROM cdc_events WHERE source_id=:id AND workspace_id=:ws", {"id":source_id,"ws":workspace_id})
+    execute("DELETE FROM cdc_checkpoints WHERE source_id=:id AND workspace_id=:ws", {"id":source_id,"ws":workspace_id})
+    execute("DELETE FROM cdc_batches WHERE source_id=:id AND workspace_id=:ws", {"id":source_id,"ws":workspace_id})
     execute("DELETE FROM connector_sources WHERE id=:id AND workspace_id=:ws", {"id":source_id,"ws":workspace_id})
 
 
@@ -453,6 +472,8 @@ def fetch_source_frame(
     limit: int | None = None,
 ) -> pd.DataFrame:
     source = get_source(workspace_id, source_id)
+    if source.get("refresh_mode") == "cdc":
+        raise ValueError("Source CDC: utilisez l'endpoint d'ingestion d'événements log-based.")
     connector = _get_connector_secret(
         workspace_id,
         source["connector_id"],
@@ -509,6 +530,8 @@ def refresh_source(workspace_id: str, source_id: str, *, actor_id: str, trigger:
     from app.services.workspace_service import bind_dataset
 
     source = get_source(workspace_id, source_id)
+    if source.get("refresh_mode") == "cdc":
+        raise ValueError("Source CDC: utilisez l'endpoint d'ingestion d'événements log-based.")
     run_id = str(uuid.uuid4()); started = utcnow(); before_id = source.get("dataset_id")
     execute("""INSERT INTO refresh_runs(id,workspace_id,source_id,connector_id,dataset_id_before,mode,status,trigger_type,triggered_by,job_id,watermark_before_json,started_at)
              VALUES(:id,:ws,:source,:connector,:before,:mode,'running',:trigger,:user,:job,:watermark,:started)""",
@@ -596,7 +619,9 @@ def get_refresh_runs(workspace_id: str, source_id: str | None = None, limit: int
 
 
 def save_schedule(workspace_id: str, source_id: str, *, enabled: bool, interval_minutes: int, actor_id: str) -> dict[str, Any]:
-    get_source(workspace_id, source_id)
+    source = get_source(workspace_id, source_id)
+    if source.get("refresh_mode") == "cdc" and enabled:
+        raise ValueError("Une source CDC est alimentée par son journal et ne peut pas être planifiée.")
     interval = max(15, min(int(interval_minutes), 43200))
     now = datetime.now(timezone.utc); next_run = (now + timedelta(minutes=interval)).isoformat()
     existing = fetch_one("SELECT id FROM refresh_schedules WHERE workspace_id=:ws AND source_id=:source", {"ws":workspace_id,"source":source_id})
@@ -673,4 +698,6 @@ def workspace_refresh_health(workspace_id: str) -> dict[str, Any]:
         "connectors":len(connectors),"connector_errors":sum(1 for c in connectors if c.get("status") in {"error","driver_missing"}),"sources":len(sources),"freshness":counts,
         "runs_considered":len(runs),"success_rate":round((len(completed)/len(runs))*100,1) if runs else None,"avg_duration_seconds":round(sum(durations)/len(durations),2) if durations else None,
         "rows_fetched":sum(int(r.get("rows_fetched") or 0) for r in completed),"scheduled":sum(1 for s in sources if (s.get("schedule") or {}).get("enabled")),
+        "cdc_sources":sum(1 for s in sources if s.get("refresh_mode") == "cdc"),
+        "object_sources":sum(1 for s in sources if s.get("source_kind") == "object"),
     }

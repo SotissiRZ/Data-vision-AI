@@ -1,0 +1,39 @@
+{
+  "product_version": "2.76.0",
+  "passed": 8,
+  "total": 8,
+  "checks": [
+    {
+      "id": "forecasting_automl_branch",
+      "ok": true
+    },
+    {
+      "id": "anomaly_automl_branch",
+      "ok": true
+    },
+    {
+      "id": "rolling-origin_validation",
+      "ok": true
+    },
+    {
+      "id": "unsupervised_robustness_selection",
+      "ok": true
+    },
+    {
+      "id": "api_unified_tasks",
+      "ok": true
+    },
+    {
+      "id": "assistant_unified_contract",
+      "ok": true
+    },
+    {
+      "id": "frontend_unified_workflow",
+      "ok": true
+    },
+    {
+      "id": "integration_tests_present",
+      "ok": true
+    }
+  ]
+}

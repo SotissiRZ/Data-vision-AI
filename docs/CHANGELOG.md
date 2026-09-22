@@ -1,3 +1,70 @@
+# Changelog
+
+## 2.76.0 — Workspace Environments & Reproducibility
+
+- Nouveau ledger d'environnements Python/R au niveau workspace avec policy de sécurité persistée.
+- Manifests canoniques SHA-256, locks de versions et vérification de dérive du sandbox.
+- Héritage workspace → notebook avec overlay déterministe et empreinte effective.
+- Invalidation automatique des kernels suivis lors des changements d'environnement.
+- Provenance des runs Python/R enrichie avec empreinte workspace, empreinte notebook et locks.
+- API de lecture/mise à jour/synchronisation/vérification de l'environnement workspace.
+- Notebook Studio expose séparément manifest workspace et overlay notebook.
+- Gate `WORKSPACE_ENVIRONMENT_ACCEPTANCE 8/8` ; CDC §40 et §41 passés à implemented.
+
+## 2.75.0 — Cloud Connectors & CDC ingestion
+
+- Ajout de connecteurs natifs S3/S3-compatible, Google Cloud Storage et Azure Blob Storage.
+- Découverte d'objets cloud et matérialisation de CSV, JSON/JSONL, Parquet et XLSX.
+- Nouveau mode `cdc` avec enveloppes Debezium/canoniques, primary keys, ledger d'événements et checkpoints par partition.
+- Déduplication, stale-offset detection, replay idempotent, dry-run et schema drift.
+- Matérialisation CDC dans des versions de dataset immuables avec lineage et refresh history.
+- UI Sources & Refresh enrichie et gate `CLOUD_CDC_ACCEPTANCE` 8/8.
+
+## v2.74.0 — Internationalisation & accessibilité
+
+- Framework i18n natif avec catalogues français, anglais, espagnol et arabe.
+- Direction RTL dynamique pour l’arabe et persistance des préférences de langue.
+- Réglages contraste renforcé et réduction des animations synchronisés au profil Entreprise.
+- Skip-link, focus management, navigation nommée, annonces ARIA et états sémantiques.
+- Contrat Playwright accessibilité + gate `I18N_ACCESSIBILITY_ACCEPTANCE 8/8`.
+- CDC §64 et §65 fermés au niveau produit ; certification externe explicitement hors périmètre.
+
+## v2.73.0 — Model Gateway multi-provider natif
+
+- Ajout d'un adaptateur Anthropic natif basé sur Messages API.
+- Ajout d'un adaptateur Gemini natif basé sur `models.generateContent`.
+- Sorties structurées JSON Schema natives pour les deux providers.
+- Extension du Centre de contrôle IA et des profils provider.
+- Conservation du Secret Vault, du privacy routing, des budgets et de la télémétrie.
+- Nouveau gate `MODEL_GATEWAY_ACCEPTANCE` et CDC §48 passé à implemented.
+
+## v2.72.0 — Data Storytelling avancé
+
+- Trames analytiques multi-page déterministes, adaptées à l’audience, l’objectif et le ton.
+- Claims reliés à un registre de preuves avec couverture mesurée et validation stricte.
+- Prévisualisation de storytelling avant génération du rapport.
+- Rendu narratif dans les exports Markdown, HTML, DOCX et PDF.
+- Publication gouvernée avec reçu immuable, empreinte du contenu et Data Reliability Gate.
+- UI Report Builder et Assistant raccordés au même contrat de storytelling.
+- Gate `STORYTELLING_ACCEPTANCE 8/8`.
+
+## v2.71.0 — AI Data Quality & remédiation guidée
+
+- Plan de remédiation qualité déterministe et non mutatif.
+- Prévisualisation avant/après des corrections sélectionnées.
+- Déduplication et imputation prudente présélectionnables ; changements de schéma/outliers soumis à revue explicite.
+- Application en une nouvelle version immuable avec audit détaillé et protection contre les plans obsolètes.
+- UI Qualité et Assistant raccordés au même moteur.
+- Gate `QUALITY_REMEDIATION_ACCEPTANCE 8/8`.
+
+## v2.70.0 — AutoML Forecasting + Anomaly unifié
+
+- Forecasting AutoML sélectionné exclusivement sur backtests rolling-origin.
+- Détection d’anomalies AutoML classée par stabilité, accord inter-méthodes et plausibilité du taux.
+- Expériences et Model Cards persistées pour les tâches spécialisées.
+- Workflow UI/Assistant unifié avec classification, régression et clustering.
+- Gate `AUTOML_UNIFIED_ACCEPTANCE 8/8`.
+
 ## v2.69.0 — Visual Analytics & NL→Viz avancé
 
 - recommandations classées par score/confiance et justification ;

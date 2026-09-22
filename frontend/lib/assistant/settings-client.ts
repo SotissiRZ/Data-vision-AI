@@ -20,7 +20,7 @@ export type AssistantProvider = {
   scope_type: "local" | "workspace";
   scope_id: string;
   name: string;
-  provider_type: "ollama" | "openai_compatible";
+  provider_type: "ollama" | "openai_compatible" | "anthropic" | "gemini";
   location: "local" | "external";
   base_url: string;
   model: string;
@@ -92,7 +92,7 @@ export type AssistantSettingsSnapshot = {
 
 export type AssistantProviderInput = {
   name: string;
-  provider_type: "ollama" | "openai_compatible";
+  provider_type: "ollama" | "openai_compatible" | "anthropic" | "gemini";
   location: "local" | "external";
   base_url: string;
   model: string;

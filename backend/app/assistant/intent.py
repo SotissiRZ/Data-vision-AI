@@ -358,7 +358,15 @@ def _extract_entities(text: str, context: AssistantContext) -> dict:
         entities["ml_task"] = "regression"
     elif re.search(r"\bforecast(?:ing)?\b|\bpr[eé]vision temporelle\b", text):
         entities["ml_task"] = "forecasting"
+    elif re.search(r"\banomal(?:ie|ies|y)\b|\boutlier", text):
+        entities["ml_task"] = "anomaly_detection"
     elif re.search(r"\bclustering\b|\bsegmentation non supervis", text):
         entities["ml_task"] = "clustering"
+
+    time_match = re.search(r"(?:colonne\s+temporelle|date\s*column|time\s*column|date)\s*[:=]?\s*([a-zA-Z0-9_]+)", text, flags=re.IGNORECASE)
+    if time_match:
+        candidate = time_match.group(1)
+        if candidate.lower() not in {"column", "colonne", "temporelle", "date", "time"}:
+            entities["time_column"] = candidate
 
     return entities

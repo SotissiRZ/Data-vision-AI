@@ -20,8 +20,9 @@ def test_v250_sidebar_is_compact_and_expands_on_hover_without_reflow():
     assert "--dv-sidebar-expanded:248px" in CSS
     assert ".pro-sidebar:hover,.pro-sidebar:focus-within" in CSS
     assert "grid-template-columns:var(--dv-sidebar-collapsed) minmax(0,1fr)" in CSS
-    assert "title={area.label}" in PAGE
-    assert "aria-label={area.label}" in PAGE
+    assert "title={label}" in PAGE
+    assert "localizedAreaLabel(area.key,area.label)" in PAGE
+    assert "aria-label={label}" in PAGE
 
 
 def test_v250_frontend_api_accepts_clustering_without_target():

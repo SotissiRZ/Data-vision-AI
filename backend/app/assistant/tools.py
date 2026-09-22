@@ -130,6 +130,14 @@ def build_default_registry() -> AssistantToolRegistry:
             requires_dataset=True,
         ),
         ToolSpec(
+            name="plan_quality_remediation",
+            description="Proposer et prévisualiser un plan de remédiation qualité versionné, sans modifier le dataset.",
+            category="quality",
+            risk="read",
+            required_permissions=("dataset:read",),
+            requires_dataset=True,
+        ),
+        ToolSpec(
             name="inspect_data_leakage",
             description="Vérifier les signaux de fuite de données avant modélisation.",
             category="ml",

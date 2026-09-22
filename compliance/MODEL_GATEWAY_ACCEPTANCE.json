@@ -1,0 +1,39 @@
+{
+  "product_version": "2.76.0",
+  "passed": 8,
+  "total": 8,
+  "checks": [
+    {
+      "id": "native_anthropic_messages_adapter",
+      "ok": true
+    },
+    {
+      "id": "native_gemini_generatecontent_adapter",
+      "ok": true
+    },
+    {
+      "id": "native_structured_output_contracts",
+      "ok": true
+    },
+    {
+      "id": "provider_profiles_support_four_families",
+      "ok": true
+    },
+    {
+      "id": "privacy_routing_remains_authoritative",
+      "ok": true
+    },
+    {
+      "id": "secret_vault_and_env_credentials_remain_governed",
+      "ok": true
+    },
+    {
+      "id": "frontend_and_env_configuration_expose_native_providers",
+      "ok": true
+    },
+    {
+      "id": "integration_tests_present",
+      "ok": true
+    }
+  ]
+}

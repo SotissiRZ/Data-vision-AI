@@ -108,6 +108,26 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS workspace_runtime_environments (
+        scope_type TEXT NOT NULL,
+        scope_id TEXT NOT NULL,
+        python_requirements_json TEXT NOT NULL,
+        r_requirements_json TEXT NOT NULL,
+        python_lock_json TEXT NOT NULL,
+        r_lock_json TEXT NOT NULL,
+        manifest_json TEXT NOT NULL,
+        fingerprint_sha256 TEXT NOT NULL,
+        status TEXT NOT NULL,
+        policy_json TEXT NOT NULL,
+        inventory_sha256 TEXT,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        synced_at TEXT,
+        PRIMARY KEY (scope_type, scope_id)
+    )
+    """,
+    """
     CREATE TABLE IF NOT EXISTS workspace_members (
         workspace_id TEXT NOT NULL,
         user_id TEXT NOT NULL,
@@ -558,6 +578,55 @@ CREATE TABLE IF NOT EXISTS model_serving_requests (
         error TEXT,
         started_at TEXT NOT NULL,
         finished_at TEXT
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cdc_batches (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        batch_sha256 TEXT NOT NULL,
+        status TEXT NOT NULL,
+        events_received INTEGER NOT NULL DEFAULT 0,
+        events_applied INTEGER NOT NULL DEFAULT 0,
+        duplicates INTEGER NOT NULL DEFAULT 0,
+        stale_events INTEGER NOT NULL DEFAULT 0,
+        dataset_id_before TEXT,
+        dataset_id_after TEXT,
+        checkpoint_json TEXT,
+        error TEXT,
+        started_at TEXT NOT NULL,
+        finished_at TEXT,
+        UNIQUE(source_id, batch_sha256)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cdc_events (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        batch_id TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        partition_key TEXT NOT NULL,
+        offset_value TEXT NOT NULL,
+        operation TEXT NOT NULL,
+        payload_sha256 TEXT NOT NULL,
+        status TEXT NOT NULL,
+        dataset_id TEXT,
+        occurred_at TEXT,
+        created_at TEXT NOT NULL,
+        UNIQUE(source_id, event_id)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS cdc_checkpoints (
+        workspace_id TEXT NOT NULL,
+        source_id TEXT NOT NULL,
+        partition_key TEXT NOT NULL,
+        offset_value TEXT NOT NULL,
+        event_id TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(source_id, partition_key)
     )
     """,
 

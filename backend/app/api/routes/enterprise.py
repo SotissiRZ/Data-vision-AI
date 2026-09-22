@@ -29,6 +29,7 @@ from app.services.connector_service import (
     create_source, get_source, list_sources, delete_source, preview_source, refresh_source,
     save_schedule, list_schedules, get_refresh_runs, workspace_refresh_health,
 )
+from app.services.cdc_ingestion import ingest_cdc_events, cdc_status
 from app.services.operational_intelligence import (
     operational_overview, feature_usage, list_telemetry, list_trace_events, job_attempts,
     create_evaluation_suite, list_evaluation_suites, get_evaluation_suite, add_evaluation_case,
@@ -227,6 +228,9 @@ class UserPreferencesRequest(BaseModel):
     )
     ui_zoom: int | None = Field(default=None, ge=90, le=140)
     compact_navigation: bool | None = None
+    locale: str | None = Field(default=None, pattern="^(fr|en|es|ar)$")
+    high_contrast: bool | None = None
+    reduce_motion: bool | None = None
 
 
 class RefreshTokenRequest(BaseModel):
@@ -488,7 +492,7 @@ class ActionDecisionRequest(BaseModel):
 
 class ConnectorCreateRequest(BaseModel):
     name: str = Field(min_length=1, max_length=160)
-    connector_type: str = Field(pattern="^(postgresql|mysql|mariadb|sqlite|sqlserver|oracle|redshift|snowflake|databricks|bigquery|mongodb)$")
+    connector_type: str = Field(pattern="^(postgresql|mysql|mariadb|sqlite|sqlserver|oracle|redshift|snowflake|databricks|bigquery|mongodb|s3|gcs|azure_blob)$")
     host: str = Field(default="", max_length=255)
     port: int | None = Field(default=None, ge=1, le=65535)
     database: str = Field(default="", max_length=2000)
@@ -512,10 +516,10 @@ class ConnectorUpdateRequest(BaseModel):
 class ConnectorSourceCreateRequest(BaseModel):
     connector_id: str
     name: str = Field(min_length=1, max_length=180)
-    source_kind: str = Field(default="table", pattern="^(table|query|collection)$")
+    source_kind: str = Field(default="table", pattern="^(table|query|collection|object)$")
     table_name: str | None = Field(default=None, max_length=500)
     query: str | None = Field(default=None, max_length=50000)
-    refresh_mode: str = Field(default="full", pattern="^(full|incremental)$")
+    refresh_mode: str = Field(default="full", pattern="^(full|incremental|cdc)$")
     incremental_column: str | None = Field(default=None, max_length=255)
     freshness_sla_minutes: int = Field(default=1440, ge=5, le=525600)
     schema_drift_policy: str = Field(default="warn", pattern="^(warn|fail)$")
@@ -524,6 +528,12 @@ class ConnectorSourceCreateRequest(BaseModel):
 
 class ConnectorRefreshRequest(BaseModel):
     background: bool = True
+
+
+class CDCIngestRequest(BaseModel):
+    events: list[dict[str, Any]] = Field(min_length=1, max_length=5000)
+    event_format: str = Field(default="debezium-json", pattern="^(debezium-json|canonical)$")
+    dry_run: bool = False
 
 
 class RefreshScheduleRequest(BaseModel):
@@ -2457,6 +2467,41 @@ def connector_source_refresh(workspace_id: str, source_id: str, req: ConnectorRe
         result = refresh_source(workspace_id, source_id, actor_id=user["id"], trigger="manual")
         record_event("connector.refresh.completed", user_id=user["id"], workspace_id=workspace_id, resource_type="connector_source", resource_id=source_id, payload={"dataset_id":result.get("dataset_id"),"rows":result.get("rows_fetched")})
         return {"queued": False, "refresh": result}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/sources/{source_id}/cdc")
+def connector_source_cdc_status(workspace_id: str, source_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "connectors:read")
+        return cdc_status(workspace_id, source_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/sources/{source_id}/cdc/events")
+def connector_source_cdc_ingest(workspace_id: str, source_id: str, req: CDCIngestRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "refresh:run")
+        result = ingest_cdc_events(workspace_id, source_id, actor_id=user["id"], events=req.events, event_format=req.event_format, dry_run=req.dry_run)
+        record_event(
+            "connector.cdc.ingest",
+            user_id=user["id"],
+            workspace_id=workspace_id,
+            resource_type="connector_source",
+            resource_id=source_id,
+            outcome="preview" if req.dry_run else "success",
+            payload={
+                "batch_id": result.get("batch_id"),
+                "events_received": result.get("events_received"),
+                "events_applied": result.get("events_applied"),
+                "duplicates": result.get("duplicates"),
+                "stale_events": result.get("stale_events"),
+                "dataset_id": result.get("dataset_id"),
+            },
+        )
+        return result
     except Exception as exc:
         _handle(exc)
 

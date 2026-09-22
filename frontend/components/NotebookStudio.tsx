@@ -14,11 +14,15 @@ import {
   getNotebookDatasetVersions,
   getNotebookRuntime,
   getNotebookKernels,
+  getWorkspaceEnvironment,
   listNotebooks,
   restartNotebookKernel,
   restartNotebookKernels,
   syncNotebookEnvironment,
+  syncWorkspaceEnvironment,
   updateNotebookEnvironment,
+  updateWorkspaceEnvironment,
+  verifyWorkspaceEnvironment,
   promoteNotebookArtifact,
   runNotebook,
   runNotebookCell,
@@ -29,6 +33,7 @@ import {
   type NotebookLanguage,
   type NotebookRun,
   type DatasetVersionRef,
+  type WorkspaceEnvironment,
 } from "../lib/notebook-client";
 
 import styles from "./NotebookStudio.module.css";
@@ -58,6 +63,9 @@ export function NotebookStudio({
   const [pythonRequirements, setPythonRequirements] = useState("");
   const [rRequirements, setRRequirements] = useState("");
   const [environmentStatus, setEnvironmentStatus] = useState<string | null>(null);
+  const [workspaceEnvironment, setWorkspaceEnvironment] = useState<WorkspaceEnvironment | null>(null);
+  const [workspacePythonRequirements, setWorkspacePythonRequirements] = useState("");
+  const [workspaceRRequirements, setWorkspaceRRequirements] = useState("");
 
   async function loadList(selectId?: string) {
     try {
@@ -104,6 +112,13 @@ export function NotebookStudio({
     getNotebookRuntime()
       .then(setRuntime)
       .catch(() => setRuntime(null));
+    getWorkspaceEnvironment()
+      .then((environment) => {
+        setWorkspaceEnvironment(environment);
+        setWorkspacePythonRequirements((environment.python_requirements ?? []).join("\n"));
+        setWorkspaceRRequirements((environment.r_requirements ?? []).join("\n"));
+      })
+      .catch(() => setWorkspaceEnvironment(null));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataset?.id]);
 
@@ -146,8 +161,10 @@ export function NotebookStudio({
           rKernelState: active.kernels?.r?.state_status ?? "new",
           pythonKernelVariables: active.kernels?.python?.variables?.slice(0, 30) ?? [],
           rKernelVariables: active.kernels?.r?.variables?.slice(0, 30) ?? [],
-          pythonRequirements: active.environment?.python_requirements ?? [],
-          rRequirements: active.environment?.r_requirements ?? [],
+          pythonRequirements: active.environment?.effective_python_requirements ?? active.environment?.python_requirements ?? [],
+          rRequirements: active.environment?.effective_r_requirements ?? active.environment?.r_requirements ?? [],
+          environmentFingerprint: active.environment?.fingerprint_sha256 ?? null,
+          workspaceEnvironmentFingerprint: active.environment?.workspace_environment?.fingerprint_sha256 ?? null,
         },
       },
       uiState: {
@@ -427,6 +444,32 @@ export function NotebookStudio({
     }
   }
 
+  async function saveWorkspaceEnvironment() {
+    setBusy(true);
+    setMessage("");
+    try {
+      const parseLines = (value: string) => value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+      await updateWorkspaceEnvironment({
+        python_requirements: parseLines(workspacePythonRequirements),
+        r_requirements: parseLines(workspaceRRequirements),
+      });
+      const synced = await syncWorkspaceEnvironment();
+      const verified = synced.status === "ready" ? await verifyWorkspaceEnvironment() : synced;
+      setWorkspaceEnvironment(verified);
+      if (active?.id) setActive(await getNotebook(active.id));
+      const missing = [...(synced.missing_python ?? []), ...(synced.missing_r ?? [])];
+      setMessage(
+        missing.length
+          ? `Environnement workspace incomplet · packages absents: ${missing.join(", ")}`
+          : `Environnement workspace verrouillé · ${synced.fingerprint_sha256.slice(0, 12)}…`,
+      );
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function saveEnvironment() {
     if (!active) return;
     setBusy(true);
@@ -605,8 +648,22 @@ export function NotebookStudio({
                   })}
                 </div>
                 <details className={styles.environmentPanel}>
-                  <summary>Environnement & packages {environmentStatus ? `· ${environmentStatus}` : ""}</summary>
-                  <p>Les packages sont gérés par l'image sandbox. Déclarez ici les dépendances du projet pour vérifier et verrouiller leurs versions sans installation réseau implicite.</p>
+                  <summary>Environnement workspace · {workspaceEnvironment?.status ?? "chargement"}</summary>
+                  <p>Socle Python/R partagé par le workspace. Aucun package n'est installé dynamiquement : le manifest est résolu contre l'image sandbox puis verrouillé par SHA-256.</p>
+                  <div className={styles.environmentGrid}>
+                    <label><span>Python workspace</span><textarea value={workspacePythonRequirements} onChange={(event) => setWorkspacePythonRequirements(event.target.value)} rows={4} placeholder="pandas>=2.3\nscikit-learn" /></label>
+                    <label><span>R workspace</span><textarea value={workspaceRRequirements} onChange={(event) => setWorkspaceRRequirements(event.target.value)} rows={4} placeholder="dplyr\nggplot2" /></label>
+                  </div>
+                  <div className={styles.environmentMeta}>
+                    <span>Isolation: {String(workspaceEnvironment?.policy?.isolation ?? "workspace-sandbox")}</span>
+                    <span>Reproductible: {workspaceEnvironment?.reproducible ? "oui" : "non"}</span>
+                    <span>SHA: {workspaceEnvironment?.fingerprint_sha256 ? `${workspaceEnvironment.fingerprint_sha256.slice(0, 12)}…` : "—"}</span>
+                    <button type="button" disabled={busy} onClick={() => void saveWorkspaceEnvironment()}>Verrouiller le workspace</button>
+                  </div>
+                </details>
+                <details className={styles.environmentPanel}>
+                  <summary>Overlay notebook & packages {environmentStatus ? `· ${environmentStatus}` : ""}</summary>
+                  <p>Ces dépendances s'ajoutent au manifest du workspace. Le notebook conserve ensuite une empreinte effective dans la provenance de chaque run Python/R.</p>
                   <div className={styles.environmentGrid}>
                     <label><span>Python · une dépendance par ligne</span><textarea value={pythonRequirements} onChange={(event) => setPythonRequirements(event.target.value)} rows={4} placeholder="pandas>=2.3\nscikit-learn" /></label>
                     <label><span>R · une dépendance par ligne</span><textarea value={rRequirements} onChange={(event) => setRRequirements(event.target.value)} rows={4} placeholder="dplyr\nggplot2" /></label>
@@ -615,6 +672,8 @@ export function NotebookStudio({
                     <span>Mode: {String(active.environment?.policy?.install_mode ?? "image-managed")}</span>
                     <span>Python lock: {Object.keys(active.environment?.python_lock ?? {}).length}</span>
                     <span>R lock: {Object.keys(active.environment?.r_lock ?? {}).length}</span>
+                    <span>Reproductible: {active.environment?.reproducible ? "oui" : "non"}</span>
+                    <span>SHA: {active.environment?.fingerprint_sha256 ? `${active.environment.fingerprint_sha256.slice(0, 12)}…` : "—"}</span>
                     <button type="button" disabled={busy} onClick={() => void saveEnvironment()}>Enregistrer & valider</button>
                   </div>
                 </details>

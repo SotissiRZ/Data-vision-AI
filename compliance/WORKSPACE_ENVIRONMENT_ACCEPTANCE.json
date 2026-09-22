@@ -1,0 +1,92 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.76.0",
+  "passed": 8,
+  "total": 8,
+  "items": [
+    {
+      "id": "workspace_scoped_environment_ledger",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/metadata_store.py",
+        "backend/app/services/schema_migrations.py"
+      ],
+      "tests": [
+        "backend/tests/test_workspace_environment_v276.py"
+      ]
+    },
+    {
+      "id": "deterministic_sha256_manifests",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/workspace_environment.py"
+      ],
+      "tests": [
+        "backend/tests/test_workspace_environment_v276.py"
+      ]
+    },
+    {
+      "id": "python_and_r_exact_locks",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/workspace_environment.py"
+      ],
+      "tests": [
+        "backend/tests/test_workspace_environment_v276.py"
+      ]
+    },
+    {
+      "id": "secure_image_managed_policy",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/workspace_environment.py"
+      ],
+      "tests": [
+        "backend/tests/test_workspace_environment_v276.py"
+      ]
+    },
+    {
+      "id": "workspace_isolation_and_kernel_invalidation",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/workspace_environment.py"
+      ],
+      "tests": [
+        "backend/tests/test_workspace_environment_v276.py"
+      ]
+    },
+    {
+      "id": "notebook_inheritance_and_run_provenance",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/notebook_service.py"
+      ],
+      "tests": [
+        "backend/tests/test_workspace_environment_v276.py"
+      ]
+    },
+    {
+      "id": "governed_api_and_notebook_studio",
+      "ok": true,
+      "evidence": [
+        "backend/app/api/routes/notebooks.py",
+        "frontend/lib/notebook-client.ts",
+        "frontend/components/NotebookStudio.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_workspace_environment_v276.py"
+      ]
+    },
+    {
+      "id": "engineering_evidence_and_boundaries",
+      "ok": true,
+      "evidence": [
+        "docs/WORKSPACE_ENVIRONMENTS_V2760.md"
+      ],
+      "tests": [
+        "backend/tests/test_workspace_environment_v276.py"
+      ]
+    }
+  ],
+  "note": "Internal engineering acceptance. Dependency installation remains image-managed by design; runtime manifests verify approved sandbox contents rather than installing packages dynamically."
+}

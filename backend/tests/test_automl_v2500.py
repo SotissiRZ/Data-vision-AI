@@ -114,9 +114,10 @@ def test_v250_assistant_contract_and_planner_allow_clustering_without_target():
     from app.assistant.contracts import AutoMLArgs
     assert AutoMLArgs(task="clustering", target=None, features=["x", "y"]).task == "clustering"
     schema = AutoMLArgs.model_json_schema()
-    assert "forecasting" not in str(schema)
+    # v2.70 unifies forecasting and anomaly detection with the AutoML contract while preserving clustering without a target.
+    assert "forecasting" in str(schema) and "anomaly_detection" in str(schema)
     source = (__import__("pathlib").Path(__file__).resolve().parents[1] / "app" / "assistant" / "planner_runtime.py").read_text(encoding="utf-8")
-    assert 'task != "clustering" and not target' in source
+    assert 'task not in {"clustering", "anomaly_detection"} and not target' in source
 
 
 def test_v250_supervised_benchmark_rejects_target_leak(tmp_path, monkeypatch):

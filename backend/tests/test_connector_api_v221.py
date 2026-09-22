@@ -13,7 +13,7 @@ def test_enterprise_request_accepts_all_connector_types():
     types = [
         "postgresql", "mysql", "mariadb", "sqlite", "sqlserver",
         "oracle", "redshift", "snowflake", "databricks",
-        "bigquery", "mongodb",
+        "bigquery", "mongodb", "s3", "gcs", "azure_blob",
     ]
     for connector_type in types:
         payload = ConnectorCreateRequest(
@@ -28,6 +28,17 @@ def test_enterprise_request_accepts_all_connector_types():
             else {},
         )
         assert payload.connector_type == connector_type
+
+
+def test_source_request_accepts_object_and_cdc():
+    payload = ConnectorSourceCreateRequest(
+        connector_id="c1", name="object", source_kind="object", table_name="exports/a.parquet"
+    )
+    assert payload.source_kind == "object"
+    cdc = ConnectorSourceCreateRequest(
+        connector_id="c1", name="cdc", source_kind="table", table_name="public.orders", refresh_mode="cdc", source_options={"primary_key": ["id"]}
+    )
+    assert cdc.refresh_mode == "cdc"
 
 
 def test_source_request_accepts_collection():
@@ -68,6 +79,9 @@ def test_frontend_exposes_advanced_connectors():
         '"databricks"',
         '"bigquery"',
         '"mongodb"',
+        '"s3"',
+        '"gcs"',
+        '"azure_blob"',
     ]:
         assert token in backend
 

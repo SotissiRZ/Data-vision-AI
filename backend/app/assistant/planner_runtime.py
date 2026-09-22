@@ -68,6 +68,12 @@ class DeterministicPlanner:
                     label="Diagnostiquer les valeurs manquantes",
                     args={},
                 ),
+                AgentPlanStep(
+                    tool="plan_quality_remediation",
+                    label="Préparer une remédiation guidée",
+                    reason="Proposer des corrections versionnées et prévisualiser leur impact sans modifier les données.",
+                    args={},
+                ),
             ]
 
         if name == "visualize":
@@ -109,10 +115,10 @@ class DeterministicPlanner:
         if name == "predict_target":
             target = intent.entities.get("target")
             task = intent.entities.get("ml_task")
-            if not task or (task != "clustering" and not target):
+            if not task or (task not in {"clustering", "anomaly_detection"} and not target):
                 return []
             steps: list[AgentPlanStep] = []
-            if task != "clustering":
+            if task not in {"clustering", "anomaly_detection", "forecasting"}:
                 steps.append(AgentPlanStep(
                     tool="inspect_data_leakage",
                     label="Contrôler les fuites de données",
@@ -125,6 +131,7 @@ class DeterministicPlanner:
                     "task": task,
                     "target": target,
                     "features": intent.entities.get("features"),
+                    "time_column": intent.entities.get("time_column"),
                     "explain": True,
                 },
             ))

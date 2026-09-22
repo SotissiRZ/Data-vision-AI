@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-EXPECTED_VERSION = "2.69.0"
+EXPECTED_VERSION = "2.76.0"
 EXPECTED_CRYPTOGRAPHY = "cryptography==46.0.5"
 REQUIRED_FILES = (
     "VERSION",
@@ -35,7 +35,36 @@ REQUIRED_FILES = (
     "compliance/RESILIENCE_ACCEPTANCE.json",
     "compliance/SRE_ACCEPTANCE.json",
     "compliance/REGULATORY_COMPLIANCE_ACCEPTANCE.json",
+    "compliance/QUALITY_REMEDIATION_ACCEPTANCE.json",
+    "compliance/STORYTELLING_ACCEPTANCE.json",
+    "compliance/MODEL_GATEWAY_ACCEPTANCE.json",
+    "compliance/I18N_ACCESSIBILITY_ACCEPTANCE.json",
+    "compliance/CLOUD_CDC_ACCEPTANCE.json",
+    "compliance/WORKSPACE_ENVIRONMENT_ACCEPTANCE.json",
+    "scripts/workspace_environment_acceptance.py",
+    "backend/app/services/workspace_environment.py",
+    "backend/tests/test_workspace_environment_v276.py",
+    "docs/WORKSPACE_ENVIRONMENTS_V2760.md",
+    "scripts/cloud_cdc_acceptance.py",
+    "backend/app/services/cdc_ingestion.py",
+    "backend/tests/test_cloud_cdc_v275.py",
+    "docs/CLOUD_CDC_INGESTION_V2750.md",
+    "scripts/i18n_accessibility_acceptance.py",
+    "frontend/lib/i18n.ts",
+    "frontend/e2e/accessibility.spec.ts",
+    "backend/tests/test_i18n_accessibility_v274.py",
+    "docs/I18N_ACCESSIBILITY_V2740.md",
+    "scripts/model_gateway_acceptance.py",
+    "backend/app/assistant/providers/anthropic.py",
+    "backend/app/assistant/providers/gemini.py",
+    "backend/tests/assistant/test_model_gateway_v273.py",
+    "scripts/storytelling_acceptance.py",
+    "backend/app/services/storytelling.py",
+    "backend/tests/test_storytelling_v272.py",
     "scripts/regulatory_compliance_acceptance.py",
+    "scripts/quality_remediation_acceptance.py",
+    "backend/app/services/quality_remediation.py",
+    "backend/tests/test_quality_remediation_v271.py",
     "backend/app/services/regulatory_compliance.py",
     "backend/tests/test_regulatory_compliance_v2650.py",
     "frontend/components/RegulatoryCompliancePanel.tsx",
@@ -179,7 +208,7 @@ def check(root: Path) -> list[str]:
                 if not scripts.get(script):
                     errors.append(f"Missing frontend npm script: {script}")
 
-    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json", "compliance/SEMANTIC_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/XAI_ACCEPTANCE.json", "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json", "compliance/TYPOGRAPHY_ACCEPTANCE.json", "compliance/COLLABORATION_ACCEPTANCE.json", "compliance/ENTREPRISE_ACCEPTANCE.json", "compliance/ASSISTANT_WINDOW_ACCEPTANCE.json", "compliance/HARDENING_ACCEPTANCE.json", "compliance/RESILIENCE_ACCEPTANCE.json", "compliance/SRE_ACCEPTANCE.json", "compliance/REGULATORY_COMPLIANCE_ACCEPTANCE.json"):
+    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json", "compliance/SEMANTIC_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/XAI_ACCEPTANCE.json", "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json", "compliance/TYPOGRAPHY_ACCEPTANCE.json", "compliance/COLLABORATION_ACCEPTANCE.json", "compliance/ENTREPRISE_ACCEPTANCE.json", "compliance/ASSISTANT_WINDOW_ACCEPTANCE.json", "compliance/HARDENING_ACCEPTANCE.json", "compliance/RESILIENCE_ACCEPTANCE.json", "compliance/SRE_ACCEPTANCE.json", "compliance/REGULATORY_COMPLIANCE_ACCEPTANCE.json", "compliance/QUALITY_REMEDIATION_ACCEPTANCE.json", "compliance/STORYTELLING_ACCEPTANCE.json", "compliance/MODEL_GATEWAY_ACCEPTANCE.json", "compliance/I18N_ACCESSIBILITY_ACCEPTANCE.json", "compliance/CLOUD_CDC_ACCEPTANCE.json", "compliance/WORKSPACE_ENVIRONMENT_ACCEPTANCE.json"):
         path = root / rel
         if not path.is_file():
             continue

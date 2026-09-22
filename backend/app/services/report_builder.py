@@ -46,6 +46,7 @@ from app.services.quality import quality_report
 from app.services.saved_visualizations import list_visualizations
 from app.services.visualization import build_visualization
 from app.services.storage import get_meta, load_dataframe
+from app.services.storytelling import build_story_blueprint
 
 BRAND = {
     "navy": "#203C4B",
@@ -205,6 +206,22 @@ def validate_report(report_id: str) -> dict[str, Any]:
             warnings.append(f"Bloc {idx}: provenance absente (rapport historique)")
         elif int(block["provenance"].get("dataset_version", report.get("dataset", {}).get("version", 0))) != int(report.get("dataset", {}).get("version", 0)):
             errors.append(f"Bloc {idx}: version de provenance incohérente")
+    blueprint = report.get("story_blueprint")
+    if blueprint:
+        if int((blueprint.get("dataset") or {}).get("version", 0)) != int(report.get("dataset", {}).get("version", 0)):
+            errors.append("Storytelling: version du dataset incohérente")
+        evidence_ids = {str(item.get("id")) for item in (blueprint.get("evidence") or []) if item.get("id")}
+        claims = [claim for page in (blueprint.get("pages") or []) for claim in (page.get("claims") or [])]
+        for claim in claims:
+            refs = [str(x) for x in (claim.get("evidence_ids") or [])]
+            if not refs:
+                errors.append(f"Storytelling: claim sans preuve {claim.get('id')}")
+            elif any(ref not in evidence_ids for ref in refs):
+                errors.append(f"Storytelling: lien de preuve invalide {claim.get('id')}")
+        if float(blueprint.get("proof_coverage") or 0) < 1.0:
+            errors.append("Storytelling: couverture de preuve incomplète")
+        if bool((blueprint.get("governance") or {}).get("causal_claims_generated")):
+            errors.append("Storytelling: claim causal automatique interdit")
     expected = report.get("content_hash")
     payload = {k: v for k, v in report.items() if k != "content_hash"}
     actual = _content_hash(payload)
@@ -605,6 +622,10 @@ def build_report(
     max_visualizations: int = 6,
     custom_blocks: list[dict[str, Any]] | None = None,
     block_order: list[str] | None = None,
+    story_audience: str = "executive",
+    story_objective: str | None = None,
+    story_tone: str = "balanced",
+    story_max_pages: int = 6,
 ) -> dict[str, Any]:
     meta = get_meta(dataset_id)
     df = load_dataframe(dataset_id)
@@ -635,11 +656,53 @@ def build_report(
         auto_items = [v for v in auto_items if (v.get("visualization", {}).get("type"), v.get("visualization", {}).get("x"), v.get("visualization", {}).get("y")) not in existing]
         saved = (saved + auto_items)[:max_visualizations]
 
+    story_blueprint: dict[str, Any] | None = None
+    if auto_story:
+        story_blueprint = build_story_blueprint(
+            dataset_id,
+            audience=story_audience,
+            objective=story_objective,
+            tone=story_tone,
+            max_pages=story_max_pages,
+            analysis_session_id=analysis_session_id,
+            visualization_ids=[str(v.get("id")) for v in saved if v.get("id") and v.get("source") != "auto_report"],
+        )
+
     blocks: list[dict[str, Any]] = []
     if "executive_summary" in chosen:
         blocks.append({"id": "section:executive_summary", "type": "executive_summary", "title": SECTION_LABELS["executive_summary"], "data": _executive_summary(profile, quality, decision, analysis)})
     if "analytical_story" in chosen:
-        blocks.append({"id": "section:analytical_story", "type": "analytical_story", "title": SECTION_LABELS["analytical_story"], "data": _analytical_story(df, profile, quality, decision, analysis)})
+        if story_blueprint:
+            for page in story_blueprint.get("pages", []):
+                claims = page.get("claims") or []
+                blocks.append({
+                    "id": f"story:page:{int(page.get('page_number') or 0)}",
+                    "type": "story_page",
+                    "title": str(page.get("headline") or SECTION_LABELS["analytical_story"]),
+                    "data": page,
+                    "order_alias": "section:analytical_story",
+                    "provenance": _block_provenance(
+                        meta,
+                        "storytelling_engine",
+                        str(story_blueprint.get("story_id")),
+                        engine=str(story_blueprint.get("engine")),
+                        evidence_ids=[ref for claim in claims for ref in (claim.get("evidence_ids") or [])],
+                        proof_coverage=page.get("proof_coverage"),
+                    ),
+                })
+            # Backward-compatible API bridge for consumers that still inspect
+            # the historical analytical_story block. It is not rendered.
+            blocks.append({
+                "id": "compat:analytical_story",
+                "type": "analytical_story",
+                "title": SECTION_LABELS["analytical_story"],
+                "data": _analytical_story(df, profile, quality, decision, analysis),
+                "render": False,
+                "compatibility": {"since": "2.72.0", "legacy_contract": "v1.20"},
+                "order_alias": "section:analytical_story",
+            })
+        else:
+            blocks.append({"id": "section:analytical_story", "type": "analytical_story", "title": SECTION_LABELS["analytical_story"], "data": _analytical_story(df, profile, quality, decision, analysis)})
     if "overview" in chosen:
         blocks.append({"id": "section:overview", "type": "overview", "title": SECTION_LABELS["overview"], "data": {
             "rows": profile.get("rows"), "columns": profile.get("columns_count"), "duplicates": profile.get("duplicates"),
@@ -683,7 +746,7 @@ def build_report(
         }})
 
     source_map = {
-        "executive_summary": "profile_quality_decision", "analytical_story": "deterministic_analytics", "overview": "profiling",
+        "executive_summary": "profile_quality_decision", "analytical_story": "deterministic_analytics", "story_page": "storytelling_engine", "overview": "profiling",
         "quality": "data_quality", "table": "descriptive_statistics", "visualizations": "saved_visualizations",
         "ai_analysis": "ai_analyst", "note": "report_builder", "limitations": "report_builder", "methodology": "report_builder", "provenance": "dataset_metadata",
     }
@@ -694,8 +757,12 @@ def build_report(
     if block_order:
         order = {str(block_id): idx for idx, block_id in enumerate(block_order)}
         original = {id(block): idx for idx, block in enumerate(blocks)}
-        blocks.sort(key=lambda b: (order.get(str(b.get("id")), len(order) + original[id(b)]), original[id(b)]))
-    outline = [{"number": i + 1, "key": (str(block.get("id"))[8:] if str(block.get("id") or "").startswith("section:") else str(block.get("id") or f"block:{i+1}")), "block_id": str(block.get("id") or f"block:{i+1}"), "title": str(block.get("title") or "Section")} for i, block in enumerate(blocks)]
+        blocks.sort(key=lambda b: (
+            order.get(str(b.get("id")), order.get(str(b.get("order_alias") or ""), len(order) + original[id(b)])),
+            original[id(b)],
+        ))
+    rendered_blocks = [block for block in blocks if block.get("render") is not False]
+    outline = [{"number": i + 1, "key": (str(block.get("id"))[8:] if str(block.get("id") or "").startswith("section:") else str(block.get("id") or f"block:{i+1}")), "block_id": str(block.get("id") or f"block:{i+1}"), "title": str(block.get("title") or "Section")} for i, block in enumerate(rendered_blocks)]
 
     report = {
         "id": str(uuid4()), "dataset_id": dataset_id,
@@ -709,9 +776,18 @@ def build_report(
         "visualization_ids": [v.get("id") for v in saved if v.get("source") != "auto_report"],
         "auto_visualization_count": len([v for v in saved if v.get("source") == "auto_report"]),
         "generation_mode": "intelligent" if (auto_story or auto_visualizations) else "manual",
-        "intelligence": {"auto_story": bool(auto_story), "auto_visualizations": bool(auto_visualizations), "max_visualizations": max_visualizations},
+        "intelligence": {
+            "auto_story": bool(auto_story),
+            "auto_visualizations": bool(auto_visualizations),
+            "max_visualizations": max_visualizations,
+            "story_audience": story_audience if auto_story else None,
+            "story_objective": story_objective if auto_story else None,
+            "story_tone": story_tone if auto_story else None,
+            "story_max_pages": int(story_max_pages) if auto_story else None,
+        },
+        "story_blueprint": story_blueprint,
         "blocks": blocks,
-        "block_schema_version": 1, "block_count": len(blocks), "block_order": [str(b.get("id")) for b in blocks],
+        "block_schema_version": 1, "block_count": len(rendered_blocks), "block_order": [str(b.get("id")) for b in rendered_blocks],
         "reproducibility": {"dataset_version_locked": True, "analysis_session_locked": bool(analysis_session_id), "visualizations_locked": True, "auto_generated_visualizations_embedded": bool(auto_items), "block_provenance": True},
     }
     report["content_hash"] = _content_hash(report)
@@ -726,6 +802,71 @@ def get_report(report_id: str) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
+def _publication_dir() -> Path:
+    path = get_settings().data_root / "report_publications"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def get_report_publication(report_id: str) -> dict[str, Any] | None:
+    path = _publication_dir() / f"{report_id}.json"
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def publish_report(
+    report_id: str,
+    *,
+    visibility: str = "workspace",
+    channel: str = "report_studio",
+    note: str | None = None,
+    actor_id: str | None = None,
+    workspace_id: str | None = None,
+    governance_gate: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    visibility = str(visibility or "workspace").strip().lower()
+    if visibility not in {"private", "workspace", "external"}:
+        raise ValueError("Visibilité de publication non supportée")
+    channel = str(channel or "report_studio").strip()[:80]
+    report = get_report(report_id)
+    validation = validate_report(report_id)
+    if validation.get("status") != "pass":
+        raise ValueError("Le rapport doit passer la validation d'intégrité avant publication")
+    gate = governance_gate or {"allowed": True, "policy": "local_mode"}
+    if not gate.get("allowed", True):
+        names = ", ".join(str(x.get("name") or x.get("contract_id") or "contrat") for x in (gate.get("blockers") or []))
+        raise PermissionError(f"Publication bloquée par le Data Reliability Gate: {names or 'contrat critique en échec'}")
+
+    existing = get_report_publication(report_id)
+    if existing and existing.get("report_content_hash") == report.get("content_hash") and existing.get("status") == "published":
+        return existing
+
+    receipt = {
+        "publication_id": f"pub-{uuid4()}",
+        "report_id": report_id,
+        "status": "published",
+        "published_at": _now(),
+        "visibility": visibility,
+        "channel": channel,
+        "note": (note or "").strip()[:1000],
+        "actor_id": actor_id,
+        "workspace_id": workspace_id,
+        "dataset": report.get("dataset"),
+        "report_content_hash": report.get("content_hash"),
+        "validation_status": validation.get("status"),
+        "story_proof_coverage": (report.get("story_blueprint") or {}).get("proof_coverage"),
+        "governance_gate": gate,
+        "immutable_report": True,
+    }
+    receipt["receipt_hash"] = _content_hash(receipt)
+    (_publication_dir() / f"{report_id}.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    return receipt
+
+
 def list_reports(dataset_id: str) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for path in _dir().glob("*.json"):
@@ -735,10 +876,14 @@ def list_reports(dataset_id: str) -> list[dict[str, Any]]:
             continue
         if report.get("dataset_id") != dataset_id:
             continue
+        publication = get_report_publication(str(report.get("id")))
+        blueprint = report.get("story_blueprint") or {}
         rows.append({
             "id": report.get("id"), "title": report.get("title"), "created_at": report.get("created_at"),
             "dataset_version": report.get("dataset", {}).get("version"), "sections": report.get("sections", []),
             "analysis_session_id": report.get("analysis_session_id"), "template": report.get("template", "analytical"), "block_count": report.get("block_count", len(report.get("blocks", []))), "content_hash": report.get("content_hash"),
+            "story_page_count": int(blueprint.get("page_count") or 0), "proof_coverage": blueprint.get("proof_coverage"),
+            "publication_status": (publication or {}).get("status", "draft"), "publication": publication,
         })
     rows.sort(key=lambda x: x.get("created_at") or "", reverse=True)
     return rows
@@ -915,6 +1060,8 @@ def _markdown(report: dict[str, Any]) -> str:
     out.append("")
     section_number = 0
     for block in report.get("blocks", []):
+        if block.get("render") is False:
+            continue
         section_number += 1
         out.extend([f"## {section_number}. {block.get('title','Section')}", ""])
         kind = block.get("type")
@@ -933,6 +1080,14 @@ def _markdown(report: dict[str, Any]) -> str:
             for f in d.get("findings", []):
                 out.append(f"- **{f.get('title','')}** — {f.get('statement','')}  \n  *Preuve :* {f.get('evidence','')}  \n  *Lecture :* {f.get('interpretation','')}")
             out.extend(["", "### Conclusion de lecture", d.get("conclusion", ""), ""])
+        elif kind == "story_page":
+            d = block.get("data", {})
+            out.extend([d.get("summary", ""), "", "### Claims et preuves"])
+            for claim in d.get("claims", []):
+                refs = ", ".join(str(x) for x in (claim.get("evidence_ids") or [])) or "aucune"
+                out.append(f"- **{claim.get('role','finding')}** — {claim.get('text','')}  \n  *Preuves :* `{refs}`")
+            if d.get("takeaway"):
+                out.extend(["", "### À retenir", d.get("takeaway", ""), ""])
         elif kind == "overview":
             d = block["data"]
             out.extend([f"- Lignes : {_fmt(d.get('rows'))}", f"- Variables : {_fmt(d.get('columns'))}", f"- Doublons : {_fmt(d.get('duplicates'))}", f"- Score qualite : {_fmt(d.get('quality_score'))}/100", ""])
@@ -1002,6 +1157,8 @@ def _html(report: dict[str, Any]) -> str:
     sections: list[str] = []
     sec = 0
     for block in report.get("blocks", []):
+        if block.get("render") is False:
+            continue
         sec += 1
         kind = block.get("type")
         content = ""
@@ -1015,6 +1172,14 @@ def _html(report: dict[str, Any]) -> str:
             d = block["data"]
             findings = "".join(f"<article class='story-card {html.escape(str(x.get('severity','info')))}'><div class='story-rank'>{int(x.get('rank',0)):02d}</div><div><b>{html.escape(x.get('title',''))}</b><p>{html.escape(x.get('statement',''))}</p><small><strong>Preuve :</strong> {html.escape(x.get('evidence',''))}</small><small><strong>Lecture :</strong> {html.escape(x.get('interpretation',''))}</small></div></article>" for x in d.get("findings", []))
             content = f"<p class='lead'>{html.escape(d.get('opening',''))}</p><div class='story-grid'>{findings}</div><div class='story-conclusion'><span>CONCLUSION DE LECTURE</span><p>{html.escape(d.get('conclusion',''))}</p></div>"
+        elif kind == "story_page":
+            d = block.get("data", {})
+            claims = "".join(
+                f"<article class='story-claim'><div><span>{html.escape(str(c.get('role','finding')).upper())}</span><b>{html.escape(str(c.get('text','')))}</b></div><small><strong>Preuves :</strong> {html.escape(', '.join(str(x) for x in (c.get('evidence_ids') or [])) or 'aucune')}</small></article>"
+                for c in d.get("claims", [])
+            )
+            takeaway = f"<div class='story-conclusion'><span>À RETENIR</span><p>{html.escape(str(d.get('takeaway','')))}</p></div>" if d.get("takeaway") else ""
+            content = f"<div class='story-page-meta'><span>PAGE {int(d.get('page_number') or sec):02d}</span><span>{html.escape(str(d.get('role','story')).upper())}</span><span>Couverture de preuve {float(d.get('proof_coverage') or 0)*100:.0f}%</span></div><p class='lead'>{html.escape(str(d.get('summary','')))}</p><div class='story-claims'>{claims}</div>{takeaway}"
         elif kind == "overview":
             d = block["data"]
             cards = [
@@ -1080,7 +1245,7 @@ def _html(report: dict[str, Any]) -> str:
     .empty{{color:var(--muted)}} @media(max-width:760px){{.document{{margin:0}}.cover,.toc,section{{padding:34px 24px}}h1{{font-size:36px}}.cover-meta,.kpi-grid,.insight-grid,.toc-grid,.provenance{{grid-template-columns:1fr}}}}
     @media print{{body{{background:#fff}}.document{{margin:0;box-shadow:none;max-width:none}}.cover,.toc,section{{break-after:auto}}.cover{{break-after:page}}.toc{{break-after:page}}a{{color:inherit}}}}
 
-    .lead{{font-size:16px;line-height:1.65;color:#526b77;max-width:900px}}.story-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}}.story-card{{display:grid;grid-template-columns:38px 1fr;gap:12px;border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:8px;padding:14px;background:#fbfdfe}}.story-card.critical{{border-left-color:#b44a53}}.story-card.attention{{border-left-color:#b77a14}}.story-card.positive{{border-left-color:#178a63}}.story-rank{{width:30px;height:30px;border-radius:7px;background:#e9f6fa;color:#1686a4;display:grid;place-items:center;font-weight:800;font-size:11px}}.story-card b{{color:var(--navy)}}.story-card p{{margin:5px 0 8px;color:#516a76}}.story-card small{{display:block;margin-top:4px;color:#71858f}}.story-conclusion{{margin-top:18px;padding:15px 17px;background:#eef8fb;border-left:4px solid var(--teal);border-radius:7px}}.story-conclusion span{{font-size:10px;letter-spacing:.12em;font-weight:800;color:var(--teal)}}.story-conclusion p{{margin:5px 0 0}}.figure-reason,.figure-insight{{font-size:12px;color:#5b707b;margin:8px 0}}.figure-insight{{background:#f2f8fa;border-left:3px solid var(--teal);padding:9px 10px}}.limit-list{{display:grid;gap:10px}}.limit-list article{{border:1px solid var(--line);border-radius:8px;padding:13px 15px;background:#fbfcfd}}.limit-list b{{color:var(--navy)}}.limit-list p{{margin:5px 0;color:#5e7480}}.limit-list small{{color:#728690}}@media(max-width:760px){{.story-grid{{grid-template-columns:1fr}}}}
+    .lead{{font-size:16px;line-height:1.65;color:#526b77;max-width:900px}}.story-grid{{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}}.story-card{{display:grid;grid-template-columns:38px 1fr;gap:12px;border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:8px;padding:14px;background:#fbfdfe}}.story-card.critical{{border-left-color:#b44a53}}.story-card.attention{{border-left-color:#b77a14}}.story-card.positive{{border-left-color:#178a63}}.story-rank{{width:30px;height:30px;border-radius:7px;background:#e9f6fa;color:#1686a4;display:grid;place-items:center;font-weight:800;font-size:11px}}.story-card b{{color:var(--navy)}}.story-card p{{margin:5px 0 8px;color:#516a76}}.story-card small{{display:block;margin-top:4px;color:#71858f}}.story-conclusion{{margin-top:18px;padding:15px 17px;background:#eef8fb;border-left:4px solid var(--teal);border-radius:7px}}.story-conclusion span{{font-size:10px;letter-spacing:.12em;font-weight:800;color:var(--teal)}}.story-conclusion p{{margin:5px 0 0}}.story-page-meta{{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px}}.story-page-meta span{{font-size:10px;letter-spacing:.08em;font-weight:800;color:var(--teal-dark);background:var(--aqua);padding:5px 8px;border-radius:999px}}.story-claims{{display:grid;gap:10px;margin-top:16px}}.story-claim{{border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:8px;padding:13px 15px;background:#fbfdfe}}.story-claim div span{{display:block;font-size:9px;letter-spacing:.12em;color:var(--teal);font-weight:800;margin-bottom:4px}}.story-claim b{{display:block;color:var(--navy);line-height:1.45}}.story-claim small{{display:block;margin-top:8px;color:var(--muted)}}.figure-reason,.figure-insight{{font-size:12px;color:#5b707b;margin:8px 0}}.figure-insight{{background:#f2f8fa;border-left:3px solid var(--teal);padding:9px 10px}}.limit-list{{display:grid;gap:10px}}.limit-list article{{border:1px solid var(--line);border-radius:8px;padding:13px 15px;background:#fbfcfd}}.limit-list b{{color:var(--navy)}}.limit-list p{{margin:5px 0;color:#5e7480}}.limit-list small{{color:#728690}}@media(max-width:760px){{.story-grid{{grid-template-columns:1fr}}}}
     """
     return f"<!doctype html><html lang='fr'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>{html.escape(report['title'])}</title><style>{css}</style></head><body><main class='document'><section class='cover'><div class='brand'><div class='brand-mark'>DV</div><div>DataVision AI</div></div><div class='cover-main'><div class='cover-kicker'>{html.escape(report.get('template_label','Rapport analytique'))}</div><h1>{html.escape(report['title'])}</h1><div class='subtitle'>{html.escape(report.get('subtitle',''))}</div><div class='cover-meta'><div><span>Dataset</span><b>{html.escape(str(report['dataset']['name']))}</b></div><div><span>Version</span><b>v{html.escape(str(report['dataset']['version']))}</b></div><div><span>Date</span><b>{html.escape(_format_date(report.get('created_at')))}</b></div></div></div><div class='cover-foot'><span>{html.escape(report.get('organization') or report.get('author') or 'DataVision AI')}</span><span>Rapport reproductible</span></div></section><section class='toc'><h2>Sommaire</h2><div class='toc-grid'>{toc}</div></section>{''.join(sections)}</main></body></html>"
 
@@ -1168,6 +1333,8 @@ def _docx_export(report: dict[str, Any], path: Path):
     with tempfile.TemporaryDirectory(prefix="datavision-report-") as tmpdir:
         tmp=Path(tmpdir); sec=0
         for block in report.get("blocks",[]):
+            if block.get("render") is False:
+                continue
             sec+=1; doc.add_heading(f"{sec}. {block.get('title','Section')}",level=1); kind=block.get("type")
             if kind=="executive_summary":
                 d=block["data"]; _docx_kpis(doc,d.get("kpis",[])); doc.add_heading("Points cles",level=2)
@@ -1183,6 +1350,12 @@ def _docx_export(report: dict[str, Any], path: Path):
                     lp=left.paragraphs[0]; lp.alignment=WD_ALIGN_PARAGRAPH.CENTER; rr=lp.add_run(f"{int(f.get('rank',0)):02d}"); rr.bold=True; rr.font.color.rgb=RGBColor.from_string(BRAND["teal_dark"].replace("#",""))
                     rp=right.paragraphs[0]; a=rp.add_run(str(f.get("title",""))+"\n"); a.bold=True; a.font.color.rgb=RGBColor.from_string(BRAND["navy"].replace("#","")); rp.add_run(str(f.get("statement",""))+"\n"); ev=rp.add_run("Preuve : "+str(f.get("evidence",""))+"\n"); ev.italic=True; ev.font.size=Pt(8); it=rp.add_run("Lecture : "+str(f.get("interpretation",""))); it.font.size=Pt(8); it.font.color.rgb=RGBColor.from_string(BRAND["muted"].replace("#","")); doc.add_paragraph()
                 doc.add_heading("Conclusion de lecture",level=2); doc.add_paragraph(d.get("conclusion",""))
+            elif kind=="story_page":
+                d=block.get("data",{}); p=doc.add_paragraph(); r=p.add_run(f"PAGE {int(d.get('page_number') or sec):02d} · {str(d.get('role','story')).upper()} · preuve {float(d.get('proof_coverage') or 0)*100:.0f}%"); r.bold=True; r.font.size=Pt(8); r.font.color.rgb=RGBColor.from_string(BRAND["teal_dark"].replace("#","")); doc.add_paragraph(str(d.get("summary","")))
+                doc.add_heading("Claims et preuves",level=2)
+                for claim in d.get("claims",[]):
+                    p=doc.add_paragraph(style="List Bullet"); a=p.add_run(str(claim.get("text",""))); a.bold=True; p.add_run("\n"); ev=p.add_run("Preuves : "+(", ".join(str(x) for x in (claim.get("evidence_ids") or [])) or "aucune")); ev.italic=True; ev.font.size=Pt(8); ev.font.color.rgb=RGBColor.from_string(BRAND["muted"].replace("#",""))
+                if d.get("takeaway"): doc.add_heading("À retenir",level=2); doc.add_paragraph(str(d.get("takeaway","")))
             elif kind=="overview":
                 d=block["data"]; _docx_kpis(doc,[{"label":"Observations","value":d.get("rows"),"hint":"lignes"},{"label":"Variables","value":d.get("columns"),"hint":"colonnes"},{"label":"Doublons","value":d.get("duplicates"),"hint":"lignes"},{"label":"Qualite","value":d.get("quality_score"),"hint":"/100"}]);
                 if d.get("type_summary"): doc.add_heading("Structure des variables",level=2); _docx_table(doc,["type","count"],d.get("type_summary",[]))
@@ -1307,6 +1480,8 @@ def _pdf_export(report: dict[str, Any], path: Path):
     story.append(PageBreak())
     sec=0
     for block in report.get("blocks",[]):
+        if block.get("render") is False:
+            continue
         sec+=1; story.append(Paragraph(f"{sec:02d}  {html.escape(block.get('title','Section'))}",styles["h1"])); kind=block.get("type")
         if kind=="executive_summary":
             d=block["data"]; story.append(_pdf_kpis(d.get("kpis",[]),styles)); story.append(Spacer(1,8)); story.append(Paragraph("Points cles",styles["h2"]))
@@ -1321,6 +1496,11 @@ def _pdf_export(report: dict[str, Any], path: Path):
                 sev=str(f.get("severity","info")); color=BRAND["danger"] if sev=="critical" else BRAND["warning"] if sev=="attention" else BRAND["success"] if sev=="positive" else BRAND["teal"]
                 body=Paragraph(f"<b>{html.escape(str(f.get('title','')))}</b><br/>{html.escape(str(f.get('statement','')))}<br/><font size='7' color='{BRAND['muted']}'><b>Preuve :</b> {html.escape(str(f.get('evidence','')))}<br/><b>Lecture :</b> {html.escape(str(f.get('interpretation','')))}</font>",styles["body"]); rank=Paragraph(f"<b>{int(f.get('rank',0)):02d}</b>",styles["center"]); card=Table([[rank,body]],colWidths=[12*mm,148*mm],style=[("BACKGROUND",(0,0),(-1,-1),_color("#FAFCFD")),("LINEBEFORE",(0,0),(0,-1),3,_color(color)),("BOX",(0,0),(-1,-1),.3,_color("#DFE8EC")),("VALIGN",(0,0),(-1,-1),"TOP"),("LEFTPADDING",(0,0),(-1,-1),6),("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6)]); story.extend([card,Spacer(1,4)])
             story.extend([Paragraph("Conclusion de lecture",styles["h2"]),Paragraph(html.escape(d.get("conclusion","")),styles["body"])])
+        elif kind=="story_page":
+            d=block.get("data",{}); story.append(Paragraph(f"<font color='{BRAND['teal_dark']}'><b>PAGE {int(d.get('page_number') or sec):02d} · {html.escape(str(d.get('role','story')).upper())} · PREUVE {float(d.get('proof_coverage') or 0)*100:.0f}%</b></font>",styles["small"])); story.append(Paragraph(html.escape(str(d.get("summary",""))),styles["body"])); story.append(Paragraph("Claims et preuves",styles["h2"]))
+            for claim in d.get("claims",[]):
+                refs=", ".join(str(x) for x in (claim.get("evidence_ids") or [])) or "aucune"; body=Paragraph(f"<b>{html.escape(str(claim.get('text','')))}</b><br/><font size='7' color='{BRAND['muted']}'>Preuves : {html.escape(refs)}</font>",styles["body"]); card=Table([[body]],colWidths=[160*mm],style=[("BACKGROUND",(0,0),(-1,-1),_color("#FAFCFD")),("LINEBEFORE",(0,0),(0,-1),3,_color(BRAND["teal"])),("BOX",(0,0),(-1,-1),.3,_color("#DFE8EC")),("LEFTPADDING",(0,0),(-1,-1),7),("TOPPADDING",(0,0),(-1,-1),6),("BOTTOMPADDING",(0,0),(-1,-1),6)]); story.extend([card,Spacer(1,4)])
+            if d.get("takeaway"): story.extend([Paragraph("À retenir",styles["h2"]),Paragraph(html.escape(str(d.get("takeaway",""))),styles["body"])])
         elif kind=="overview":
             d=block["data"]; story.append(_pdf_kpis([{"label":"Observations","value":d.get("rows"),"hint":"lignes"},{"label":"Variables","value":d.get("columns"),"hint":"colonnes"},{"label":"Doublons","value":d.get("duplicates"),"hint":"lignes"},{"label":"Qualite","value":d.get("quality_score"),"hint":"/100"}],styles)); story.append(Spacer(1,8))
             if d.get("type_summary"): story.extend([Paragraph("Structure des variables",styles["h2"]),_pdf_table(["type","count"],d["type_summary"],[75*mm,35*mm],7),Spacer(1,8)])

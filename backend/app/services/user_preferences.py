@@ -5,6 +5,7 @@ from typing import Any
 from app.services.metadata_store import execute, fetch_one, json_dumps, json_loads, utcnow
 
 _ALLOWED_MODES = {"normal", "comfortable", "large"}
+_ALLOWED_LOCALES = {"fr", "en", "es", "ar"}
 
 
 def _sanitize(payload: dict[str, Any] | None) -> dict[str, Any]:
@@ -26,6 +27,18 @@ def _sanitize(payload: dict[str, Any] | None) -> dict[str, Any]:
     compact = raw.get("compact_navigation")
     if isinstance(compact, bool):
         result["compact_navigation"] = compact
+
+    locale = raw.get("locale")
+    if locale in _ALLOWED_LOCALES:
+        result["locale"] = locale
+
+    high_contrast = raw.get("high_contrast")
+    if isinstance(high_contrast, bool):
+        result["high_contrast"] = high_contrast
+
+    reduce_motion = raw.get("reduce_motion")
+    if isinstance(reduce_motion, bool):
+        result["reduce_motion"] = reduce_motion
 
     return result
 

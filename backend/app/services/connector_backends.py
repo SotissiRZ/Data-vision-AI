@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import io
 import json
 import re
 from dataclasses import dataclass, asdict
@@ -105,6 +106,27 @@ CONNECTOR_SPECS: dict[str, ConnectorSpec] = {
         False, True, "pymongo",
         "Base = database MongoDB. Les sources utilisent des collections.",
         ("auth_source", "replica_set", "tls"),
+    ),
+    "s3": ConnectorSpec(
+        "s3", "S3 / S3-compatible", "object_storage", 0,
+        False, True, False, False, "Secret access key (optionnel avec IAM)",
+        False, False, "boto3",
+        "Base = bucket. Hôte optionnel = endpoint S3-compatible. Username = access key ID.",
+        ("region", "session_token", "prefix"),
+    ),
+    "gcs": ConnectorSpec(
+        "gcs", "Google Cloud Storage", "object_storage", 0,
+        False, True, False, False, "Service account JSON (optionnel avec ADC)",
+        False, False, "google.cloud.storage",
+        "Base = bucket GCS. Le secret peut contenir un JSON de service account.",
+        ("project_id", "prefix"),
+    ),
+    "azure_blob": ConnectorSpec(
+        "azure_blob", "Azure Blob Storage", "object_storage", 0,
+        True, True, False, False, "Account key / SAS (optionnel)",
+        False, False, "azure.storage.blob",
+        "Hôte = account URL (https://<account>.blob.core.windows.net). Base = container.",
+        ("prefix",),
     ),
 }
 
@@ -922,23 +944,212 @@ def fetch_mongodb(
         client.close()
 
 
+
+
+def _object_format(key: str, source: dict[str, Any]) -> str:
+    options = source.get("source_options") or {}
+    configured = str(options.get("format") or "").strip().lower().lstrip(".")
+    if configured:
+        return configured
+    suffix = Path(str(key)).suffix.lower().lstrip(".")
+    return "jsonl" if suffix in {"ndjson", "jsonl"} else suffix
+
+
+def _object_frame_from_bytes(payload: bytes, key: str, source: dict[str, Any]) -> pd.DataFrame:
+    options = source.get("source_options") or {}
+    max_mb = max(1, min(int(options.get("max_object_mb", 200) or 200), 2048))
+    if len(payload) > max_mb * 1024 * 1024:
+        raise ValueError(f"Objet cloud trop volumineux: limite {max_mb} MB.")
+    fmt = _object_format(key, source)
+    buf = io.BytesIO(payload)
+    if fmt in {"csv", "txt"}:
+        return pd.read_csv(
+            buf,
+            sep=str(options.get("delimiter") or ","),
+            encoding=str(options.get("encoding") or "utf-8"),
+        )
+    if fmt in {"jsonl", "ndjson"}:
+        return pd.read_json(buf, lines=True)
+    if fmt == "json":
+        try:
+            return pd.read_json(buf)
+        except ValueError:
+            buf.seek(0)
+            raw = json.loads(buf.read().decode(str(options.get("encoding") or "utf-8")))
+            if isinstance(raw, list):
+                return pd.json_normalize(raw)
+            if isinstance(raw, dict):
+                records = raw.get("records") if isinstance(raw.get("records"), list) else [raw]
+                return pd.json_normalize(records)
+            raise
+    if fmt in {"parquet", "pq"}:
+        return pd.read_parquet(buf)
+    if fmt in {"xlsx", "xls"}:
+        return pd.read_excel(buf, sheet_name=options.get("sheet_name", 0))
+    raise ValueError(
+        "Format objet non supporté. Utilisez CSV, JSON/JSONL, Parquet ou XLSX."
+    )
+
+
+def _object_discovery_row(key: str, *, size: int | None = None, updated: Any = None) -> dict[str, Any]:
+    return {
+        "schema": None,
+        "name": Path(key).name or key,
+        "qualified_name": key,
+        "columns": [],
+        "kind": "object",
+        "size_bytes": int(size or 0),
+        "updated_at": updated.isoformat() if hasattr(updated, "isoformat") else (str(updated) if updated else None),
+        "format": Path(key).suffix.lower().lstrip("."),
+    }
+
+
+def _s3_client(connector: dict[str, Any]):
+    require_driver("s3")
+    import boto3
+    options = connector.get("options") or {}
+    kwargs: dict[str, Any] = {
+        "region_name": options.get("region") or None,
+        "endpoint_url": connector.get("host") or None,
+        "aws_access_key_id": connector.get("username") or None,
+        "aws_secret_access_key": connector.get("password") or None,
+        "aws_session_token": options.get("session_token") or None,
+    }
+    return boto3.client("s3", **{k: v for k, v in kwargs.items() if v not in (None, "")})
+
+
+def test_s3(connector: dict[str, Any]) -> dict[str, Any]:
+    _s3_client(connector).head_bucket(Bucket=connector["database_name"])
+    return {"ok": True, "bucket": connector["database_name"]}
+
+
+def discover_s3(connector: dict[str, Any], max_tables: int) -> dict[str, Any]:
+    client = _s3_client(connector)
+    options = connector.get("options") or {}
+    prefix = str(options.get("prefix") or "")
+    response = client.list_objects_v2(Bucket=connector["database_name"], Prefix=prefix, MaxKeys=max_tables)
+    objects = [
+        _object_discovery_row(
+            str(item.get("Key") or ""),
+            size=item.get("Size"),
+            updated=item.get("LastModified"),
+        )
+        for item in response.get("Contents", [])
+        if item.get("Key") and not str(item.get("Key")).endswith("/")
+    ]
+    return {"schemas": [], "tables": objects, "objects": objects, "truncated": bool(response.get("IsTruncated"))}
+
+
+def fetch_s3(connector: dict[str, Any], source: dict[str, Any], *, watermark: Any = None, limit: int | None = None) -> pd.DataFrame:
+    if source.get("source_kind") != "object":
+        raise ValueError("S3 attend une source de type object.")
+    key = str(source.get("table_name") or "")
+    response = _s3_client(connector).get_object(Bucket=connector["database_name"], Key=key)
+    frame = _object_frame_from_bytes(response["Body"].read(), key, source)
+    return frame.head(max(1, min(int(limit), 5000))) if limit is not None else frame
+
+
+def _gcs_credentials(secret: str):
+    if not secret.strip():
+        return None
+    from google.oauth2 import service_account
+    try:
+        payload = json.loads(secret)
+    except json.JSONDecodeError as exc:
+        raise ValueError("Le secret GCS doit être un JSON de service account valide ou vide pour ADC.") from exc
+    return service_account.Credentials.from_service_account_info(payload)
+
+
+def _gcs_client(connector: dict[str, Any]):
+    require_driver("gcs")
+    from google.cloud import storage
+    options = connector.get("options") or {}
+    return storage.Client(project=options.get("project_id") or None, credentials=_gcs_credentials(connector.get("password") or ""))
+
+
+def test_gcs(connector: dict[str, Any]) -> dict[str, Any]:
+    bucket = _gcs_client(connector).bucket(connector["database_name"])
+    bucket.reload()
+    return {"ok": True, "bucket": connector["database_name"]}
+
+
+def discover_gcs(connector: dict[str, Any], max_tables: int) -> dict[str, Any]:
+    client = _gcs_client(connector)
+    prefix = str((connector.get("options") or {}).get("prefix") or "")
+    blobs = list(client.list_blobs(connector["database_name"], prefix=prefix, max_results=max_tables))
+    objects = [_object_discovery_row(blob.name, size=blob.size, updated=blob.updated) for blob in blobs if blob.name and not blob.name.endswith("/")]
+    return {"schemas": [], "tables": objects, "objects": objects, "truncated": len(objects) >= max_tables}
+
+
+def fetch_gcs(connector: dict[str, Any], source: dict[str, Any], *, watermark: Any = None, limit: int | None = None) -> pd.DataFrame:
+    if source.get("source_kind") != "object":
+        raise ValueError("GCS attend une source de type object.")
+    key = str(source.get("table_name") or "")
+    payload = _gcs_client(connector).bucket(connector["database_name"]).blob(key).download_as_bytes()
+    frame = _object_frame_from_bytes(payload, key, source)
+    return frame.head(max(1, min(int(limit), 5000))) if limit is not None else frame
+
+
+def _azure_container(connector: dict[str, Any]):
+    require_driver("azure_blob")
+    from azure.storage.blob import BlobServiceClient
+    service = BlobServiceClient(account_url=connector["host"], credential=connector.get("password") or None)
+    return service.get_container_client(connector["database_name"])
+
+
+def test_azure_blob(connector: dict[str, Any]) -> dict[str, Any]:
+    _azure_container(connector).get_container_properties()
+    return {"ok": True, "container": connector["database_name"]}
+
+
+def discover_azure_blob(connector: dict[str, Any], max_tables: int) -> dict[str, Any]:
+    container = _azure_container(connector)
+    prefix = str((connector.get("options") or {}).get("prefix") or "")
+    objects: list[dict[str, Any]] = []
+    for blob in container.list_blobs(name_starts_with=prefix):
+        if len(objects) >= max_tables:
+            break
+        name = str(getattr(blob, "name", "") or "")
+        if not name or name.endswith("/"):
+            continue
+        objects.append(_object_discovery_row(name, size=getattr(blob, "size", 0), updated=getattr(blob, "last_modified", None)))
+    return {"schemas": [], "tables": objects, "objects": objects, "truncated": len(objects) >= max_tables}
+
+
+def fetch_azure_blob(connector: dict[str, Any], source: dict[str, Any], *, watermark: Any = None, limit: int | None = None) -> pd.DataFrame:
+    if source.get("source_kind") != "object":
+        raise ValueError("Azure Blob attend une source de type object.")
+    key = str(source.get("table_name") or "")
+    payload = _azure_container(connector).download_blob(key).readall()
+    frame = _object_frame_from_bytes(payload, key, source)
+    return frame.head(max(1, min(int(limit), 5000))) if limit is not None else frame
+
 NATIVE_TESTERS = {
     "bigquery": test_bigquery,
     "snowflake": test_snowflake,
     "databricks": test_databricks,
     "mongodb": test_mongodb,
+    "s3": test_s3,
+    "gcs": test_gcs,
+    "azure_blob": test_azure_blob,
 }
 NATIVE_DISCOVERERS = {
     "bigquery": discover_bigquery,
     "snowflake": discover_snowflake,
     "databricks": discover_databricks,
     "mongodb": discover_mongodb,
+    "s3": discover_s3,
+    "gcs": discover_gcs,
+    "azure_blob": discover_azure_blob,
 }
 NATIVE_FETCHERS = {
     "bigquery": fetch_bigquery,
     "snowflake": fetch_snowflake,
     "databricks": fetch_databricks,
     "mongodb": fetch_mongodb,
+    "s3": fetch_s3,
+    "gcs": fetch_gcs,
+    "azure_blob": fetch_azure_blob,
 }
 
 

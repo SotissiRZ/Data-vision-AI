@@ -83,7 +83,7 @@ def test_large_mode_is_responsive_on_small_screens():
 
 def test_display_control_still_exposes_three_modes():
     page = (FRONTEND / "app" / "page.tsx").read_text(encoding="utf-8")
-    assert "Normal</button>" in page
-    assert "Confort</button>" in page
-    assert "Grand texte</button>" in page
+    assert "setReadingMode('normal')" in page and "tr('display.normal')" in page
+    assert "setReadingMode('comfortable')" in page and "tr('display.comfortable')" in page
+    assert "setReadingMode('large')" in page and "tr('display.large')" in page
     assert "root.dataset.dvMode = uiMode" in page

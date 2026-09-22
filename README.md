@@ -1,4 +1,83 @@
-# DataVision AI — v2.69.0
+# DataVision AI — v2.76.0
+
+## Nouveau dans v2.76.0 — Workspace Environments & Reproducibility
+
+- manifest Python/R partagé et gouverné par workspace ;
+- overlay notebook déterministe sur le manifest du workspace ;
+- résolution des dépendances contre l'image sandbox approuvée et locks exacts ;
+- empreintes SHA-256 canoniques pour le workspace et chaque environnement notebook effectif ;
+- détection de dérive entre locks enregistrés et inventaire courant du sandbox ;
+- invalidation des kernels lorsque l'environnement workspace/notebook change ;
+- provenance des runs Python/R enrichie avec empreintes et locks ;
+- UI Notebook Studio séparant le socle workspace et l'overlay notebook ;
+- installation réseau dynamique explicitement désactivée ;
+- gate `WORKSPACE_ENVIRONMENT_ACCEPTANCE` 8/8 et CDC §40/§41 fermés.
+
+## Nouveau dans v2.75.0 — Cloud Connectors & CDC ingestion
+
+- S3 / S3-compatible, Google Cloud Storage et Azure Blob Storage natifs ;
+- découverte d'objets et ingestion CSV/JSON/JSONL/Parquet/XLSX ;
+- CDC log-based Debezium/canonical avec clés primaires, déduplication et checkpoints par partition ;
+- replay idempotent, dry-run, schema drift et versions immuables ;
+- endpoints gouvernés et UI Sources & Refresh enrichie ;
+- gate `CLOUD_CDC_ACCEPTANCE` 8/8.
+
+## Nouveau dans v2.74.0 — Internationalisation & accessibilité
+
+- catalogues i18n complets et paritaires pour français, anglais, espagnol et arabe ;
+- langue persistée localement et synchronisée avec le profil Entreprise ;
+- `lang`/`dir` dynamiques avec prise en charge RTL pour l’arabe ;
+- navigation principale, onglets contextuels, palette et réglages d’affichage localisés ;
+- skip-link, landmarks, focus management, `aria-live`, `aria-current`, `aria-expanded` et `aria-pressed` ;
+- contraste renforcé, focus visible et réduction des animations avec `prefers-reduced-motion` ;
+- test Playwright dédié et gate `I18N_ACCESSIBILITY_ACCEPTANCE 8/8` ;
+- CDC §64 et §65 passés à `implemented` sans revendiquer de certification WCAG externe.
+
+
+## Nouveau dans v2.73.0 — Model Gateway multi-provider natif
+
+- adaptateur natif Anthropic Messages API avec JSON Schema ;
+- adaptateur natif Google Gemini `models.generateContent` avec JSON Schema ;
+- intégration au Secret Vault, budgets, télémétrie, routage par tâche et fallback ;
+- confidentialité `local_only` / `prefer_local` / `allow_external` inchangée et autoritaire ;
+- configuration depuis le Centre de contrôle IA et par variables d'environnement ;
+- gate `MODEL_GATEWAY_ACCEPTANCE` obligatoire dans la baseline de production.
+
+## Nouveau dans v2.72.0 — Data Storytelling avancé
+
+- moteur déterministe de storytelling multi-page à partir des données et analyses réelles ;
+- adaptation de la trame à l’audience, à l’objectif et au niveau de détail ;
+- chaque claim analytique est relié à une ou plusieurs preuves explicites ;
+- couverture de preuve mesurée et validation bloquante avant publication ;
+- aperçu de la trame avant génération du rapport ;
+- exports Markdown, HTML, DOCX et PDF avec pages narratives structurées ;
+- publication gouvernée avec reçu immuable, hash du rapport et contrôle du Data Reliability Gate ;
+- Assistant et Report Builder alignés sur le même moteur ;
+- gate `STORYTELLING_ACCEPTANCE 8/8`.
+
+
+## Nouveau dans v2.71.0 — AI Data Quality & remédiation guidée
+
+- plan de remédiation déterministe construit à partir des contrôles qualité réels ;
+- suggestions contextualisées pour doublons, valeurs manquantes, colonnes constantes et outliers IQR ;
+- distinction explicite entre actions à faible risque et corrections nécessitant une validation métier ;
+- prévisualisation avant/après du score qualité, du nombre de problèmes et des dimensions du dataset ;
+- protection contre les plans obsolètes grâce à un `plan_id` stable ;
+- application explicite uniquement, avec création d'une nouvelle version immuable et rollback via le lineage ;
+- Assistant raccordé au même planner via `plan_quality_remediation` ;
+- interface Qualité enrichie avec sélection des actions, niveau de risque, confiance et impact prévisionnel ;
+- gate `QUALITY_REMEDIATION_ACCEPTANCE 8/8`.
+
+## Nouveau dans v2.70.0 — AutoML Forecasting + Anomaly unifié
+
+- forecasting intégré au workflow AutoML avec sélection uniquement sur backtests rolling-origin ;
+- anomalies intégrées au même leaderboard sans inventer de vérité terrain ;
+- score de robustesse fondé sur stabilité, accord inter-méthodes et plausibilité du taux ;
+- expériences persistées pour forecasting/anomalies et artefacts enregistrables dans le Model Registry ;
+- UI AutoML unique pour classification, régression, clustering, forecasting et anomalies ;
+- contrat Assistant AutoML étendu aux tâches spécialisées ;
+- gate `AUTOML_UNIFIED_ACCEPTANCE 8/8`.
+
 
 ## Nouveau dans v2.69.0 — Visual Analytics & NL→Viz avancé
 
@@ -271,6 +350,9 @@ Les évolutions intermédiaires sont cumulées :
 - **v2.14.1** : séquencement strict et reprise après confirmation ;
 - **v2.14.2** : liaison complète Floating UI ↔ Orchestrator ;
 - **v2.15.0** : Model Gateway local/cloud avec politique de confidentialité ;
+- **v2.75.0** : Object storage S3/GCS/Azure Blob et CDC log-based checkpointé avec matérialisation immuable ;
+- **v2.74.0** : Internationalisation fr/en/es/ar, RTL arabe, préférences accessibilité persistées et gate WCAG engineering ;
+- **v2.73.0** : Model Gateway multi-provider avec adaptateurs natifs Anthropic/Gemini, JSON Schema, Secret Vault et routage gouverné ;
 - **v2.15.3** : fusion réelle avec les moteurs et RBAC de DataVision v2.12.
 
 Le LLM reste un planner/explainer : les calculs statistiques et ML proviennent

@@ -28,6 +28,13 @@ from app.services.notebook_service import (
     update_notebook_environment,
 )
 
+from app.services.workspace_environment import (
+    get_workspace_environment,
+    sync_workspace_environment,
+    update_workspace_environment,
+    verify_workspace_environment,
+)
+
 router = APIRouter(prefix="/notebooks", tags=["notebooks"])
 
 
@@ -91,6 +98,42 @@ def _error(exc: Exception):
 @router.get("/runtime")
 def notebook_runtime():
     return runtime_status()
+
+
+
+@router.get("/workspace-environment")
+def workspace_environment():
+    try:
+        return get_workspace_environment()
+    except Exception as exc:
+        _error(exc)
+
+
+@router.put("/workspace-environment")
+def workspace_environment_update(payload: NotebookEnvironmentRequest):
+    try:
+        return update_workspace_environment(
+            python_requirements=payload.python_requirements,
+            r_requirements=payload.r_requirements,
+        )
+    except Exception as exc:
+        _error(exc)
+
+
+@router.post("/workspace-environment/sync")
+def workspace_environment_sync():
+    try:
+        return sync_workspace_environment()
+    except Exception as exc:
+        _error(exc)
+
+
+@router.post("/workspace-environment/verify")
+def workspace_environment_verify():
+    try:
+        return verify_workspace_environment()
+    except Exception as exc:
+        _error(exc)
 
 
 @router.get("/{notebook_id}/environment")

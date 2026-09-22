@@ -1,5 +1,91 @@
 # Roadmap d’exécution DataVision AI
 
+## Livré — v2.76.0 Workspace Environments & Reproducibility
+
+- manifests Python/R gouvernés par workspace ;
+- overlay notebook avec fusion déterministe des dépendances ;
+- locks exacts issus de l'image sandbox approuvée ;
+- empreintes SHA-256 workspace et notebook effectif ;
+- détection de dérive et vérification de reproductibilité ;
+- invalidation des kernels lors des changements de manifest ;
+- provenance des runs enrichie ;
+- gate `WORKSPACE_ENVIRONMENT_ACCEPTANCE` 8/8 ;
+- CDC §40 et §41 fermés.
+
+Prochain jalon : **v2.77 — Performance & SLO Evidence** : benchmarks reproductibles, budgets de latence/charge et preuves SLO automatisées pour fermer le gap §59 sans inventer de résultats production.
+
+## Livré — v2.75.0 Cloud Connectors & CDC ingestion
+
+- object storage S3/S3-compatible, Google Cloud Storage et Azure Blob ;
+- découverte cloud et ingestion CSV/JSON/JSONL/Parquet/XLSX ;
+- sources CDC log-based avec enveloppes Debezium/canoniques ;
+- clés primaires explicites, déduplication, checkpoints par partition et replay idempotent ;
+- schema drift, lineage et matérialisation en versions immuables ;
+- dry-run et endpoints gouvernés `connectors:read` / `refresh:run` ;
+- gate `CLOUD_CDC_ACCEPTANCE` 8/8 ;
+- CDC §69 fermé.
+
+Prochain jalon : **v2.76 — Workspace Environments & Reproducibility** : environnements Python/R gouvernés, manifests reproductibles et isolation par workspace sans installation arbitraire dans le runtime principal.
+
+## Livré — v2.74.0 Internationalisation & accessibilité foundations
+
+- quatre locales : français, anglais, espagnol et arabe ;
+- catalogues à parité de clés avec fallback déterministe ;
+- persistance locale + profil Entreprise ;
+- `lang` / `dir` dynamiques et RTL arabe ;
+- skip-link, focus management, landmarks et annonces `aria-live` ;
+- contraste renforcé, focus visible et réduction des animations ;
+- test navigateur Playwright + gate `I18N_ACCESSIBILITY_ACCEPTANCE` 8/8 ;
+- CDC §64 et §65 fermés.
+
+Jalon **v2.75 — Cloud Connectors & CDC ingestion** livré : object storage cloud, CDC checkpointé, reprise et matérialisation immuable.
+
+## Livré — v2.73.0 Model Gateway multi-provider natif
+
+- Anthropic Messages API natif ;
+- Gemini `models.generateContent` natif ;
+- JSON Schema structuré sur les deux adapters ;
+- Secret Vault / env credentials gouvernés ;
+- routage confidentialité, fallback, budgets et télémétrie conservés ;
+- Centre de contrôle IA étendu ;
+- `MODEL_GATEWAY_ACCEPTANCE` 8/8 et CDC §48 fermé.
+
+## Livré — v2.72.0 Data Storytelling avancé
+
+- narration analytique multi-page déterministe et structurée ;
+- audience, objectif, ton et longueur pilotables ;
+- claims systématiquement liés à des preuves vérifiables ;
+- mesure de couverture de preuve et validation de cohérence ;
+- export multi-format et aperçu de trame ;
+- publication gouvernée avec reçu immuable et contrôle du Data Reliability Gate ;
+- gate `STORYTELLING_ACCEPTANCE 8/8`.
+
+Jalon **v2.73 — Model Gateway multi-provider** livré : adaptateurs natifs Anthropic/Gemini, sorties structurées, gouvernance, Secret Vault, routage et audit.
+
+Jalon **v2.74 — Internationalisation & accessibilité foundations** livré : i18n 4 langues, RTL, préférences persistées, navigation clavier/focus et gate accessibilité.
+
+## Livré — v2.71.0 AI Data Quality & remédiation guidée
+
+- recommandations déterministes contextualisées sur les problèmes réellement détectés ;
+- preview avant/après sans mutation du dataset ;
+- sélection utilisateur explicite et niveau de risque visible ;
+- application gouvernée vers une nouvelle version immuable ;
+- Assistant connecté au planner de remédiation qualité ;
+- gate `QUALITY_REMEDIATION_ACCEPTANCE 8/8`.
+
+Prochain jalon : **v2.72 — Data Storytelling avancé** : narration analytique multi-page, structure automatique, preuves liées et publication gouvernée.
+
+## Livré — v2.70.0 AutoML Forecasting + Anomaly unifié
+
+- forecasting et anomalies intégrés au même moteur d'expériences AutoML ;
+- validation rolling-origin stricte pour les séries temporelles ;
+- sélection non supervisée des détecteurs par robustesse, sans pseudo-ground-truth ;
+- artefacts spécialisés et Model Cards compatibles avec le Model Registry ;
+- interface et Assistant alignés sur le workflow AutoML unifié ;
+- gate `AUTOML_UNIFIED_ACCEPTANCE 8/8`.
+
+Jalon livré en **v2.71.0** : AI Data Quality & remédiation guidée.
+
 ## Livré — v2.69.0 Visual Analytics & NL→Viz avancé
 
 - recommandations scorées et explicables ;

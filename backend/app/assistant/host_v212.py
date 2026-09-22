@@ -24,6 +24,7 @@ from app.services.model_serving import (
 )
 from app.services.notebook_service import run_cell as run_notebook_cell
 from app.services.preparation import apply_operation, combine_dataframes
+from app.services.quality_remediation import build_quality_remediation_plan, preview_quality_remediation
 from app.services.profiling import profile_dataframe
 from app.services.insight_engine import generate_insights
 from app.services.forecasting import forecast_series
@@ -167,6 +168,20 @@ class V212DataBridge:
             "columns": details,
             "include_patterns": bool(include_patterns),
         }
+
+    def plan_quality_remediation(
+        self,
+        *,
+        context: AssistantContext,
+        **_: Any,
+    ) -> dict[str, Any]:
+        dataset_id, df = _load(context)
+        meta = get_meta(dataset_id)
+        plan = build_quality_remediation_plan(
+            df, dataset_id=dataset_id, version=int(meta.get("version", 1))
+        )
+        plan["default_preview"] = preview_quality_remediation(df, plan=plan, action_ids=None)
+        return plan
 
     def apply_reversible_transform(
         self,
@@ -629,15 +644,21 @@ class V212MLBridge:
         metric: str | None = None,
         validation: str = "cross_validation",
         time_column: str | None = None,
+        horizon: int = 12,
+        frequency: str = "auto",
+        contamination: float = 0.05,
+        threshold: float = 3.5,
         max_models: int = 8,
         explain: bool = True,
         **_: Any,
     ) -> dict[str, Any]:
         dataset_id, df = _load(context)
-        if task not in {"classification", "regression", "clustering"}:
-            raise ValueError("AutoML v2.51 couvre classification, régression et clustering avec ML Safety. Le forecasting conserve son moteur dédié.")
-        if task != "clustering" and not target:
-            raise ValueError("Cible requise pour une tâche supervisée.")
+        if task not in {"classification", "regression", "clustering", "forecasting", "anomaly_detection"}:
+            raise ValueError("Tâche AutoML non supportée.")
+        if task in {"classification", "regression", "forecasting"} and not target:
+            raise ValueError("Cible requise pour cette tâche AutoML.")
+        if task == "forecasting" and not time_column:
+            raise ValueError("Colonne temporelle requise pour le forecasting AutoML.")
         result = run_automl_experiment(
             df, target=target, task=task, features=features,
             primary_metric=metric or "auto",
@@ -645,7 +666,7 @@ class V212MLBridge:
             tune=True, max_candidates=max_models,
             dataset_context={"id": dataset_id, "version": get_meta(dataset_id).get("version")},
             split_strategy="temporal" if validation == "time_split" else ("random" if validation == "holdout" else "auto"),
-            time_column=time_column,
+            time_column=time_column, horizon=horizon, frequency=frequency, contamination=contamination, threshold=threshold,
         )
         result["requested_explain"] = explain
         result["rollback_token"] = result.get("model_id")
@@ -1153,6 +1174,10 @@ class V212ReportBridge:
         include_methodology: bool = True,
         include_provenance: bool = True,
         include_visualizations: bool = True,
+        story_audience: str = "executive",
+        story_objective: str | None = None,
+        story_tone: str = "balanced",
+        story_max_pages: int = 6,
         custom_blocks: list[dict[str, Any]] | None = None,
         block_order: list[str] | None = None,
         **_: Any,
@@ -1178,6 +1203,10 @@ class V212ReportBridge:
             sections=sections,
             auto_story=True,
             auto_visualizations=include_visualizations,
+            story_audience=story_audience,
+            story_objective=story_objective,
+            story_tone=story_tone,
+            story_max_pages=story_max_pages,
             custom_blocks=custom_blocks or None,
             block_order=block_order or None,
         )
@@ -1285,6 +1314,7 @@ def bind_v212_host(registry: AssistantToolRegistry) -> None:
     mapping = {
         "profile_dataset": data.profile_dataset,
         "inspect_missing_values": data.inspect_missing_values,
+        "plan_quality_remediation": data.plan_quality_remediation,
         "apply_reversible_transform": data.apply_reversible_transform,
         "merge_datasets": data.merge_datasets,
         "delete_column": data.delete_column,
