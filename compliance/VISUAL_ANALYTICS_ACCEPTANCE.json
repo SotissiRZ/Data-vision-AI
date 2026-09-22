@@ -1,0 +1,55 @@
+{
+  "product_version": "2.81.0",
+  "passed": 8,
+  "total": 8,
+  "checks": [
+    {
+      "id": "ranked_recommendations",
+      "ok": true,
+      "missing": [],
+      "path": "backend/app/services/visualization.py"
+    },
+    {
+      "id": "advanced_chart_types",
+      "ok": true,
+      "missing": [],
+      "path": "backend/app/services/visualization.py"
+    },
+    {
+      "id": "conversational_edit",
+      "ok": true,
+      "missing": [],
+      "path": "backend/app/services/visualization.py"
+    },
+    {
+      "id": "multi_view_composition",
+      "ok": true,
+      "missing": [],
+      "path": "backend/app/services/visualization.py"
+    },
+    {
+      "id": "visual_api",
+      "ok": true,
+      "missing": [],
+      "path": "backend/app/api/routes/datasets.py"
+    },
+    {
+      "id": "visual_ui",
+      "ok": true,
+      "missing": [],
+      "path": "frontend/app/page.tsx"
+    },
+    {
+      "id": "assistant_chart_contract",
+      "ok": true,
+      "missing": [],
+      "path": "backend/app/assistant/host_v212.py"
+    },
+    {
+      "id": "visual_tests",
+      "ok": true,
+      "missing": [],
+      "path": "backend/tests/test_visual_analytics_v2690.py"
+    }
+  ]
+}

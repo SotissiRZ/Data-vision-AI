@@ -1,0 +1,96 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.81.0",
+  "items": [
+    {
+      "id": "preflight_safety_audit",
+      "name": "Audit ML Safety exécutable avant entraînement",
+      "evidence": [
+        "backend/app/services/ml_guardrails.py",
+        "backend/app/api/routes/datasets.py"
+      ],
+      "tests": [
+        "backend/tests/test_ml_safety_v2510.py"
+      ]
+    },
+    {
+      "id": "target_leakage_block",
+      "name": "Fuite de cible directe bloquée et proxies dangereux signalés",
+      "evidence": [
+        "backend/app/services/ml_guardrails.py",
+        "backend/app/services/modeling.py"
+      ],
+      "tests": [
+        "backend/tests/test_ml_safety_v2510.py"
+      ]
+    },
+    {
+      "id": "identifier_exclusion",
+      "name": "Identifiants, quasi-identifiants et constantes exclus automatiquement",
+      "evidence": [
+        "backend/app/services/ml_guardrails.py"
+      ],
+      "tests": [
+        "backend/tests/test_ml_safety_v2510.py"
+      ]
+    },
+    {
+      "id": "imbalance_metric_governance",
+      "name": "Déséquilibre de classes détecté et métrique de sélection gouvernée",
+      "evidence": [
+        "backend/app/services/ml_guardrails.py",
+        "backend/app/services/modeling.py"
+      ],
+      "tests": [
+        "backend/tests/test_ml_safety_v2510.py"
+      ]
+    },
+    {
+      "id": "temporal_split",
+      "name": "Split chronologique réel et CV temporelle lorsque des dates sont utilisées",
+      "evidence": [
+        "backend/app/services/ml_guardrails.py",
+        "backend/app/services/modeling.py"
+      ],
+      "tests": [
+        "backend/tests/test_ml_safety_v2510.py"
+      ]
+    },
+    {
+      "id": "final_test_isolation",
+      "name": "Jeu de test final isolé de la sélection et du tuning avec empreintes de split",
+      "evidence": [
+        "backend/app/services/ml_guardrails.py",
+        "backend/app/services/modeling.py",
+        "backend/app/services/automl_engine.py"
+      ],
+      "tests": [
+        "backend/tests/test_ml_safety_v2510.py"
+      ]
+    },
+    {
+      "id": "overfitting_detection",
+      "name": "Contrôle de surapprentissage basé uniquement sur train/validation",
+      "evidence": [
+        "backend/app/services/ml_guardrails.py",
+        "backend/app/services/modeling.py"
+      ],
+      "tests": [
+        "backend/tests/test_ml_safety_v2510.py"
+      ]
+    },
+    {
+      "id": "safety_ui_assistant",
+      "name": "Studio ML et ML Agent exposent les contrôles de sécurité sans contournement",
+      "evidence": [
+        "frontend/app/page.tsx",
+        "frontend/lib/api.ts",
+        "backend/app/assistant/contracts.py",
+        "backend/app/assistant/host_v212.py"
+      ],
+      "tests": [
+        "backend/tests/test_ml_safety_v2510.py"
+      ]
+    }
+  ]
+}

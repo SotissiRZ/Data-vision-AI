@@ -1,0 +1,97 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.81.0",
+  "gate": "multi_agent_orchestrator_completion",
+  "status": "pass",
+  "items": [
+    {
+      "id": "six_agent_topology",
+      "name": "Topologie explicite Data, Statistics, ML, Visualization, Report et Critic",
+      "evidence": [
+        "backend/app/assistant/agents.py",
+        "backend/app/assistant/router.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_multi_agent_v246.py",
+        "backend/tests/test_frontend_assistant_v246.py"
+      ]
+    },
+    {
+      "id": "deterministic_routing",
+      "name": "Routage déterministe tool vers spécialiste, indépendant du LLM",
+      "evidence": [
+        "backend/app/assistant/agents.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_multi_agent_v246.py"
+      ]
+    },
+    {
+      "id": "multi_specialist_handoff",
+      "name": "Un même turn peut passer successivement entre plusieurs spécialistes",
+      "evidence": [
+        "backend/app/assistant/orchestrator.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_multi_agent_v246.py"
+      ]
+    },
+    {
+      "id": "tool_ownership",
+      "name": "Chaque tool-call est prévalidé contre son propriétaire agent",
+      "evidence": [
+        "backend/app/assistant/agents.py",
+        "backend/app/assistant/orchestrator.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_multi_agent_v246.py"
+      ]
+    },
+    {
+      "id": "specialist_result_validation",
+      "name": "Le spécialiste valide le résultat avant progression du plan",
+      "evidence": [
+        "backend/app/assistant/agents.py",
+        "backend/app/assistant/orchestrator.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_multi_agent_v246.py"
+      ]
+    },
+    {
+      "id": "critic_agent",
+      "name": "Critic Agent indépendant revérifie exécution et routage",
+      "evidence": [
+        "backend/app/assistant/critic.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_multi_agent_v246.py",
+        "backend/tests/assistant/test_critic.py"
+      ]
+    },
+    {
+      "id": "agent_trace",
+      "name": "Trace agent/tool/status exposée dans chaque réponse orchestrée",
+      "evidence": [
+        "backend/app/assistant/models.py",
+        "backend/app/assistant/orchestrator.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_multi_agent_v246.py",
+        "backend/tests/test_frontend_assistant_v246.py"
+      ]
+    },
+    {
+      "id": "planner_agent_hints",
+      "name": "Le planner reçoit l'agent propriétaire mais ne peut pas contourner le routage runtime",
+      "evidence": [
+        "backend/app/assistant/llm_planner.py",
+        "backend/app/assistant/plan.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_multi_agent_v246.py",
+        "backend/tests/assistant/test_llm_planner.py"
+      ]
+    }
+  ]
+}

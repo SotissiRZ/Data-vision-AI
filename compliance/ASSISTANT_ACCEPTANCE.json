@@ -1,0 +1,106 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.81.0",
+  "gate": "assistant_v1_completion",
+  "status": "pass",
+  "items": [
+    {
+      "id": "floating_shell",
+      "name": "Assistant flottant monté globalement",
+      "evidence": [
+        "frontend/app/layout.tsx",
+        "frontend/components/assistant/DataVisionAssistantRoot.tsx",
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_v244.py"
+      ]
+    },
+    {
+      "id": "live_context",
+      "name": "Contexte écran/dataset/version capturé au moment de chaque action",
+      "evidence": [
+        "frontend/lib/assistant/event-bus.ts",
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_v244.py"
+      ]
+    },
+    {
+      "id": "executable_tools",
+      "name": "Catalogue et planner limités aux outils réellement exécutables",
+      "evidence": [
+        "backend/app/assistant/tools.py",
+        "backend/app/assistant/llm_planner.py",
+        "backend/app/assistant/router.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_assistant_v244.py",
+        "backend/tests/assistant/test_tools.py"
+      ]
+    },
+    {
+      "id": "host_execution",
+      "name": "Outils reliés aux moteurs DataVision réels",
+      "evidence": [
+        "backend/app/assistant/host_v212.py",
+        "backend/app/assistant/executor.py",
+        "backend/app/assistant/orchestrator.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_assistant_v244.py",
+        "backend/tests/assistant/test_orchestrator.py"
+      ]
+    },
+    {
+      "id": "governed_actions",
+      "name": "Confirmation/refus/reprise des actions gouvernées",
+      "evidence": [
+        "backend/app/assistant/action_runs.py",
+        "frontend/lib/assistant/orchestrator-adapter.ts",
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_action_runs.py",
+        "backend/tests/assistant/test_turn_resume.py"
+      ]
+    },
+    {
+      "id": "ui_resync",
+      "name": "Resynchronisation UI après mutation dataset/modèle/rapport",
+      "evidence": [
+        "frontend/lib/assistant/effects.ts",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_v244.py"
+      ]
+    },
+    {
+      "id": "file_input",
+      "name": "Fichiers reçus via le pipeline d'upload DataVision",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx",
+        "frontend/lib/assistant/orchestrator-adapter.ts"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_v244.py"
+      ]
+    },
+    {
+      "id": "voice_text",
+      "name": "Interaction texte + écoute/parole avec contrôle utilisateur",
+      "evidence": [
+        "frontend/lib/assistant/voice.ts",
+        "frontend/lib/assistant/speech-text.ts",
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_speech_copy.py",
+        "backend/tests/test_frontend_assistant_v244.py"
+      ]
+    }
+  ]
+}

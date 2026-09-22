@@ -1,0 +1,96 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.81.0",
+  "items": [
+    {
+      "id": "platform_wide_scope",
+      "name": "La lisibilité couvre toutes les feuilles CSS de la plateforme",
+      "evidence": [
+        "frontend/app/globals.css",
+        "frontend/components/ModelRegistryView.module.css",
+        "frontend/components/NotebookStudio.module.css",
+        "frontend/components/ComplianceCenter.module.css",
+        "frontend/components/ResponsibleAIView.module.css",
+        "frontend/components/FeatureServingView.module.css",
+        "frontend/components/assistant/AIProviderControlCenter.module.css",
+        "frontend/components/assistant/FloatingDataVisionAssistant.module.css"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_typography_v2533.py"
+      ]
+    },
+    {
+      "id": "minimum_text_floor",
+      "name": "Aucun texte CSS explicite ne descend sous 12 px avant facteur d'affichage",
+      "evidence": [
+        "frontend/app/globals.css"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_typography_v2533.py"
+      ]
+    },
+    {
+      "id": "readable_default_scale",
+      "name": "Les micro-textes historiques sont normalisés vers une base lisible",
+      "evidence": [
+        "frontend/app/globals.css"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_typography_v2533.py"
+      ]
+    },
+    {
+      "id": "reading_modes",
+      "name": "Normal, Confort et Grand texte utilisent des échelles réellement distinctes",
+      "evidence": [
+        "frontend/app/globals.css",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_typography_v2533.py"
+      ]
+    },
+    {
+      "id": "controls_readability",
+      "name": "Boutons, champs, onglets et navigation conservent une hauteur et ligne lisibles",
+      "evidence": [
+        "frontend/app/globals.css"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_typography_v2533.py"
+      ]
+    },
+    {
+      "id": "data_density_readability",
+      "name": "Tableaux, cartes, KPI et textes secondaires utilisent une ligne lisible",
+      "evidence": [
+        "frontend/app/globals.css",
+        "frontend/components/ModelRegistryView.module.css"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_typography_v2533.py"
+      ]
+    },
+    {
+      "id": "assistant_readability",
+      "name": "Assistant et AI Control Center suivent la même politique typographique",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.module.css",
+        "frontend/components/assistant/AIProviderControlCenter.module.css"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_typography_v2533.py"
+      ]
+    },
+    {
+      "id": "responsive_readability",
+      "name": "Le mode Grand texte conserve une échelle responsive dédiée sur petits écrans",
+      "evidence": [
+        "frontend/app/globals.css"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_typography_v2533.py"
+      ]
+    }
+  ]
+}

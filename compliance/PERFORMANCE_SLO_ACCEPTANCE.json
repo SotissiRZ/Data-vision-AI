@@ -1,0 +1,91 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.81.0",
+  "passed": 8,
+  "total": 8,
+  "items": [
+    {
+      "id": "versioned_performance_slo_policy",
+      "ok": true,
+      "evidence": [
+        "policies/performance_slo.json"
+      ],
+      "tests": [
+        "backend/tests/test_performance_slo_v277.py"
+      ]
+    },
+    {
+      "id": "workspace_evidence_ledger_and_migration",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/metadata_store.py",
+        "backend/app/services/schema_migrations.py"
+      ],
+      "tests": [
+        "backend/tests/test_performance_slo_v277.py"
+      ]
+    },
+    {
+      "id": "local_benchmark_separated_from_production_evidence",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/performance_evidence.py"
+      ],
+      "tests": [
+        "backend/tests/test_performance_slo_v277.py"
+      ]
+    },
+    {
+      "id": "external_target_load_runner",
+      "ok": true,
+      "evidence": [
+        "scripts/performance_benchmark.py"
+      ],
+      "tests": [
+        "backend/tests/test_performance_slo_v277.py"
+      ]
+    },
+    {
+      "id": "governed_evidence_validation",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/performance_evidence.py"
+      ],
+      "tests": [
+        "backend/tests/test_performance_slo_v277.py"
+      ]
+    },
+    {
+      "id": "enterprise_performance_api",
+      "ok": true,
+      "evidence": [
+        "backend/app/api/routes/enterprise.py"
+      ],
+      "tests": [
+        "backend/tests/test_performance_slo_v277.py"
+      ]
+    },
+    {
+      "id": "operational_intelligence_cockpit",
+      "ok": true,
+      "evidence": [
+        "frontend/app/page.tsx",
+        "frontend/lib/api.ts"
+      ],
+      "tests": [
+        "backend/tests/test_performance_slo_v277.py"
+      ]
+    },
+    {
+      "id": "engineering_evidence_and_boundaries",
+      "ok": true,
+      "evidence": [
+        "docs/operations/PERFORMANCE_SLO_EVIDENCE_V2770.md"
+      ],
+      "tests": [
+        "backend/tests/test_performance_slo_v277.py"
+      ]
+    }
+  ],
+  "note": "Internal engineering acceptance. Production SLO compliance requires measured external-target evidence; local smoke runs are deliberately non-production evidence."
+}

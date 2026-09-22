@@ -1,0 +1,97 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.81.0",
+  "gate": "assistant_multimodal_proactive_completion",
+  "status": "pass",
+  "items": [
+    {
+      "id": "deterministic_monitoring",
+      "name": "Surveillance déterministe des erreurs et signaux analytiques",
+      "evidence": [
+        "backend/app/assistant/proactive.py",
+        "backend/app/assistant/activity.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_assistant_v245.py"
+      ]
+    },
+    {
+      "id": "anti_spam",
+      "name": "Fingerprint et cooldown par workspace contre les alertes répétitives",
+      "evidence": [
+        "backend/app/assistant/proactive.py",
+        "backend/app/assistant/router.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_assistant_v245.py"
+      ]
+    },
+    {
+      "id": "blocked_user_detection",
+      "name": "Détection des boucles de retry et workflows bloqués sans progression",
+      "evidence": [
+        "backend/app/assistant/activity.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_assistant_v245.py",
+        "backend/tests/assistant/test_activity.py"
+      ]
+    },
+    {
+      "id": "voice_governance",
+      "name": "Voix proactive gouvernée et préférences persistantes côté utilisateur",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx",
+        "frontend/lib/assistant/voice.ts"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_v245.py",
+        "backend/tests/assistant/test_speech_copy.py"
+      ]
+    },
+    {
+      "id": "file_input",
+      "name": "Fichiers entrants reliés au pipeline d'upload DataVision et distingués des artefacts générés",
+      "evidence": [
+        "frontend/lib/assistant/orchestrator-adapter.ts",
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_v245.py"
+      ]
+    },
+    {
+      "id": "generated_files",
+      "name": "Fichiers générés par les outils remontés comme pièces jointes de la conversation",
+      "evidence": [
+        "backend/app/assistant/orchestrator.py",
+        "backend/app/assistant/models.py",
+        "frontend/lib/assistant/orchestrator-adapter.ts"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_assistant_v245.py",
+        "backend/tests/test_frontend_assistant_v245.py"
+      ]
+    },
+    {
+      "id": "secure_download",
+      "name": "Téléchargement des artefacts limité aux fichiers produits dans le data_root gouverné",
+      "evidence": [
+        "backend/app/assistant/router.py"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_v245.py"
+      ]
+    },
+    {
+      "id": "user_control",
+      "name": "Masquage, snooze et contrôle du niveau d'intervention vocale par l'utilisateur",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_assistant_v245.py"
+      ]
+    }
+  ]
+}

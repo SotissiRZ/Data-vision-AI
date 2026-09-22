@@ -1,0 +1,91 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.81.0",
+  "items": [
+    {
+      "id": "rolling_origin_backtest",
+      "name": "Backtesting rolling-origin multi-fenêtres",
+      "evidence": [
+        "backend/app/services/forecasting.py"
+      ],
+      "tests": [
+        "backend/tests/test_forecasting_anomaly_v2530.py"
+      ]
+    },
+    {
+      "id": "forecast_model_benchmark",
+      "name": "Benchmark et ranking gouverné par métrique",
+      "evidence": [
+        "backend/app/services/forecasting.py",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_forecasting_anomaly_v2530.py"
+      ]
+    },
+    {
+      "id": "empirical_intervals",
+      "name": "Intervalles empiriques fondés sur résidus hors-échantillon",
+      "evidence": [
+        "backend/app/services/forecasting.py"
+      ],
+      "tests": [
+        "backend/tests/test_forecasting_anomaly_v2530.py"
+      ]
+    },
+    {
+      "id": "series_diagnostics",
+      "name": "Diagnostics de régularité, tendance, saisonnalité et résidus",
+      "evidence": [
+        "backend/app/services/forecasting.py",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_forecasting_anomaly_v2530.py"
+      ]
+    },
+    {
+      "id": "missing_period_governance",
+      "name": "Régularisation explicite des périodes manquantes",
+      "evidence": [
+        "backend/app/services/forecasting.py",
+        "backend/app/api/routes/datasets.py"
+      ],
+      "tests": [
+        "backend/tests/test_forecasting_anomaly_v2530.py"
+      ]
+    },
+    {
+      "id": "multi_method_anomaly",
+      "name": "IQR, z robuste et Isolation Forest",
+      "evidence": [
+        "backend/app/services/anomaly_detection.py"
+      ],
+      "tests": [
+        "backend/tests/test_forecasting_anomaly_v2530.py"
+      ]
+    },
+    {
+      "id": "consensus_anomaly",
+      "name": "Consensus anomalies 2-sur-3 avec votes et accord",
+      "evidence": [
+        "backend/app/services/anomaly_detection.py",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_forecasting_anomaly_v2530.py"
+      ]
+    },
+    {
+      "id": "assistant_forecast_anomaly",
+      "name": "ML/Statistics Agents exposent forecasting et anomalies réels",
+      "evidence": [
+        "backend/app/assistant/tools.py",
+        "backend/app/assistant/host_v212.py"
+      ],
+      "tests": [
+        "backend/tests/test_forecasting_anomaly_v2530.py"
+      ]
+    }
+  ]
+}

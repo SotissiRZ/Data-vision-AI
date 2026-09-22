@@ -1,0 +1,95 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.81.0",
+  "items": [
+    {
+      "id": "supervised_automl",
+      "name": "Classification et régression AutoML avec test final isolé",
+      "evidence": [
+        "backend/app/services/modeling.py",
+        "backend/app/services/automl_engine.py"
+      ],
+      "tests": [
+        "backend/tests/test_automl_v2500.py"
+      ]
+    },
+    {
+      "id": "clustering_automl",
+      "name": "Clustering AutoML unifié sans cible supervisée",
+      "evidence": [
+        "backend/app/services/automl_engine.py",
+        "backend/app/api/routes/datasets.py"
+      ],
+      "tests": [
+        "backend/tests/test_automl_v2500.py"
+      ]
+    },
+    {
+      "id": "metric_governance",
+      "name": "Métrique de sélection explicite et sens maximize/minimize",
+      "evidence": [
+        "backend/app/services/automl_engine.py",
+        "backend/app/api/routes/datasets.py"
+      ],
+      "tests": [
+        "backend/tests/test_automl_v2500.py"
+      ]
+    },
+    {
+      "id": "leaderboard_benchmark",
+      "name": "Leaderboard normalisé et benchmark sans persistance de modèle final",
+      "evidence": [
+        "backend/app/services/automl_engine.py"
+      ],
+      "tests": [
+        "backend/tests/test_automl_v2500.py"
+      ]
+    },
+    {
+      "id": "experiment_tracking",
+      "name": "Historique d'expériences AutoML persistant par dataset/version",
+      "evidence": [
+        "backend/app/services/automl_engine.py",
+        "backend/app/api/routes/datasets.py"
+      ],
+      "tests": [
+        "backend/tests/test_automl_v2500.py"
+      ]
+    },
+    {
+      "id": "leakage_guardrails",
+      "name": "Garde-fous contre fuite cible et sélection sur test final",
+      "evidence": [
+        "backend/app/services/automl_engine.py",
+        "backend/app/services/modeling.py"
+      ],
+      "tests": [
+        "backend/tests/test_automl_v2500.py"
+      ]
+    },
+    {
+      "id": "assistant_ml_tool",
+      "name": "ML Agent relié au moteur AutoML classification/régression/clustering",
+      "evidence": [
+        "backend/app/assistant/host_v212.py",
+        "backend/app/assistant/contracts.py",
+        "backend/app/assistant/planner_runtime.py"
+      ],
+      "tests": [
+        "backend/tests/test_automl_v2500.py"
+      ]
+    },
+    {
+      "id": "automl_studio_ui",
+      "name": "Studio AutoML, historique d'expériences et sidebar dynamique",
+      "evidence": [
+        "frontend/app/page.tsx",
+        "frontend/app/globals.css",
+        "frontend/lib/api.ts"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_automl_v2500.py"
+      ]
+    }
+  ]
+}

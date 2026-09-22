@@ -1,0 +1,53 @@
+{
+  "gate": "SECURITY_DOCUMENTATION_ACCEPTANCE",
+  "version": "2.81.0",
+  "passed": 11,
+  "total": 11,
+  "status": "pass",
+  "checks": [
+    {
+      "id": "version_281",
+      "passed": true
+    },
+    {
+      "id": "auth_required_default",
+      "passed": true
+    },
+    {
+      "id": "local_dev_guarded",
+      "passed": true
+    },
+    {
+      "id": "browser_tokens_session_scoped",
+      "passed": true
+    },
+    {
+      "id": "api_docs_disabled_default",
+      "passed": true
+    },
+    {
+      "id": "password_policy_hardened",
+      "passed": true
+    },
+    {
+      "id": "dependency_compatibility",
+      "passed": true
+    },
+    {
+      "id": "rego_safe_capability_rule",
+      "passed": true
+    },
+    {
+      "id": "formal_documentation",
+      "passed": true
+    },
+    {
+      "id": "security_hardening_audit",
+      "passed": true
+    },
+    {
+      "id": "container_least_privilege",
+      "passed": true
+    }
+  ]
+}

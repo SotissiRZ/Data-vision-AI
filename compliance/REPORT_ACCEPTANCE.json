@@ -1,0 +1,95 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.81.0",
+  "items": [
+    {
+      "id": "composable_blocks",
+      "name": "Blocs composables ordonnables",
+      "evidence": [
+        "backend/app/services/report_builder.py",
+        "frontend/app/page.tsx"
+      ],
+      "tests": [
+        "backend/tests/test_reporting_v249.py",
+        "backend/tests/test_frontend_reporting_v249.py"
+      ]
+    },
+    {
+      "id": "professional_block_types",
+      "name": "Texte, KPI, table, insight, modèle, code, méthodologie, visualisation",
+      "evidence": [
+        "backend/app/services/report_builder.py"
+      ],
+      "tests": [
+        "backend/tests/test_reporting_v249.py"
+      ]
+    },
+    {
+      "id": "block_provenance",
+      "name": "Provenance par bloc et verrouillage dataset/version",
+      "evidence": [
+        "backend/app/services/report_builder.py"
+      ],
+      "tests": [
+        "backend/tests/test_reporting_v249.py"
+      ]
+    },
+    {
+      "id": "integrity_validation",
+      "name": "Hash de contenu et validation d'intégrité",
+      "evidence": [
+        "backend/app/services/report_builder.py",
+        "backend/app/api/routes/datasets.py"
+      ],
+      "tests": [
+        "backend/tests/test_reporting_v249.py"
+      ]
+    },
+    {
+      "id": "multi_format_exports",
+      "name": "Exports PDF, DOCX, HTML et Markdown",
+      "evidence": [
+        "backend/app/services/report_builder.py"
+      ],
+      "tests": [
+        "backend/tests/test_reporting_v249.py",
+        "backend/tests/test_mvp_workflow_v241.py"
+      ]
+    },
+    {
+      "id": "publication_governance",
+      "name": "Publication soumise au Data Reliability Gate",
+      "evidence": [
+        "backend/app/api/routes/datasets.py",
+        "backend/app/services/data_reliability.py"
+      ],
+      "tests": [
+        "backend/tests/test_reporting_v249.py"
+      ]
+    },
+    {
+      "id": "report_builder_ui",
+      "name": "Report Studio avec composition de blocs et aperçu",
+      "evidence": [
+        "frontend/app/page.tsx",
+        "frontend/app/globals.css",
+        "frontend/lib/api.ts"
+      ],
+      "tests": [
+        "backend/tests/test_frontend_reporting_v249.py"
+      ]
+    },
+    {
+      "id": "assistant_report_tool",
+      "name": "Report Agent relié au moteur réel de rapport",
+      "evidence": [
+        "backend/app/assistant/host_v212.py",
+        "backend/app/assistant/agents.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_multi_agent_v246.py",
+        "backend/tests/assistant/test_assistant_v245.py"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,98 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.81.0",
+  "passed": 8,
+  "total": 8,
+  "items": [
+    {
+      "id": "product_plan_catalog_and_persistent_assignment",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/product_plans.py"
+      ],
+      "tests": [
+        "backend/tests/test_cdc_gap_closure_v278.py"
+      ]
+    },
+    {
+      "id": "runtime_entitlement_and_quota_enforcement",
+      "ok": true,
+      "evidence": [
+        "backend/app/assistant/router.py",
+        "backend/app/api/routes/enterprise.py",
+        "backend/app/services/product_plans.py"
+      ],
+      "tests": [
+        "backend/tests/test_cdc_gap_closure_v278.py"
+      ]
+    },
+    {
+      "id": "native_cloud_kms_envelope_encryption",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/secret_crypto.py",
+        ".env.example"
+      ],
+      "tests": [
+        "backend/tests/test_cdc_gap_closure_v278.py"
+      ]
+    },
+    {
+      "id": "observational_causal_estimator_with_explicit_guardrail",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/causal_inference.py",
+        "backend/app/api/routes/datasets.py"
+      ],
+      "tests": [
+        "backend/tests/test_cdc_gap_closure_v278.py"
+      ]
+    },
+    {
+      "id": "persistent_proactive_scheduler_and_safe_worker_claim",
+      "ok": true,
+      "evidence": [
+        "backend/app/services/proactive_intelligence.py",
+        "backend/app/worker.py",
+        "backend/app/services/schema_migrations.py"
+      ],
+      "tests": [
+        "backend/tests/test_cdc_gap_closure_v278.py"
+      ]
+    },
+    {
+      "id": "enterprise_v2_deployment_evidence_retained",
+      "ok": true,
+      "evidence": [
+        "deploy/helm/datavision/Chart.yaml",
+        "backend/app/services/multi_cluster.py",
+        "backend/app/assistant/agents.py"
+      ],
+      "tests": [
+        "backend/tests/test_cdc_gap_closure_v278.py"
+      ]
+    },
+    {
+      "id": "cdc_sections_46_66_70_closed",
+      "ok": true,
+      "evidence": [
+        "compliance/CDC_COVERAGE_MATRIX.json"
+      ],
+      "tests": [
+        "backend/tests/test_cdc_gap_closure_v278.py"
+      ]
+    },
+    {
+      "id": "external_acceptance_boundaries_remain_explicit",
+      "ok": true,
+      "evidence": [
+        "docs/compliance/CDC_GAP_CLOSURE_V2780.md",
+        "compliance/CDC_COVERAGE_MATRIX.json"
+      ],
+      "tests": [
+        "backend/tests/test_cdc_gap_closure_v278.py"
+      ]
+    }
+  ],
+  "note": "Internal CDC gap-closure acceptance. Target-environment execution and signed business UAT remain external evidence and are intentionally not self-certified."
+}

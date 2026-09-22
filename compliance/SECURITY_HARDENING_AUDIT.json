@@ -1,0 +1,134 @@
+{
+  "product": "DataVision AI",
+  "version": "2.81.0",
+  "audit": "security-hardening-static-v1",
+  "summary": {
+    "checks": 19,
+    "passed": 19,
+    "failed": 0
+  },
+  "checks": [
+    {
+      "name": "auth_required_default",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "local_dev_blocked_in_production",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "api_docs_disabled_default",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "cors_not_wildcard",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "bootstrap_secret_guard",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "password_memory_hard_hash",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "password_policy_current_baseline",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "login_throttling",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "revocable_sessions_and_refresh_rotation",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "browser_tokens_session_scoped",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "security_headers",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "frontend_csp",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "kubernetes_least_privilege",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "rego_no_unsafe_negated_index",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "sandbox_execution_isolated",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "application_containers_non_root",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "compose_drops_linux_capabilities",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "no_high_risk_dynamic_execution_in_control_plane",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "no_runtime_env_in_release_root",
+      "status": "pass",
+      "detail": ".env is excluded from source release"
+    }
+  ],
+  "residual_risks": [
+    {
+      "id": "R-EXT-PENTEST",
+      "severity": "high",
+      "status": "external_validation_required",
+      "description": "Independent penetration test on the deployed target is required before production stable sign-off."
+    },
+    {
+      "id": "R-BROWSER-XSS",
+      "severity": "medium",
+      "status": "residual",
+      "description": "Bearer tokens are session-scoped but remain JavaScript-accessible; CSP and dependency hygiene reduce, but do not eliminate, XSS token-theft risk."
+    },
+    {
+      "id": "R-TARGET-TLS-IAM",
+      "severity": "high",
+      "status": "external_validation_required",
+      "description": "TLS termination, cloud IAM/KMS policies, firewalling and runtime image digests must be validated on the actual target infrastructure."
+    },
+    {
+      "id": "R-SUPPLY-CHAIN-LIVE",
+      "severity": "high",
+      "status": "ci_validation_required",
+      "description": "pip-audit, npm audit, Trivy image/filesystem scan and Conftest must pass against the exact release build in CI."
+    }
+  ],
+  "statement": "This audit is a deterministic source/configuration review and does not certify zero vulnerabilities."
+}
