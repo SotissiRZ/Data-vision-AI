@@ -47,13 +47,11 @@ def inspect(root: Path, env_file: Path, mode: str | None = None) -> dict:
     auth_mode = values.get("AUTH_MODE", "required").strip().lower() or "required"
     if auth_mode not in {"required", "local_dev"}:
         errors.append("unsupported_auth_mode")
-    if auth_mode == "required" and is_placeholder(values.get("BOOTSTRAP_SECRET", "")):
-        errors.append("auth_required_bootstrap_secret_not_set")
     if effective_mode == "production" and auth_mode != "required":
         errors.append("production_auth_mode_must_be_required")
 
     if effective_mode == "production":
-        for key in ("AUTH_SECRET", "CONNECTOR_SECRET_KEY", "BOOTSTRAP_SECRET"):
+        for key in ("AUTH_SECRET", "CONNECTOR_SECRET_KEY"):
             if is_placeholder(values.get(key, "")):
                 errors.append(f"production_secret_not_set:{key}")
         cors = values.get("CORS_ORIGINS", "")
@@ -75,9 +73,13 @@ def inspect(root: Path, env_file: Path, mode: str | None = None) -> dict:
                     errors.append(f"production_secret_not_set:{key}")
         if is_placeholder(values.get("POSTGRES_PASSWORD", "")):
             errors.append("production_secret_not_set:POSTGRES_PASSWORD")
-        password_min_length = int(values.get("PASSWORD_MIN_LENGTH", "15") or "15")
-        if password_min_length < 15:
-            errors.append("production_password_min_length_must_be_at_least_15")
+        if values.get("DEMO_ACCOUNT_ENABLED", "false").strip().lower() == "true":
+            errors.append("production_demo_account_must_be_disabled")
+        password_min_length = int(values.get("PASSWORD_MIN_LENGTH", "8") or "8")
+        if password_min_length < 8:
+            errors.append("production_password_min_length_must_be_at_least_8")
+        elif password_min_length < 15:
+            warnings.append("production_password_length_below_recommended_15_without_mfa")
         password_scrypt_n = int(values.get("PASSWORD_SCRYPT_N", "131072") or "131072")
         password_scrypt_p = int(values.get("PASSWORD_SCRYPT_P", "1") or "1")
         if password_scrypt_n < 131072 and password_scrypt_p < 5:

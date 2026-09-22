@@ -16,6 +16,13 @@ Write-Host "DataVision AI v$version — upgrade contrôlé" -ForegroundColor Cya
 if (-not $?) { throw "Préflight échoué." }
 if (-not (Test-Path ".env")) { throw "Aucun .env existant. Utilisez install-windows.ps1 pour une nouvelle installation." }
 
+$envContent = Get-Content ".env" -Raw
+if ($envContent -match "(?m)^BOOTSTRAP_SECRET=.*$") {
+  $envContent = [regex]::Replace($envContent, "(?m)^BOOTSTRAP_SECRET=.*\r?\n?", "")
+  Set-Content ".env" $envContent -Encoding UTF8
+  Write-Host "Ancienne variable BOOTSTRAP_SECRET supprimée : elle n’est plus utilisée." -ForegroundColor DarkCyan
+}
+
 python scripts/config_doctor.py --root . --env-file .env
 Assert-LastExit "config doctor"
 
@@ -36,6 +43,10 @@ if (-not $SkipBackup) {
 Write-Host "Construction des images v$version..." -ForegroundColor Yellow
 docker compose build api worker web sandbox
 Assert-LastExit "docker compose build"
+
+Write-Host "Validation des dépendances Python dans l’image API fraîchement construite..." -ForegroundColor Yellow
+docker compose run --rm --no-deps api python -c "import fastapi,pydantic_settings,sqlalchemy,cryptography; from app.core.config import get_settings; s=get_settings(); print('Runtime Python OK - pydantic-settings disponible - DataVision', s.app_name)"
+Assert-LastExit "runtime Python conteneurisé"
 
 Write-Host "Application des migrations explicites..." -ForegroundColor Yellow
 docker compose --profile ops run --rm migrate

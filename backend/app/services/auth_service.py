@@ -10,8 +10,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from sqlalchemy import text
+
 from app.core.config import get_settings
-from app.services.metadata_store import execute, fetch_all, fetch_one, slugify, utcnow
+from app.services.metadata_store import connection, execute, fetch_all, fetch_one, slugify, utcnow
 from app.services.session_security import register_session_posture, validate_session_security
 
 ROLES = ["owner", "admin", "data_scientist", "analyst", "viewer"]
@@ -32,6 +34,21 @@ def _unb64(data: str) -> bytes:
     return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4))
 
 
+def _scrypt_maxmem(n: int, r: int) -> int:
+    """Return an explicit OpenSSL scrypt memory budget.
+
+    OpenSSL 3 can enforce a relatively small implicit memory ceiling when
+    ``maxmem`` is omitted. DataVision's default N=131072 / r=8 needs roughly
+    128 MiB, which otherwise raises ``digital envelope routines: memory limit
+    exceeded`` on a clean first-run installation. Keep a configurable floor and
+    always add headroom above the algorithm's estimated working set.
+    """
+    settings = get_settings()
+    configured = max(64, int(settings.password_scrypt_maxmem_mb)) * 1024 * 1024
+    estimated = 128 * int(n) * int(r)
+    return max(configured, estimated + 32 * 1024 * 1024)
+
+
 def hash_password(password: str) -> str:
     settings = get_settings()
     minimum = max(8, int(settings.password_min_length))
@@ -41,7 +58,10 @@ def hash_password(password: str) -> str:
     n = max(2**14, int(settings.password_scrypt_n))
     r = max(8, int(settings.password_scrypt_r))
     p = max(1, int(settings.password_scrypt_p))
-    key = hashlib.scrypt(password.encode(), salt=salt, n=n, r=r, p=p, dklen=32)
+    key = hashlib.scrypt(
+        password.encode(), salt=salt, n=n, r=r, p=p, dklen=32,
+        maxmem=_scrypt_maxmem(n, r),
+    )
     return f"scrypt${n}${r}${p}${_b64(salt)}${_b64(key)}"
 
 
@@ -50,7 +70,11 @@ def verify_password(password: str, encoded: str) -> bool:
         scheme, n, r, p, salt, expected = encoded.split("$", 5)
         if scheme != "scrypt":
             return False
-        key = hashlib.scrypt(password.encode(), salt=_unb64(salt), n=int(n), r=int(r), p=int(p), dklen=32)
+        n_i, r_i, p_i = int(n), int(r), int(p)
+        key = hashlib.scrypt(
+            password.encode(), salt=_unb64(salt), n=n_i, r=r_i, p=p_i, dklen=32,
+            maxmem=_scrypt_maxmem(n_i, r_i),
+        )
         return hmac.compare_digest(_b64(key), expected)
     except Exception:
         return False
@@ -283,8 +307,166 @@ def user_count() -> int:
     return int(row["n"]) if row else 0
 
 
+def owner_count() -> int:
+    row = fetch_one("SELECT COUNT(*) AS n FROM organization_members WHERE role='owner'")
+    return int(row["n"]) if row else 0
+
+
+def demo_account_enabled() -> bool:
+    settings = get_settings()
+    return bool(settings.demo_account_enabled and settings.app_env.lower() in {"development", "test"})
+
+
+def ensure_demo_account() -> dict[str, Any] | None:
+    """Provision a development-only demo user and isolated workspace.
+
+    The demo account is never provisioned when APP_ENV=production, even if the
+    environment variable is accidentally enabled. It uses the configured
+    credentials only for local/test convenience and is kept out of the owner
+    bootstrap lifecycle.
+    """
+    if not demo_account_enabled():
+        return None
+    settings = get_settings()
+    email = settings.demo_account_email.strip().lower()
+    password = settings.demo_account_password
+    display_name = settings.demo_account_display_name.strip() or "Utilisateur Démo"
+    organization_name = settings.demo_account_organization.strip() or "DataVision Démo"
+    if not email:
+        raise ValueError("DEMO_ACCOUNT_EMAIL est requis lorsque le compte démo est activé.")
+    if len(password) < max(8, int(settings.password_min_length)):
+        raise ValueError("DEMO_ACCOUNT_PASSWORD ne respecte pas la longueur minimale configurée.")
+
+    now = utcnow()
+    user = get_user_by_email(email)
+    if user is None:
+        user_id = str(uuid.uuid5(uuid.NAMESPACE_URL, f"datavision-demo-user:{email}"))
+        execute(
+            "INSERT INTO users(id,email,password_hash,display_name,is_active,created_at) VALUES(:id,:email,:pw,:name,1,:created)",
+            {"id": user_id, "email": email, "pw": hash_password(password), "name": display_name, "created": now},
+        )
+    else:
+        user_id = str(user["id"])
+        if verify_password(password, str(user.get("password_hash") or "")):
+            execute(
+                "UPDATE users SET display_name=:name,is_active=1 WHERE id=:id",
+                {"name": display_name, "id": user_id},
+            )
+        else:
+            execute(
+                "UPDATE users SET password_hash=:pw,display_name=:name,is_active=1 WHERE id=:id",
+                {"pw": hash_password(password), "name": display_name, "id": user_id},
+            )
+
+    org_slug = "datavision-demo"
+    org = fetch_one("SELECT id FROM organizations WHERE slug=:slug", {"slug": org_slug})
+    if org is None:
+        org_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "datavision-demo-organization"))
+        execute(
+            "INSERT INTO organizations(id,name,slug,created_at) VALUES(:id,:name,:slug,:created)",
+            {"id": org_id, "name": organization_name, "slug": org_slug, "created": now},
+        )
+    else:
+        org_id = str(org["id"])
+
+    execute(
+        "INSERT INTO organization_members(organization_id,user_id,role,created_at) VALUES(:org,:user,'admin',:created) ON CONFLICT (organization_id,user_id) DO NOTHING",
+        {"org": org_id, "user": user_id, "created": now},
+    )
+
+    workspace_slug = "demo"
+    workspace = fetch_one(
+        "SELECT id FROM workspaces WHERE organization_id=:org AND slug=:slug",
+        {"org": org_id, "slug": workspace_slug},
+    )
+    if workspace is None:
+        workspace_id = str(uuid.uuid5(uuid.NAMESPACE_URL, "datavision-demo-workspace"))
+        execute(
+            "INSERT INTO workspaces(id,organization_id,name,slug,created_by,created_at) VALUES(:id,:org,'Workspace Démo',:slug,:user,:created)",
+            {"id": workspace_id, "org": org_id, "slug": workspace_slug, "user": user_id, "created": now},
+        )
+    else:
+        workspace_id = str(workspace["id"])
+
+    execute(
+        "INSERT INTO workspace_members(workspace_id,user_id,role,created_at) VALUES(:ws,:user,'admin',:created) ON CONFLICT (workspace_id,user_id) DO NOTHING",
+        {"ws": workspace_id, "user": user_id, "created": now},
+    )
+    return {
+        "enabled": True,
+        "email": email,
+        "password": password,
+        "display_name": display_name,
+        "workspace_id": workspace_id,
+        "role": "admin",
+    }
+
+
+
+def register_account(email: str, password: str, display_name: str, organization_name: str = "") -> dict[str, Any]:
+    """Create a self-service DataVision tenant account atomically.
+
+    A standard sign-up creates an isolated organization and primary workspace and
+    makes the new user owner of that tenant. Deployments that do not want public
+    registration can disable SELF_REGISTRATION_ENABLED while keeping login and
+    the secure first-run bootstrap available.
+    """
+    settings = get_settings()
+    if not settings.self_registration_enabled:
+        raise PermissionError("L’inscription libre est désactivée sur cette installation.")
+
+    normalized_email = email.strip().lower()
+    if len(normalized_email) < 3 or "@" not in normalized_email or normalized_email.startswith("@") or normalized_email.endswith("@"):
+        raise ValueError("Adresse email invalide.")
+    if get_user_by_email(normalized_email):
+        raise ValueError("Un compte existe déjà avec cette adresse email. Utilisez la connexion.")
+
+    clean_name = display_name.strip() or normalized_email.split("@", 1)[0]
+    clean_org = organization_name.strip() or f"Espace de {clean_name}"
+    user_id = str(uuid.uuid4())
+    org_id = str(uuid.uuid4())
+    workspace_id = str(uuid.uuid4())
+    now = utcnow()
+    pw = hash_password(password)
+
+    base_slug = slugify(clean_org)
+    with connection() as conn:
+        existing_user = conn.execute(
+            text("SELECT id FROM users WHERE lower(email)=lower(:email)"), {"email": normalized_email}
+        ).mappings().first()
+        if existing_user:
+            raise ValueError("Un compte existe déjà avec cette adresse email. Utilisez la connexion.")
+        existing_org = conn.execute(
+            text("SELECT id FROM organizations WHERE slug=:slug"), {"slug": base_slug}
+        ).mappings().first()
+        org_slug = f"{base_slug[:68]}-{org_id[:8]}" if existing_org else base_slug
+        conn.execute(
+            text("INSERT INTO users(id,email,password_hash,display_name,is_active,created_at) VALUES(:id,:email,:pw,:name,1,:created)"),
+            {"id": user_id, "email": normalized_email, "pw": pw, "name": clean_name, "created": now},
+        )
+        conn.execute(
+            text("INSERT INTO organizations(id,name,slug,created_at) VALUES(:id,:name,:slug,:created)"),
+            {"id": org_id, "name": clean_org, "slug": org_slug, "created": now},
+        )
+        conn.execute(
+            text("INSERT INTO organization_members(organization_id,user_id,role,created_at) VALUES(:org,:user,'owner',:created)"),
+            {"org": org_id, "user": user_id, "created": now},
+        )
+        conn.execute(
+            text("INSERT INTO workspaces(id,organization_id,name,slug,created_by,created_at) VALUES(:id,:org,'Workspace principal','principal',:user,:created)"),
+            {"id": workspace_id, "org": org_id, "user": user_id, "created": now},
+        )
+        conn.execute(
+            text("INSERT INTO workspace_members(workspace_id,user_id,role,created_at) VALUES(:ws,:user,'owner',:created)"),
+            {"ws": workspace_id, "user": user_id, "created": now},
+        )
+
+    auth = create_authenticated_session(user_id, normalized_email, provider="local", device_label="signup")
+    return {**auth, "user": get_user(user_id), "organization_id": org_id, "workspace_id": workspace_id}
+
+
 def bootstrap(email: str, password: str, display_name: str, organization_name: str) -> dict[str, Any]:
-    if user_count() > 0:
+    if owner_count() > 0:
         raise ValueError("Le bootstrap a déjà été effectué. Utilisez la connexion.")
     user_id = str(uuid.uuid4())
     org_id = str(uuid.uuid4())

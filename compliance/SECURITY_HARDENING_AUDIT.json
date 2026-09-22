@@ -1,10 +1,10 @@
 {
   "product": "DataVision AI",
-  "version": "2.81.0",
+  "version": "2.81.6",
   "audit": "security-hardening-static-v1",
   "summary": {
-    "checks": 19,
-    "passed": 19,
+    "checks": 20,
+    "passed": 20,
     "failed": 0
   },
   "checks": [
@@ -29,7 +29,7 @@
       "detail": ""
     },
     {
-      "name": "bootstrap_secret_guard",
+      "name": "first_run_setup_guard",
       "status": "pass",
       "detail": ""
     },
@@ -40,6 +40,11 @@
     },
     {
       "name": "password_policy_current_baseline",
+      "status": "pass",
+      "detail": ""
+    },
+    {
+      "name": "demo_account_development_only",
       "status": "pass",
       "detail": ""
     },
@@ -128,6 +133,12 @@
       "severity": "high",
       "status": "ci_validation_required",
       "description": "pip-audit, npm audit, Trivy image/filesystem scan and Conftest must pass against the exact release build in CI."
+    },
+    {
+      "id": "R-PASSWORD-LENGTH",
+      "severity": "medium",
+      "status": "accepted_product_policy",
+      "description": "The product minimum is 8 characters by product decision. For password-only production authentication, configure a longer minimum or require MFA according to the organization's policy."
     }
   ],
   "statement": "This audit is a deterministic source/configuration review and does not certify zero vulnerabilities."

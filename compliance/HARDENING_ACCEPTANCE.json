@@ -1,6 +1,6 @@
 {
   "product": "DataVision AI",
-  "product_version": "2.81.0",
+  "product_version": "2.81.6",
   "items": [
     {
       "id": "external_kms_vault_transit",

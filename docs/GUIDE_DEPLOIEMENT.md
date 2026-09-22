@@ -1,4 +1,4 @@
-# Guide de déploiement - DataVision AI v2.81.0
+# Guide de déploiement - DataVision AI v2.81.6
 
 ## 1. Principes
 La règle principale est : **une release = un dossier de code propre**. Ne jamais extraire une nouvelle archive par-dessus un ancien dossier de projet.
@@ -9,13 +9,14 @@ Les fichiers hérités d'anciennes versions peuvent provoquer des échecs de rep
 - Windows 10/11 ou Linux 64 bits ;
 - Docker Desktop/Engine récent ;
 - Docker Compose v2 ;
+- Python disponible pour les scripts de contrôle statique ; **aucun paquet backend Python n’a besoin d’être installé sur Windows** ;
 - accès au registre Docker et aux dépôts de paquets pendant le build ;
 - mémoire/CPU suffisants pour PostgreSQL, Redis, API, worker, web et sandbox ;
 - stockage persistant pour les volumes de données.
 
 ## 3. Extraction propre
 Exemple Windows :
-1. créer `D:\Bureau\Project\datavision-v2.81.0` ;
+1. créer `D:\Bureau\Project\datavision-v2.81.6` ;
 2. extraire l'archive complète dans ce dossier ;
 3. ne pas copier les nouveaux fichiers sur un ancien répertoire.
 
@@ -36,7 +37,9 @@ Paramètres critiques :
 APP_ENV=production                 # uniquement en production réelle
 AUTH_MODE=required
 AUTH_SECRET=<secret aléatoire fort>
-BOOTSTRAP_SECRET=<secret bootstrap unique>
+FIRST_RUN_SETUP_MODE=local
+PASSWORD_MIN_LENGTH=8
+DEMO_ACCOUNT_ENABLED=false             # obligatoire en production
 CORS_ORIGINS=https://votre-domaine
 API_DOCS_ENABLED=false
 ```
@@ -46,7 +49,18 @@ Configurer ensuite KMS/Vault, OIDC, antivirus, SMTP/connecteurs et autres servic
 ## 5. Authentification
 `AUTH_MODE=required` est le mode normal. Le mode `local_dev` est réservé au développement hors production.
 
-Le premier compte propriétaire est créé via le bootstrap initial et le `BOOTSTRAP_SECRET`. Après création du propriétaire, conserver le secret bootstrap dans le gestionnaire de secrets ou le faire tourner selon la politique de l'organisation.
+Sur une installation locale, le premier compte propriétaire est créé depuis l'assistant de première configuration sans secret à saisir. DataVision émet en interne une session d'initialisation à durée courte, stockée dans un cookie HttpOnly, puis la rend inutilisable dès que le premier propriétaire existe.
+
+Sur un serveur distant/production, le navigateur ne peut pas réclamer le premier compte. L'administrateur du serveur crée le propriétaire avec :
+```bash
+docker compose exec api python -m app.ops.bootstrap_owner --email admin@example.com
+```
+Le mot de passe est demandé de manière interactive et n'apparaît pas dans l'historique de commande.
+
+### Compte de démonstration
+En développement local, le compte de test est activé par défaut : `demo@datavision.local` / `DataVision8!`. S'il n'existe pas encore, DataVision le crée automatiquement dans une organisation et un workspace isolés avec le rôle `admin`. Les variables `DEMO_ACCOUNT_*` permettent de modifier ces valeurs ou de le désactiver. Le formulaire de connexion reste accessible depuis l'écran de première configuration.
+
+Le runtime n’autorise ce compte que pour `APP_ENV=development` ou `APP_ENV=test`. En production, il est forcé hors service ; le doctor de configuration signale également `DEMO_ACCOUNT_ENABLED=true` comme configuration de production invalide.
 
 ## 6. Installation Windows recommandée
 ```powershell
@@ -76,7 +90,7 @@ Vérifier :
 - `/health/ready` ;
 - accès au frontend ;
 - écran d'authentification ;
-- bootstrap ou login ;
+- première configuration locale ou login ;
 - ouverture d'un workspace ;
 - import d'un petit dataset ;
 - exécution d'une analyse simple.
@@ -135,7 +149,8 @@ Un rollback doit utiliser une sauvegarde compatible et vérifiée. Ne supprimez 
 - [ ] TLS validé
 - [ ] CORS strict
 - [ ] AUTH_MODE=required
-- [ ] bootstrap secret fort
+- [ ] DEMO_ACCOUNT_ENABLED=false
+- [ ] première configuration locale désactivée après création du premier owner
 - [ ] KMS/Vault validé
 - [ ] backup/restore drill validé
 - [ ] pentest externe traité

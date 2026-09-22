@@ -16,11 +16,10 @@ if ($envContent -match "AUTH_SECRET=change-") {
   $envContent = [regex]::Replace($envContent, "AUTH_SECRET=.*", "AUTH_SECRET=$generatedSecret")
   $envChanged = $true
 }
-if ($envContent -match "BOOTSTRAP_SECRET=change-") {
-  $bootstrapSecret = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))
-  $envContent = [regex]::Replace($envContent, "BOOTSTRAP_SECRET=.*", "BOOTSTRAP_SECRET=$bootstrapSecret")
+if ($envContent -match "(?m)^BOOTSTRAP_SECRET=.*$") {
+  $envContent = [regex]::Replace($envContent, "(?m)^BOOTSTRAP_SECRET=.*\r?\n?", "")
   $envChanged = $true
-  Write-Host "Secret bootstrap généré. Conservez-le pour la première initialisation : $bootstrapSecret" -ForegroundColor Yellow
+  Write-Host "Ancienne variable BOOTSTRAP_SECRET supprimée : elle n’est plus utilisée." -ForegroundColor DarkCyan
 }
 if ($envContent -match "CONNECTOR_SECRET_KEY=change-") {
   $connectorSecret = ([guid]::NewGuid().ToString("N") + [guid]::NewGuid().ToString("N"))

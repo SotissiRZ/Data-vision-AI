@@ -43,9 +43,12 @@ def main() -> int:
     checks.append(check("local_dev_blocked_in_production", 'settings.auth_mode == "local_dev" and settings.app_env.lower() != "production"' in tenant))
     checks.append(check("api_docs_disabled_default", "api_docs_enabled: bool = False" in config and "API_DOCS_ENABLED=false" in env))
     checks.append(check("cors_not_wildcard", "CORS_ORIGINS=*" not in env and 'cors_origins: str = "*"' not in config))
-    checks.append(check("bootstrap_secret_guard", "BOOTSTRAP_SECRET doit être configuré" in read(root, "backend/app/api/routes/enterprise.py")))
+    first_run = read(root, "backend/app/services/first_run_setup.py")
+    enterprise_routes = read(root, "backend/app/api/routes/enterprise.py")
+    checks.append(check("first_run_setup_guard", all(x in first_run + enterprise_routes for x in ("local_first_run_allowed", "httponly=True", 'samesite="strict"', "validate_setup_token", "invalidate_setup_token"))))
     checks.append(check("password_memory_hard_hash", "hashlib.scrypt" in auth and "hmac.compare_digest" in auth))
-    checks.append(check("password_policy_current_baseline", 'password_min_length: int = 15' in config and 'password_scrypt_n: int = 131072' in config and 'PASSWORD_MIN_LENGTH=15' in env))
+    checks.append(check("password_policy_current_baseline", 'password_min_length: int = 8' in config and 'password_scrypt_n: int = 131072' in config and 'PASSWORD_MIN_LENGTH=8' in env))
+    checks.append(check("demo_account_development_only", 'demo_account_enabled: bool = True' in config and 'settings.app_env.lower() in {"development", "test"}' in auth and 'DEMO_ACCOUNT_ENABLED=true' in env and 'production_demo_account_must_be_disabled' in read(root, "scripts/config_doctor.py")))
     checks.append(check("login_throttling", all(x in auth for x in ("enforce_login_throttle", "record_login_failure", "locked_until"))))
     checks.append(check("revocable_sessions_and_refresh_rotation", all(x in auth for x in ("validate_session_payload", "refresh_token_hash", "next_refresh", "revoked_at"))))
     checks.append(check("browser_tokens_session_scoped", "sessionStorage.getItem('dv_enterprise_token')" in frontend_api and "localStorage.getItem('dv_enterprise_token')" not in page + frontend_api))
@@ -98,6 +101,12 @@ def main() -> int:
             "severity": "high",
             "status": "ci_validation_required",
             "description": "pip-audit, npm audit, Trivy image/filesystem scan and Conftest must pass against the exact release build in CI.",
+        },
+        {
+            "id": "R-PASSWORD-LENGTH",
+            "severity": "medium",
+            "status": "accepted_product_policy",
+            "description": "The product minimum is 8 characters by product decision. For password-only production authentication, configure a longer minimum or require MFA according to the organization's policy.",
         },
     ]
     payload = {

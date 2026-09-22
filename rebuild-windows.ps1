@@ -20,6 +20,10 @@ Write-Host "Construction v$version (api + worker + web + sandbox)..." -Foregroun
 docker compose build --no-cache api worker web sandbox
 Assert-LastExit "docker compose build"
 
+Write-Host "Validation des dépendances Python dans l’image API fraîchement construite..." -ForegroundColor Yellow
+docker compose run --rm --no-deps api python -c "import fastapi,pydantic_settings,sqlalchemy,cryptography; from app.core.config import get_settings; s=get_settings(); print('Runtime Python OK - pydantic-settings disponible - DataVision', s.app_name)"
+Assert-LastExit "runtime Python conteneurisé"
+
 Write-Host "Démarrage de la stack..." -ForegroundColor Yellow
 docker compose up -d
 Assert-LastExit "docker compose up"

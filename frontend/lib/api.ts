@@ -22,7 +22,7 @@ async function refreshEnterpriseTokens() {
   if (!refresh) return null;
   if (!enterpriseRefreshPromise) {
     enterpriseRefreshPromise = fetch(`${API}/auth/refresh`, {
-      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({refresh_token: refresh}),
+      method: 'POST', credentials: 'include', headers: {'Content-Type':'application/json'}, body: JSON.stringify({refresh_token: refresh}),
     }).then(async res => {
       if (!res.ok) throw new Error('Session expirée');
       const body = await res.json();
@@ -35,12 +35,12 @@ async function refreshEnterpriseTokens() {
 }
 
 async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
-  let res = await fetch(input, { ...init, headers: enterpriseContextHeaders(init) });
+  let res = await fetch(input, { ...init, credentials: init.credentials ?? 'include', headers: enterpriseContextHeaders(init) });
   const target = String(input);
   if (res.status === 401 && typeof window !== 'undefined' && !target.includes('/auth/refresh') && !target.includes('/auth/login') && !target.includes('/auth/bootstrap')) {
     try {
       const refreshed = await refreshEnterpriseTokens();
-      if (refreshed) { const headers=enterpriseContextHeaders(init); headers.set('Authorization',`Bearer ${refreshed.access_token}`); res = await fetch(input, { ...init, headers }); }
+      if (refreshed) { const headers=enterpriseContextHeaders(init); headers.set('Authorization',`Bearer ${refreshed.access_token}`); res = await fetch(input, { ...init, credentials: init.credentials ?? 'include', headers }); }
     } catch {
       sessionStorage.removeItem('dv_enterprise_token');
       sessionStorage.removeItem('dv_enterprise_refresh');
@@ -526,8 +526,17 @@ export async function getEnterpriseAuthStatus() {
   return parse<any>(await apiFetch(`${API}/auth/status`), 'Statut d’authentification indisponible');
 }
 
-export async function bootstrapEnterprise(payload: { email:string; password:string; display_name:string; organization_name:string; setup_secret?:string }) {
+export async function beginFirstRunSetup() {
+  return parse<any>(await apiFetch(`${API}/auth/setup-session`, { method:'POST' }), 'Initialisation locale indisponible');
+}
+
+export async function bootstrapEnterprise(payload: { email:string; password:string; display_name:string; organization_name:string }) {
+  await beginFirstRunSetup();
   return parse<any>(await apiFetch(`${API}/auth/bootstrap`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }), 'Initialisation Entreprise impossible');
+}
+
+export async function registerEnterprise(payload: { email:string; password:string; display_name:string; organization_name?:string }) {
+  return parse<any>(await apiFetch(`${API}/auth/register`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }), 'Inscription impossible');
 }
 
 export async function loginEnterprise(payload: { email:string; password:string }) {

@@ -10,7 +10,7 @@ from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / 'deliverables' / 'documentation'
+OUT = ROOT / 'docs' / 'deliverables' / 'documentation'
 OUT.mkdir(parents=True, exist_ok=True)
 VERSION = (ROOT / 'VERSION').read_text(encoding='utf-8').strip()
 DOCS = [

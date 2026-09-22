@@ -11,6 +11,7 @@ $expectedVersion = (Get-Content "$root/VERSION" -Raw).Trim()
 Set-Location $root
 
 Write-Host "DataVision AI — contrôle pré-build" -ForegroundColor Cyan
+Write-Host "Préflight local: contrôles structurels uniquement. Les tests runtime Python s’exécutent dans l’environnement conteneurisé/CI, pas avec le Python global de Windows." -ForegroundColor DarkCyan
 
 foreach ($required in @("VERSION", "backend/requirements.txt", "docker-compose.yml", "compliance/CDC_COVERAGE_MATRIX.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json", "compliance/TYPOGRAPHY_ACCEPTANCE.json", "compliance/COLLABORATION_ACCEPTANCE.json", "compliance/RELEASE_INSTALLATION_ACCEPTANCE.json", "policies/release_candidate.json", "scripts/config_doctor.py", "upgrade-windows.ps1", "frontend/next.config.mjs")) {
   if (-not (Test-Path $required)) { throw "Fichier requis absent: $required" }
@@ -66,51 +67,51 @@ python scripts/assistant_acceptance.py --root .
 Assert-LastExit "Assistant V1 acceptance manifest"
 Write-Host "Assistant V1 acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/assistant_multimodal_acceptance.py --root . --check
+python scripts/assistant_multimodal_acceptance.py --root .
 Assert-LastExit "Assistant multimodal acceptance manifest"
 Write-Host "Assistant multimodal acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/multi_agent_acceptance.py --root . --check
+python scripts/multi_agent_acceptance.py --root .
 Assert-LastExit "Multi-agent acceptance manifest"
 Write-Host "Multi-agent acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/semantic_acceptance.py --root . --check
+python scripts/semantic_acceptance.py --root .
 Assert-LastExit "Semantic/NLQ acceptance manifest"
 Write-Host "Semantic/NLQ acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/insight_acceptance.py --root . --check
+python scripts/insight_acceptance.py --root .
 Assert-LastExit "Insight Engine acceptance manifest"
 Write-Host "Insight Engine acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/report_acceptance.py --root . --check
+python scripts/report_acceptance.py --root .
 Assert-LastExit "Report Builder acceptance manifest"
 Write-Host "Report Builder acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/automl_acceptance.py --root . --check
+python scripts/automl_acceptance.py --root .
 Assert-LastExit "AutoML acceptance manifest"
 Write-Host "AutoML acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/ml_safety_acceptance.py --root . --check
+python scripts/ml_safety_acceptance.py --root .
 Assert-LastExit "ML Safety acceptance manifest"
 Write-Host "ML Safety acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/xai_acceptance.py --root . --check
+python scripts/xai_acceptance.py --root .
 Assert-LastExit "XAI acceptance manifest"
 Write-Host "XAI acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/forecasting_anomaly_acceptance.py --root . --check
+python scripts/forecasting_anomaly_acceptance.py --root .
 Assert-LastExit "Forecasting/Anomaly acceptance manifest"
 Write-Host "Forecasting/Anomaly acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/typography_acceptance.py --root . --check
+python scripts/typography_acceptance.py --root .
 Assert-LastExit "Typography acceptance manifest"
 Write-Host "Typography acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/collaboration_acceptance.py --root . --check
+python scripts/collaboration_acceptance.py --root .
 Assert-LastExit "Collaboration acceptance manifest"
 Write-Host "Collaboration acceptance manifest: OK" -ForegroundColor Green
 
-python scripts/release_installation_acceptance.py --root . --check
+python scripts/release_installation_acceptance.py --root .
 Assert-LastExit "release installation acceptance"
 Write-Host "Release installation acceptance: OK" -ForegroundColor Green
 

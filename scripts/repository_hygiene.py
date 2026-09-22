@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 from pathlib import Path
 
 ALLOWED_ROOT_FILES = {
@@ -25,12 +26,33 @@ ALLOWED_ROOT_FILES = {
     'upgrade-windows.ps1',
 }
 LEGACY_PATTERNS = ('MERGE_MANIFEST_V', 'MIGRATION_FROM_')
+LOCAL_ONLY_ROOT_FILES = {'.env'}
+
+
+def _git_tracks(root: Path, name: str) -> bool:
+    if not (root / '.git').exists():
+        return False
+    try:
+        result = subprocess.run(
+            ['git', '-C', str(root), 'ls-files', '--error-unmatch', '--', name],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+            timeout=5,
+        )
+        return result.returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
 
 
 def check(root: Path) -> list[str]:
     errors: list[str] = []
     for path in root.iterdir():
         if not path.is_file():
+            continue
+        if path.name in LOCAL_ONLY_ROOT_FILES:
+            if _git_tracks(root, path.name):
+                errors.append(f'Sensitive local file must not be tracked: {path.name}')
             continue
         if path.name.startswith(LEGACY_PATTERNS):
             errors.append(f'Historical file must not live at repository root: {path.name}')

@@ -1,6 +1,6 @@
 {
   "product": "DataVision AI",
-  "product_version": "2.81.0",
+  "product_version": "2.81.6",
   "stage": "release_candidate",
   "feature_freeze": true,
   "supported_direct_upgrade_from": [
@@ -14,6 +14,6 @@
     "uat"
   ],
   "external_signoff_status": "pending",
-  "notes": "Security & documentation freeze after v2.80 RC. No production-stable claim until target infrastructure, UAT and independent security evidence are verified.",
+  "notes": "Authentication hotfix on the v2.81 security/documentation freeze: explicit OpenSSL scrypt memory budget, development demo account auto-provisioning, and an alternate existing-account login path from first-run setup. Browser bootstrap remains automatic/local-only and production demo provisioning remains disabled. No production-stable claim until target infrastructure, UAT and independent security evidence are verified.",
   "required_security_gate": "SECURITY_DOCUMENTATION_ACCEPTANCE"
 }

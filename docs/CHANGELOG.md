@@ -1,5 +1,66 @@
 # Changelog
 
+## 2.81.6 — Single Authentication Entry Point
+
+- suppression du formulaire de connexion historique intégré à **Gouvernance & sécurité** ;
+- l’écran standard **Connexion / Inscription** devient l’unique porte d’entrée de l’interface web ;
+- suppression du contournement frontend lié à `local_dev_enabled` : même en développement, l’interface demande une session ;
+- Gouvernance réutilise exclusivement la session DataVision existante et ne redemande plus les identifiants ;
+- en cas de session expirée, les jetons locaux sont nettoyés et l’application retourne vers l’écran d’authentification standard ;
+- le SSO, le MFA, le compte de démonstration et l’auto-inscription restent accessibles depuis l’écran d’authentification unique.
+
+## 2.81.5 — Standard Login / Sign-up Authentication
+
+- Écran d’authentification standard à deux modes : **Connexion** et **Inscription**.
+- Bascule immédiate dans les deux sens sans quitter la page.
+- Nouvel endpoint `POST /api/v1/auth/register` pour l’auto-inscription multi-tenant.
+- Chaque inscription crée une organisation et un workspace isolés dont l’utilisateur est propriétaire.
+- `SELF_REGISTRATION_ENABLED` permet de désactiver l’inscription libre sans désactiver la connexion.
+- Le bootstrap sécurisé de première installation reste disponible lorsque l’auto-inscription est désactivée.
+- Le compte de démonstration local et les mécanismes MFA/SSO existants sont conservés.
+
+## 2.81.4 — Windows Preflight Runtime Isolation Hotfix
+
+- correction du préflight Windows qui exécutait certains tests `pytest` avec le Python global de Windows ;
+- suppression de cette dépendance implicite aux paquets backend installés sur l’hôte (`pydantic-settings`, FastAPI, SQLAlchemy, etc.) ;
+- les contrôles pré-build locaux valident désormais les manifests, fichiers et contrats statiques sans importer l’application backend ;
+- ajout d’un smoke test Python **dans l’image API fraîchement construite** avant migration/démarrage ;
+- l’upgrade échoue désormais proprement si l’image conteneurisée ne contient pas `pydantic_settings`, `fastapi`, `sqlalchemy` ou `cryptography` ;
+- aucun `pip install` backend n’est requis sur Windows pour installer ou mettre à jour DataVision.
+
+## 2.81.3 — Authentication Recovery & Scrypt Memory Hotfix
+
+- correction de l’erreur OpenSSL `[digital envelope routines] memory limit exceeded` lors du hachage scrypt avec `N=131072` grâce à un budget mémoire explicite et configurable ;
+- ajout de `PASSWORD_SCRYPT_MAXMEM_MB=256` avec marge calculée à partir du coût scrypt ;
+- compte test activé par défaut en développement et créé automatiquement s’il n’existe pas, tout en restant forcé hors service en production ;
+- ajout d’une alternative **Vous avez déjà un compte ? Se connecter** directement depuis la première configuration ;
+- retour possible vers **Configurer DataVision** depuis l’écran de connexion tant que le premier propriétaire n’est pas créé ;
+- maintien de l’icône œil sur les champs de mot de passe et du minimum de 8 caractères ;
+- tests de non-régression ajoutés pour le coût scrypt par défaut, le compte test et le basculement configuration/connexion.
+- suppression automatique de l’ancienne variable inutilisée `BOOTSTRAP_SECRET` lors de l’installation ou de l’upgrade Windows.
+
+## 2.81.2 — Password Visibility & Development Test Account
+
+- ajout d’une icône œil accessible sur les champs de mot de passe de connexion, première configuration et provisionnement des membres ;
+- ajout d’un compte test local `demo@datavision.local` avec mot de passe `DataVision8!` et rôle `admin` ;
+- bouton de connexion automatique au compte test sur l’écran d’authentification ;
+- compte test configurable par variables d’environnement et strictement limité à `development`/`test` ;
+- compte test impossible à provisionner en production, même si l’option est activée par erreur ;
+- le compte test ne bloque pas la création du premier propriétaire ;
+- documentation, contrôles de configuration, gates sécurité et tests mis à jour.
+
+## 2.81.1 — First-run Authentication UX Hotfix
+
+- suppression du champ `BOOTSTRAP_SECRET` de l'interface utilisateur ;
+- assistant de première configuration local : nom, email, organisation, mot de passe et confirmation ;
+- session d'initialisation interne aléatoire, courte, HttpOnly et `SameSite=Strict` ;
+- verrouillage automatique du bootstrap dès que le premier propriétaire existe ;
+- bootstrap navigateur refusé sur une instance distante ; création serveur disponible via `python -m app.ops.bootstrap_owner` ;
+- longueur minimale du mot de passe fixée à 8 caractères ; scrypt renforcé conservé ;
+- documentation, gates et tests mis à jour ;
+- restauration des preuves `docs/data/` requises par les gates production ;
+- `repository_hygiene` tolère un `.env` local non versionné tout en refusant un `.env` suivi par Git.
+
 ## 2.81.0 — Security & Documentation Freeze
 
 - authentification obligatoire par défaut (`AUTH_MODE=required`) ;

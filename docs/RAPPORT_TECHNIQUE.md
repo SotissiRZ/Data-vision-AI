@@ -1,9 +1,11 @@
-# Rapport technique - DataVision AI v2.81.0
+# Rapport technique - DataVision AI v2.81.6
 
 ## 1. Objet du document
-Ce rapport décrit l'architecture, les composants, les flux, les mécanismes de gouvernance, les choix de sécurité, les capacités analytiques et les garanties de reproductibilité de DataVision AI v2.81.0.
+Ce rapport décrit l'architecture, les composants, les flux, les mécanismes de gouvernance, les choix de sécurité, les capacités analytiques et les garanties de reproductibilité de DataVision AI v2.81.6.
 
-La v2.81.0 est le jalon **Security & Documentation Freeze** qui précède la préparation de DataVision AI v3.0.0. Elle consolide l'authentification obligatoire, corrige les derniers défauts CI identifiés, renforce la chaîne de dépendances et formalise la documentation de production.
+La v2.81.6 consolide l’authentification web autour d’un point d’entrée unique avant l’application. Le formulaire historique intégré à Gouvernance & sécurité est supprimé : Connexion, Inscription, SSO, MFA et compte de démonstration passent tous par l’écran d’authentification standard.
+
+Le mode backend `local_dev` reste disponible pour les tests explicites, mais il ne contourne plus l’écran de connexion de l’interface web. Une session expirée provoque le nettoyage des jetons locaux et le retour vers l’authentification standard.
 
 ## 2. Finalité du produit
 DataVision AI est une plateforme intégrée pour les professionnels de la donnée. Elle vise à regrouper dans un même environnement :
@@ -96,10 +98,11 @@ En v2.81 :
 - les datasets, notebooks et outils assistant refusent l'accès anonyme ;
 - un Bearer token valide et un workspace autorisé sont requis pour les surfaces gouvernées ;
 - `AUTH_MODE=local_dev` existe uniquement pour un développement local volontaire et n'est pas accepté selon la sémantique production ;
-- le bootstrap initial est protégé par `BOOTSTRAP_SECRET` lorsque l'authentification est requise ;
+- le premier démarrage local utilise une session d'initialisation interne, courte et HttpOnly ; aucun secret bootstrap n'est demandé à l'utilisateur ;
+- une instance distante ne peut pas être réclamée depuis le navigateur : le premier owner y est créé depuis la console serveur ;
 - les sessions sont persistées et révocables ;
 - les refresh tokens sont rotatifs ;
-- les nouveaux mots de passe utilisent une longueur minimale de 15 caractères par défaut et un scrypt renforcé (`N=2^17, r=8, p=1`) ;
+- les nouveaux mots de passe utilisent une longueur minimale produit de 8 caractères et un scrypt renforcé (`N=2^17, r=8, p=1`) ; pour un déploiement sans MFA, une politique plus longue reste recommandée ;
 - WebAuthn/MFA, OIDC/SSO et SCIM sont disponibles pour les environnements concernés.
 
 ## 13. RBAC et isolation workspace
@@ -135,12 +138,12 @@ DataVision expose health/live, startup et readiness. Le cockpit opérationnel co
 ## 18. Résultats de validation v2.81
 Validation locale du gel sécurité/documentation :
 
-- 660 tests collectés au total ;
-- 659 passés ;
+- 664 tests collectés au total ;
+- 663 passés ;
 - 1 ignoré ;
 - 0 échec fonctionnel ;
-- Security Documentation Acceptance : 11/11 ;
-- Security Hardening Static Audit : 19/19 ;
+- Security Documentation Acceptance : 13/13 ;
+- Security Hardening Static Audit : 20/20 ;
 - Repository Hygiene : OK ;
 - Dependency Compatibility : OK ;
 - Production Baseline : OK ;
@@ -159,4 +162,4 @@ Aucune suite automatisée ne permet d'affirmer « zéro vulnérabilité ». Les 
 - validation de l'infrastructure cible.
 
 ## 20. Références sécurité
-Le gel v2.81 s'aligne notamment sur NIST SP 800-63B pour la longueur minimale des mots de passe utilisés comme facteur unique et sur OWASP Password Storage Cheat Sheet pour le profil scrypt N=2^17, r=8, p=1. Le plan de vérification applicative s'appuie sur OWASP ASVS 5.0. Ces références ne constituent pas une certification de sécurité et ne remplacent pas un pentest de l'environnement cible.
+La politique produit fixe un minimum de 8 caractères. NIST SP 800-63B recommande 15 caractères lorsqu'un mot de passe est utilisé comme facteur unique ; DataVision recommande donc une politique plus longue ou MFA pour les déploiements concernés. Le stockage reste aligné sur le profil scrypt OWASP N=2^17, r=8, p=1. Le plan de vérification applicative s'appuie sur OWASP ASVS 5.0. Ces références ne constituent pas une certification de sécurité et ne remplacent pas un pentest de l'environnement cible.

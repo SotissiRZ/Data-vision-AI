@@ -1,17 +1,29 @@
-# Guide utilisateur - DataVision AI v2.81.0
+# Guide utilisateur - DataVision AI v2.81.6
 
 ## 1. Accès à DataVision
-DataVision v2.81 demande une authentification par défaut. L'écran de connexion est donc normal et attendu.
+DataVision v2.81.6 demande une authentification par défaut. L'écran de connexion est donc normal et attendu.
 
 ### Première utilisation
-Si aucun compte n'existe encore, l'administrateur réalise une initialisation unique du propriétaire. Selon la configuration, il doit fournir le `BOOTSTRAP_SECRET` généré lors de l'installation.
+Si aucun propriétaire n'existe encore, DataVision affiche automatiquement l'assistant de première configuration. L'utilisateur renseigne uniquement son nom, son email, son organisation, son mot de passe et sa confirmation. Aucun `BOOTSTRAP_SECRET` n'est demandé dans l'interface.
 
-Après le bootstrap :
-1. connectez-vous avec le compte propriétaire ;
+Même pendant cette première configuration, le lien **Vous avez déjà un compte ? Se connecter** permet d'ouvrir immédiatement le formulaire de connexion. Il est donc possible d'utiliser un compte déjà présent (notamment le compte test local) sans terminer d'abord la création du propriétaire.
+
+Après cette première configuration :
+1. le compte propriétaire est créé et la session est ouverte ;
 2. sélectionnez le workspace ;
 3. créez les utilisateurs/membres nécessaires ;
 4. attribuez le rôle minimal adapté à chacun ;
 5. activez MFA/WebAuthn selon la politique de l'organisation.
+
+Les champs de mot de passe proposent une **icône œil** permettant d’afficher ou masquer temporairement la valeur saisie. Cette action ne modifie pas le mot de passe et reste locale au navigateur.
+
+### Compte test en développement
+Sur l’installation locale de développement fournie avec la release, un compte de démonstration est activé par défaut et créé automatiquement s’il n’existe pas :
+- email : `demo@datavision.local` ;
+- mot de passe : `DataVision8!` ;
+- rôle : `admin` dans un workspace de démonstration isolé.
+
+L’écran d’authentification affiche alors un bouton **Se connecter avec le compte test**. Ce compte sert uniquement aux essais et à la démonstration ; DataVision refuse de le provisionner lorsque `APP_ENV=production`. Le compte test n’empêche pas de créer ensuite le véritable compte propriétaire.
 
 ## 2. Rôles
 Les fonctionnalités visibles dépendent du rôle :
@@ -114,3 +126,7 @@ Vérifiez les credentials, le réseau, TLS et les permissions de la source. Ne c
 
 ## 9. Déconnexion
 Utilisez **Déconnexion** à la fin d'une session. Pour un incident ou un appareil perdu, utilisez la révocation de sessions / « déconnexion de toutes les sessions ».
+
+## Connexion et inscription
+
+L’écran d’authentification propose deux modes standard : **Connexion** et **Inscription**. Un utilisateur peut passer de l’un à l’autre directement depuis les onglets ou les liens sous le formulaire. **Gouvernance & sécurité ne contient plus de second formulaire de connexion** : toutes les vues réutilisent la même session DataVision. Lorsque l’inscription est autorisée, la création d’un compte crée également une organisation et un workspace principal isolés. L’administrateur peut désactiver l’inscription libre avec `SELF_REGISTRATION_ENABLED=false` sans empêcher les comptes existants de se connecter.

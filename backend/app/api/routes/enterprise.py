@@ -3,16 +3,15 @@ from __future__ import annotations
 from typing import Any
 from pathlib import Path
 import asyncio
-import secrets
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
 
 from app.services.auth_service import (
-    bootstrap, decode_token, get_user, login, session_payload, has_permission, workspace_role,
+    bootstrap, register_account, decode_token, get_user, login, session_payload, has_permission, workspace_role,
     validate_session_payload, refresh_authenticated_session, list_user_sessions, revoke_user_session, revoke_all_user_sessions,
     enforce_login_throttle, record_login_failure, clear_login_failures,
 )
@@ -220,10 +219,16 @@ class FailoverConfirmRequest(BaseModel):
 
 class BootstrapRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
-    password: str = Field(min_length=15, max_length=200)
+    password: str = Field(min_length=8, max_length=200)
     display_name: str = Field(default="Administrateur", min_length=1, max_length=120)
     organization_name: str = Field(default="Mon organisation", min_length=1, max_length=160)
-    setup_secret: str = Field(default="", max_length=500)
+
+
+class RegisterRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=8, max_length=200)
+    display_name: str = Field(min_length=1, max_length=120)
+    organization_name: str = Field(default="", max_length=160)
 
 
 class LoginRequest(BaseModel):
@@ -375,7 +380,7 @@ class MemberRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     role: str = Field(pattern="^(owner|admin|data_scientist|analyst|viewer)$")
     display_name: str | None = Field(default=None, max_length=120)
-    password: str | None = Field(default=None, min_length=15, max_length=200)
+    password: str | None = Field(default=None, min_length=8, max_length=200)
 
 
 class BindDatasetRequest(BaseModel):
@@ -598,32 +603,88 @@ def _handle(exc: Exception):
 
 
 @router.get("/auth/status")
-def auth_status():
+def auth_status(request: Request):
     settings = get_settings()
-    from app.services.auth_service import user_count
+    from app.services.auth_service import ensure_demo_account, owner_count
+    from app.services.first_run_setup import local_first_run_allowed
+    needs_bootstrap = owner_count() == 0
+    demo_account = ensure_demo_account()
     return {
         "authentication_required": settings.auth_mode != "local_dev" or settings.app_env.lower() == "production",
-        "bootstrap_required": user_count() == 0,
+        "bootstrap_required": needs_bootstrap,
+        "bootstrap_available": bool(needs_bootstrap and local_first_run_allowed(request)),
+        "bootstrap_mode": settings.first_run_setup_mode,
         "local_dev_enabled": settings.auth_mode == "local_dev" and settings.app_env.lower() != "production",
         "mfa_policy": settings.mfa_policy,
         "password_min_length": max(8, int(settings.password_min_length)),
+        "registration_enabled": bool(settings.self_registration_enabled),
+        "demo_account": demo_account or {"enabled": False},
     }
 
 
+@router.post("/auth/setup-session")
+def auth_setup_session(request: Request):
+    from app.services.auth_service import owner_count
+    from app.services.first_run_setup import COOKIE_NAME, SETUP_TTL_SECONDS, issue_setup_token, local_first_run_allowed
+    if owner_count() > 0:
+        raise HTTPException(status_code=409, detail="DataVision est déjà initialisé. Utilisez la connexion.")
+    if not local_first_run_allowed(request):
+        raise HTTPException(
+            status_code=403,
+            detail="L'initialisation depuis le navigateur est réservée à une installation locale. Sur un serveur distant, créez le premier propriétaire avec la commande d'administration côté serveur.",
+        )
+    token = issue_setup_token()
+    response = JSONResponse({"ready": True, "expires_in": SETUP_TTL_SECONDS})
+    response.set_cookie(
+        COOKIE_NAME,
+        token,
+        max_age=SETUP_TTL_SECONDS,
+        httponly=True,
+        secure=request.url.scheme == "https",
+        samesite="strict",
+        path="/",
+    )
+    return response
+
+
 @router.post("/auth/bootstrap")
-def auth_bootstrap(req: BootstrapRequest):
+def auth_bootstrap(req: BootstrapRequest, request: Request):
+    try:
+        from app.services.auth_service import owner_count
+        from app.services.first_run_setup import COOKIE_NAME, invalidate_setup_token, local_first_run_allowed, validate_setup_token
+        if owner_count() > 0:
+            raise ValueError("Le bootstrap a déjà été effectué. Utilisez la connexion.")
+        settings = get_settings()
+        dev_bypass = settings.auth_mode == "local_dev" and settings.app_env.lower() != "production"
+        if not dev_bypass:
+            if not local_first_run_allowed(request):
+                raise PermissionError("L'initialisation navigateur n'est autorisée que depuis l'installation locale DataVision.")
+            if not validate_setup_token(request.cookies.get(COOKIE_NAME)):
+                raise PermissionError("Session d'initialisation absente ou expirée. Rechargez la page et réessayez.")
+        out = bootstrap(req.email, req.password, req.display_name, req.organization_name)
+        invalidate_setup_token()
+        record_event("auth.bootstrap", user_id=out["user"]["id"], organization_id=out["organization_id"], workspace_id=out["workspace_id"], resource_type="user", resource_id=out["user"]["id"], payload={"email": req.email})
+        return out
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/auth/register")
+def auth_register(req: RegisterRequest, request: Request):
     try:
         settings = get_settings()
-        bootstrap_required = settings.auth_mode == "required" or settings.app_env.lower() == "production"
-        configured = (settings.bootstrap_secret or "").strip()
-        unsafe = not configured or configured.lower().startswith(("change-", "change-this", "changeme", "example"))
-        if bootstrap_required:
-            if unsafe:
-                raise PermissionError("BOOTSTRAP_SECRET doit être configuré avec une valeur forte avant l'initialisation.")
-            if not secrets.compare_digest(req.setup_secret, configured):
-                raise PermissionError("Secret d'initialisation invalide.")
-        out = bootstrap(req.email, req.password, req.display_name, req.organization_name)
-        record_event("auth.bootstrap", user_id=out["user"]["id"], organization_id=out["organization_id"], workspace_id=out["workspace_id"], resource_type="user", resource_id=out["user"]["id"], payload={"email": req.email})
+        if not settings.self_registration_enabled:
+            raise PermissionError("L’inscription libre est désactivée sur cette installation.")
+        out = register_account(req.email, req.password, req.display_name, req.organization_name)
+        record_event(
+            "auth.register",
+            user_id=out["user"]["id"],
+            organization_id=out["organization_id"],
+            workspace_id=out["workspace_id"],
+            resource_type="user",
+            resource_id=out["user"]["id"],
+            payload={"email": req.email},
+        )
         return out
     except Exception as exc:
         _handle(exc)

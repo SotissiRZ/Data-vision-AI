@@ -19,12 +19,14 @@ def main() -> int:
     root = Path(args.root).resolve()
     version = (root/'VERSION').read_text().strip() if (root/'VERSION').is_file() else ''
     checks = [
-        ('version_281', version == '2.81.0'),
+        ('version_2816', version == '2.81.6'),
         ('auth_required_default', contains(root/'backend/app/core/config.py', 'auth_mode: str = "required"')),
+        ('first_run_setup_local_only', contains(root/'backend/app/services/first_run_setup.py', 'local_first_run_allowed', 'COOKIE_NAME = "dv_first_run_setup"') and contains(root/'frontend/app/page.tsx', 'Inscription', 'Confirmer le mot de passe', 'registerEnterprise')), 
         ('local_dev_guarded', contains(root/'backend/app/services/tenant_access.py', 'settings.auth_mode == "local_dev"', 'settings.app_env.lower() != "production"')),
         ('browser_tokens_session_scoped', not contains(root/'frontend/app/page.tsx', "localStorage.setItem('dv_enterprise_token'") and contains(root/'frontend/app/page.tsx', "sessionStorage.setItem('dv_enterprise_token'")),
         ('api_docs_disabled_default', contains(root/'backend/app/core/config.py', 'api_docs_enabled: bool = False')),
-        ('password_policy_hardened', contains(root/'backend/app/core/config.py', 'password_min_length: int = 15', 'password_scrypt_n: int = 131072')),
+        ('password_policy_configured', contains(root/'backend/app/core/config.py', 'password_min_length: int = 8', 'password_scrypt_n: int = 131072')),
+        ('password_visibility_and_demo_account', contains(root/'frontend/app/page.tsx', 'password-eye', 'Se connecter avec le compte test') and contains(root/'backend/app/services/auth_service.py', 'demo_account_enabled', 'settings.app_env.lower() in {"development", "test"}') and contains(root/'.env.example', 'DEMO_ACCOUNT_ENABLED=true', 'DEMO_ACCOUNT_EMAIL=demo@datavision.local')),
         ('dependency_compatibility', contains(root/'backend/requirements.txt', 'boto3==1.42.22', 'redshift-connector==2.1.16')),
         ('rego_safe_capability_rule', contains(root/'policies/kubernetes/datavision.rego', 'drops_all_capabilities(c)') and not contains(root/'policies/kubernetes/datavision.rego', 'not c.securityContext.capabilities.drop[_] == "ALL"')),
         ('formal_documentation', all((root/p).is_file() for p in ['docs/RAPPORT_TECHNIQUE.md','docs/GUIDE_UTILISATEUR.md','docs/GUIDE_DEPLOIEMENT.md','docs/RAPPORT_SECURITE.md','docs/GUIDE_EXPLOITATION.md'])),

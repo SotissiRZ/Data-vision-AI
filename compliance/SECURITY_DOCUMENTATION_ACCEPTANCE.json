@@ -1,16 +1,20 @@
 {
   "gate": "SECURITY_DOCUMENTATION_ACCEPTANCE",
-  "version": "2.81.0",
-  "passed": 11,
-  "total": 11,
+  "version": "2.81.6",
+  "passed": 13,
+  "total": 13,
   "status": "pass",
   "checks": [
     {
-      "id": "version_281",
+      "id": "version_2816",
       "passed": true
     },
     {
       "id": "auth_required_default",
+      "passed": true
+    },
+    {
+      "id": "first_run_setup_local_only",
       "passed": true
     },
     {
@@ -26,7 +30,11 @@
       "passed": true
     },
     {
-      "id": "password_policy_hardened",
+      "id": "password_policy_configured",
+      "passed": true
+    },
+    {
+      "id": "password_visibility_and_demo_account",
       "passed": true
     },
     {

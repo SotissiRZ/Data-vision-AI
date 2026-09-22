@@ -4,15 +4,15 @@ fullnameOverride: ""
 images:
   api:
     repository: datavision-api
-    tag: "2.69.0"
+    tag: "2.81.6"
     pullPolicy: IfNotPresent
   web:
     repository: datavision-web
-    tag: "2.69.0"
+    tag: "2.81.6"
     pullPolicy: IfNotPresent
   sandbox:
     repository: datavision-sandbox
-    tag: "2.69.0"
+    tag: "2.81.6"
     pullPolicy: IfNotPresent
   otelCollector:
     repository: otel/opentelemetry-collector-contrib
@@ -41,6 +41,7 @@ service:
 
 config:
   appEnv: production
+  demoAccountEnabled: false
   frontendUrl: https://datavision.example.com
   corsOrigins: https://datavision.example.com
   databaseUrl: postgresql+psycopg://datavision:CHANGE_ME@postgres.example.internal:5432/datavision

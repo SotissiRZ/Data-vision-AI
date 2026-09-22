@@ -13,7 +13,7 @@ import {
   getDashboards, getDashboardDefinition, saveDashboardDefinition, deleteDashboardDefinition, previewDashboard,
   getSemanticModel, saveSemanticModel, evaluateSemanticMetric, getMetricPulse, getSemanticTableCatalog, validateSemanticModel, querySemanticMetric, getTrustCenter, runModelWhatIf, runModelSensitivity, runRootCauseAnalysis, optimizeModelScenarios,
   getProactiveSummary, getProactiveWatches, autoConfigureProactiveWatches, scanProactiveSignals, getProactiveInbox, updateProactiveAlertStatus,
-  bootstrapEnterprise, loginEnterprise, getEnterpriseAuthStatus, getEnterpriseSession, getEnterprisePreferences, saveEnterprisePreferences, getEnterpriseStatus, getEntrepriseReadiness, enforceEntreprisePrivateAI, createEnterpriseWorkspace, getEnterpriseWorkspace, addWorkspaceMember, bindWorkspaceDataset, saveWorkspacePolicy, getAuditEvents, getEnterpriseJobs, submitEnterpriseJob, cancelEnterpriseJob, getGovernedPreview, getGovernanceControlPlane, captureGovernanceSnapshot, getGovernanceSnapshots,
+  bootstrapEnterprise, registerEnterprise, loginEnterprise, getEnterpriseAuthStatus, getEnterpriseSession, getEnterprisePreferences, saveEnterprisePreferences, getEntrepriseReadiness, enforceEntreprisePrivateAI, createEnterpriseWorkspace, getEnterpriseWorkspace, addWorkspaceMember, bindWorkspaceDataset, saveWorkspacePolicy, getAuditEvents, getEnterpriseJobs, submitEnterpriseJob, cancelEnterpriseJob, getGovernedPreview, getGovernanceControlPlane, captureGovernanceSnapshot, getGovernanceSnapshots,
   getEnterpriseAuthSessions, revokeEnterpriseAuthSession, logoutAllEnterpriseSessions, getEnterpriseMFAStatus, beginEnterpriseWebAuthnRegistration, verifyEnterpriseWebAuthnRegistration, disableEnterpriseWebAuthnCredential, verifyEnterpriseWebAuthnLogin, getPublicOIDCProviders, startEnterpriseOIDC, exchangeEnterpriseOIDC,
   getWorkspaceOIDCProviders, createWorkspaceOIDCProvider, disableWorkspaceOIDCProvider, getWorkspaceSecrets, createWorkspaceSecret, rotateWorkspaceSecret, testWorkspaceSecret,
   getWorkspacePlugins, installWorkspacePlugin, updateWorkspacePlugin, deleteWorkspacePlugin, testWorkspacePlugin, syncWorkspacePlugin, getWorkspacePluginDetail,
@@ -495,7 +495,7 @@ const setReadingMode = (mode:AccessibilityMode) => {
   setUiZoom(preset);
 };
 if(!authResolved) return <div className="auth-loading" role="status">Vérification de la session DataVision…</div>;
-if(!enterpriseBadge && !authStatus?.local_dev_enabled) return <AuthenticationGate status={authStatus} onAuthenticated={()=>window.dispatchEvent(new Event('datavision-enterprise-session'))}/>;
+if(!enterpriseBadge) return <AuthenticationGate status={authStatus} onAuthenticated={()=>window.dispatchEvent(new Event('datavision-enterprise-session'))}/>;
 return <main className="app-shell professional-shell">
     <a className="skip-link" href="#main-content">{tr('a11y.skipToContent')}</a>
     <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{tr('a11y.viewChanged',undefined,{view:localizedViewLabel(view)})}</div>
@@ -2831,16 +2831,28 @@ function PluginCenter({setError,setView}:{setError:(s:string)=>void;setView:(v:V
   </div>;
 }
 
+function PasswordInput({value,onChange,autoComplete,placeholder,ariaLabel='Mot de passe'}:{value:string;onChange:(value:string)=>void;autoComplete?:string;placeholder?:string;ariaLabel?:string}) {
+  const [visible,setVisible]=useState(false);
+  const label=visible?'Masquer le mot de passe':'Afficher le mot de passe';
+  return <div className="password-input-wrap"><input type={visible?'text':'password'} autoComplete={autoComplete} value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} aria-label={ariaLabel}/><button type="button" className="password-eye" aria-label={label} title={label} aria-pressed={visible} onClick={()=>setVisible(v=>!v)}>{visible?<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3l18 18M10.6 10.6a2 2 0 0 0 2.8 2.8M9.9 4.2A10.7 10.7 0 0 1 12 4c5.5 0 9.5 5 9.5 8a8.8 8.8 0 0 1-2.4 4.4M6.2 6.2C3.8 7.8 2.5 10 2.5 12c0 3 4 8 9.5 8 1.5 0 2.9-.4 4.1-1"/></svg>:<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12c0-3 4-8 9.5-8s9.5 5 9.5 8-4 8-9.5 8-9.5-5-9.5-8Z"/><circle cx="12" cy="12" r="3"/></svg>}</button></div>;
+}
+
 function AuthenticationGate({status,onAuthenticated}:{status:AnyObj|null;onAuthenticated:()=>void}) {
-  const [email,setEmail]=useState('admin@datavision.local');
+  const bootstrapRequired=Boolean(status?.bootstrap_required);
+  const bootstrapAvailable=Boolean(status?.bootstrap_available);
+  const registrationEnabled=status?.registration_enabled!==false;
+  const signupAvailable=registrationEnabled||(bootstrapRequired&&bootstrapAvailable);
+  const [authMode,setAuthMode]=useState<'signup'|'login'>(()=>bootstrapRequired&&signupAvailable?'signup':'login');
+  const [email,setEmail]=useState('');
   const [password,setPassword]=useState('');
-  const [displayName,setDisplayName]=useState('Administrateur');
-  const [organizationName,setOrganizationName]=useState('DataVision Organisation');
-  const [setupSecret,setSetupSecret]=useState('');
+  const [passwordConfirm,setPasswordConfirm]=useState('');
+  const [displayName,setDisplayName]=useState('');
+  const [organizationName,setOrganizationName]=useState('');
   const [busy,setBusy]=useState(false);
   const [message,setMessage]=useState('');
   const [providers,setProviders]=useState<AnyObj[]>([]);
   useEffect(()=>{getPublicOIDCProviders().then(x=>setProviders(x.providers??[])).catch(()=>setProviders([]));},[]);
+  useEffect(()=>{if(authMode==='signup'&&!signupAvailable)setAuthMode('login');},[authMode,signupAvailable]);
   async function finishAuth(result:AnyObj){
     let r=result;
     if(r.mfa_required){
@@ -2854,38 +2866,86 @@ function AuthenticationGate({status,onAuthenticated}:{status:AnyObj|null;onAuthe
     if(r.workspace_id)localStorage.setItem('dv_enterprise_workspace',r.workspace_id);
     onAuthenticated();
   }
-  async function submit(mode:'bootstrap'|'login'){
+  async function submit(){
     setBusy(true);setMessage('');
     try{
-      const r=mode==='bootstrap'
-        ? await bootstrapEnterprise({email,password,display_name:displayName,organization_name:organizationName,setup_secret:setupSecret})
-        : await loginEnterprise({email,password});
-      await finishAuth(r);
+      if(authMode==='login'){
+        await finishAuth(await loginEnterprise({email,password}));
+        return;
+      }
+      const minimum=Math.max(8,Number(status?.password_min_length)||8);
+      if(password.length<minimum)throw new Error(`Le mot de passe doit contenir au moins ${minimum} caractères.`);
+      if(password!==passwordConfirm)throw new Error('Les mots de passe ne correspondent pas.');
+      const cleanName=displayName.trim();
+      if(!cleanName)throw new Error('Votre nom est requis.');
+      const cleanOrganization=organizationName.trim()||`Espace de ${cleanName}`;
+      const result=registrationEnabled
+        ? await registerEnterprise({email,password,display_name:cleanName,organization_name:cleanOrganization})
+        : await bootstrapEnterprise({email,password,display_name:cleanName,organization_name:cleanOrganization});
+      await finishAuth(result);
     }catch(e:unknown){setMessage(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
+  }
+  async function loginDemo(){
+    const demo=status?.demo_account;
+    if(!demo?.enabled)return;
+    const demoEmail=String(demo.email||'');
+    const demoPassword=String(demo.password||'');
+    setAuthMode('login');setBusy(true);setMessage('');setEmail(demoEmail);setPassword(demoPassword);
+    try{await finishAuth(await loginEnterprise({email:demoEmail,password:demoPassword}));}
+    catch(e:unknown){setMessage(e instanceof Error?e.message:String(e));}
+    finally{setBusy(false);}
   }
   async function startSso(providerId:string){
     if(typeof window==='undefined')return;setBusy(true);setMessage('');
     try{sessionStorage.setItem('dv_oidc_provider',providerId);const out=await startEnterpriseOIDC(providerId,window.location.origin);window.location.href=out.authorization_url;}
     catch(e:unknown){sessionStorage.removeItem('dv_oidc_provider');setMessage(e instanceof Error?e.message:String(e));setBusy(false);}
   }
-  const bootstrapRequired=Boolean(status?.bootstrap_required);
-  return <main className="auth-gate"><section className="auth-card" aria-labelledby="auth-title"><div className="auth-brand"><div className="brand-mark" aria-hidden="true">DV</div><div><b>DataVision AI</b><span>Secure Analytics Platform</span></div></div><div className="auth-copy"><span className="eyebrow">AUTHENTIFICATION OBLIGATOIRE</span><h1 id="auth-title">{bootstrapRequired?'Initialiser DataVision':'Se connecter à DataVision'}</h1><p>{bootstrapRequired?'Créez le premier compte administrateur et l’organisation principale.':'Une session authentifiée et un workspace autorisé sont requis pour accéder aux données et aux outils analytiques.'}</p></div>{message&&<div className="alert" role="alert"><b>Accès refusé</b><span>{message}</span></div>}<div className="stack-form"><label>Email<input autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Mot de passe<input type="password" autoComplete={bootstrapRequired?'new-password':'current-password'} value={password} onChange={e=>setPassword(e.target.value)}/></label>{bootstrapRequired&&<><label>Nom affiché<input value={displayName} onChange={e=>setDisplayName(e.target.value)}/></label><label>Organisation<input value={organizationName} onChange={e=>setOrganizationName(e.target.value)}/></label><label>Secret d’initialisation<input type="password" autoComplete="off" value={setupSecret} onChange={e=>setSetupSecret(e.target.value)} placeholder="Secret généré lors de l’installation"/></label></>}<button className="primary-btn auth-submit" disabled={busy||!email||!password} onClick={()=>submit(bootstrapRequired?'bootstrap':'login')}>{busy?'Vérification…':bootstrapRequired?'Initialiser et se connecter':'Se connecter'}</button></div>{!bootstrapRequired&&providers.length>0&&<div className="auth-sso"><span>ou</span>{providers.map((provider:AnyObj)=><button key={provider.id} className="secondary-btn" disabled={busy} onClick={()=>startSso(provider.id)}>Continuer avec {provider.name}</button>)}</div>}<small className="auth-security-note">Sessions révocables · RBAC workspace · MFA WebAuthn/SSO selon la politique de l’organisation.</small></section></main>;
+  function switchAuthMode(next:'signup'|'login'){
+    if(next==='signup'&&!signupAvailable)return;
+    setMessage('');setPassword('');setPasswordConfirm('');setAuthMode(next);
+  }
+  const showSignup=authMode==='signup'&&signupAvailable;
+  const passwordMinimum=Math.max(8,Number(status?.password_min_length)||8);
+  return <main className="auth-gate"><section className="auth-card" aria-labelledby="auth-title">
+    <div className="auth-brand"><div className="brand-mark" aria-hidden="true">DV</div><div><b>DataVision AI</b><span>Secure Analytics Platform</span></div></div>
+    <div className="auth-mode-tabs" role="tablist" aria-label="Authentification">
+      <button type="button" role="tab" aria-selected={!showSignup} className={!showSignup?'active':''} onClick={()=>switchAuthMode('login')}>Connexion</button>
+      <button type="button" role="tab" aria-selected={showSignup} className={showSignup?'active':''} disabled={!signupAvailable} onClick={()=>switchAuthMode('signup')}>Inscription</button>
+    </div>
+    <div className="auth-copy">
+      <span className="eyebrow">{showSignup?'INSCRIPTION':'CONNEXION'}</span>
+      <h1 id="auth-title">{showSignup?'Créer votre compte':'Se connecter à DataVision'}</h1>
+      <p>{showSignup?'Créez votre compte DataVision et votre espace de travail. Vous pourrez ensuite inviter d’autres utilisateurs.':'Saisissez vos identifiants pour accéder à votre espace DataVision.'}</p>
+    </div>
+    {message&&<div className="alert" role="alert"><b>{showSignup?'Inscription impossible':'Connexion impossible'}</b><span>{message}</span></div>}
+    <div className="stack-form">
+      {showSignup&&<label>Nom complet<input autoComplete="name" value={displayName} onChange={e=>setDisplayName(e.target.value)} placeholder="Votre nom"/></label>}
+      <label>Email<input type="email" autoComplete={showSignup?'email':'username'} value={email} onChange={e=>setEmail(e.target.value)} placeholder="vous@exemple.com"/></label>
+      {showSignup&&<label>Organisation <small className="field-hint">(optionnel)</small><input autoComplete="organization" value={organizationName} onChange={e=>setOrganizationName(e.target.value)} placeholder="Nom de votre organisation"/></label>}
+      <label>Mot de passe<PasswordInput autoComplete={showSignup?'new-password':'current-password'} value={password} onChange={setPassword} placeholder={showSignup?`${passwordMinimum} caractères minimum`:undefined}/></label>
+      {showSignup&&<label>Confirmer le mot de passe<PasswordInput autoComplete="new-password" value={passwordConfirm} onChange={setPasswordConfirm} ariaLabel="Confirmer le mot de passe"/></label>}
+      <button className="primary-btn auth-submit" disabled={busy||!email||!password||(showSignup&&(!displayName.trim()||password.length<passwordMinimum||password!==passwordConfirm))} onClick={submit}>{busy?'Vérification…':showSignup?'Créer mon compte':'Se connecter'}</button>
+    </div>
+    {showSignup
+      ? <div className="auth-switch"><span>Vous avez déjà un compte ?</span><button type="button" onClick={()=>switchAuthMode('login')}>Se connecter</button></div>
+      : signupAvailable
+        ? <div className="auth-switch"><span>Pas encore de compte ?</span><button type="button" onClick={()=>switchAuthMode('signup')}>S’inscrire</button></div>
+        : <div className="auth-setup-note">L’inscription est désactivée par l’administrateur de cette installation. Utilisez un compte existant ou demandez une invitation.</div>}
+    {status?.demo_account?.enabled&&<div className="auth-demo"><div><b>Compte test</b><span>Email : <code>{String(status.demo_account.email)}</code></span><span>Mot de passe : <code>{String(status.demo_account.password)}</code></span><small>Rôle {String(status.demo_account.role||'admin')} · créé automatiquement en développement · désactivé en production.</small></div><button type="button" className="secondary-btn" disabled={busy} onClick={loginDemo}>Se connecter avec le compte test</button></div>}
+    {!showSignup&&providers.length>0&&<div className="auth-sso"><span>ou</span>{providers.map((provider:AnyObj)=><button key={provider.id} className="secondary-btn" disabled={busy} onClick={()=>startSso(provider.id)}>Continuer avec {provider.name}</button>)}</div>}
+    <small className="auth-security-note">Sessions révocables · RBAC workspace · MFA WebAuthn/SSO selon la politique de l’organisation.</small>
+  </section></main>;
 }
 
 function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(s:string)=>void }) {
-  const [status,setStatus]=useState<AnyObj|null>(null);
-  const [oidcPublic,setOidcPublic]=useState<AnyObj[]>([]);
   const [token,setToken]=useState('');
   const [session,setSession]=useState<AnyObj|null>(null);
+  const [sessionResolved,setSessionResolved]=useState(false);
   const [workspaceId,setWorkspaceId]=useState('');
   const [workspace,setWorkspace]=useState<AnyObj|null>(null);
   const [audit,setAudit]=useState<AnyObj[]>([]);
   const [jobs,setJobs]=useState<AnyObj[]>([]);
   const [busy,setBusy]=useState(false);
-  const [email,setEmail]=useState('admin@datavision.local');
-  const [password,setPassword]=useState('');
-  const [displayName,setDisplayName]=useState('Administrateur');
-  const [orgName,setOrgName]=useState('DataVision Organisation');
   const [newWorkspace,setNewWorkspace]=useState('Équipe Analytics');
   const [memberEmail,setMemberEmail]=useState('');
   const [memberName,setMemberName]=useState('');
@@ -2914,7 +2974,15 @@ function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(
       const ws=workspaceId||stored||s.workspaces?.[0]?.id||''; setWorkspaceId(ws);
       if(typeof window!=='undefined'&&ws){localStorage.setItem('dv_enterprise_workspace',ws);window.dispatchEvent(new Event('datavision-enterprise-session'));}
       if(ws) await loadWorkspace(nextToken,ws);
-    }catch(e:unknown){ setSession(null); setToken(''); if(typeof window!=='undefined')sessionStorage.removeItem('dv_enterprise_token'); }
+    }catch(e:unknown){
+      setSession(null);setToken('');
+      if(typeof window!=='undefined'){
+        sessionStorage.removeItem('dv_enterprise_token');
+        sessionStorage.removeItem('dv_enterprise_refresh');
+        localStorage.removeItem('dv_enterprise_workspace');
+        window.dispatchEvent(new Event('datavision-enterprise-session'));
+      }
+    }finally{setSessionResolved(true);}
   }
   async function loadWorkspace(nextToken=token,nextWs=workspaceId){
     if(!nextToken||!nextWs)return;
@@ -2927,24 +2995,10 @@ function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(
       setWorkspace(w);setAudit(a.events??[]);setJobs(j.jobs??[]);setControlPlane(cp);setGovernanceSnapshots(snaps.snapshots??[]);setEntrepriseReadiness(readiness);
     }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
   }
-  useEffect(()=>{getEnterpriseStatus().then(setStatus).catch(()=>setStatus(null));getPublicOIDCProviders().then(x=>setOidcPublic(x.providers??[])).catch(()=>setOidcPublic([]));if(typeof window!=='undefined'){const t=sessionStorage.getItem('dv_enterprise_token')||'';if(t){setToken(t);loadSession(t);}}},[]);
+  useEffect(()=>{if(typeof window==='undefined')return;const t=sessionStorage.getItem('dv_enterprise_token')||'';if(t){setToken(t);void loadSession(t);}else{setSessionResolved(true);window.dispatchEvent(new Event('datavision-enterprise-session'));}},[]);
   useEffect(()=>{if(token&&workspaceId)loadWorkspace(token,workspaceId);},[workspaceId]);
 
-  async function authenticate(mode:'bootstrap'|'login'){
-    setBusy(true);setError('');
-    try{
-      let r=mode==='bootstrap'?await bootstrapEnterprise({email,password,display_name:displayName,organization_name:orgName}):await loginEnterprise({email,password});
-      if(r.mfa_required){
-        if(typeof navigator==='undefined'||!navigator.credentials)throw new Error('MFA WebAuthn requis mais indisponible dans ce navigateur.');
-        const credential=await navigator.credentials.get({publicKey:publicKeyOptionsFromJSON(r.publicKey) as PublicKeyCredentialRequestOptions});
-        if(!credential)throw new Error('Validation MFA annulée.');
-        r=await verifyEnterpriseWebAuthnLogin({challenge_id:r.challenge_id,credential:publicKeyCredentialToJSON(credential)});
-      }
-      setToken(r.access_token); if(typeof window!=='undefined'){sessionStorage.setItem('dv_enterprise_token',r.access_token);if(r.refresh_token)sessionStorage.setItem('dv_enterprise_refresh',r.refresh_token);} await loadSession(r.access_token);
-    }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
-  }
-  function logout(){setToken('');setSession(null);setWorkspace(null);setAudit([]);setJobs([]);setControlPlane(null);setGovernanceSnapshots([]);setEntrepriseReadiness(null);if(typeof window!=='undefined'){sessionStorage.removeItem('dv_enterprise_token');sessionStorage.removeItem('dv_enterprise_refresh');localStorage.removeItem('dv_enterprise_workspace');window.dispatchEvent(new Event('datavision-enterprise-session'));}}
-  async function startSso(providerId:string){if(typeof window==='undefined')return;setBusy(true);try{sessionStorage.setItem('dv_oidc_provider',providerId);const out=await startEnterpriseOIDC(providerId,window.location.origin);window.location.href=out.authorization_url;}catch(e:unknown){sessionStorage.removeItem('dv_oidc_provider');setError(e instanceof Error?e.message:String(e));setBusy(false);}}
+  function logout(){setToken('');setSession(null);setSessionResolved(true);setWorkspace(null);setAudit([]);setJobs([]);setControlPlane(null);setGovernanceSnapshots([]);setEntrepriseReadiness(null);if(typeof window!=='undefined'){sessionStorage.removeItem('dv_enterprise_token');sessionStorage.removeItem('dv_enterprise_refresh');localStorage.removeItem('dv_enterprise_workspace');window.dispatchEvent(new Event('datavision-enterprise-session'));}}
   async function createWs(){if(!token||!session?.organizations?.[0]?.id)return;setBusy(true);try{await createEnterpriseWorkspace(token,session.organizations[0].id,newWorkspace);await loadSession(token);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
   async function provisionMember(){if(!token||!workspaceId||!memberEmail)return;setBusy(true);try{await addWorkspaceMember(token,workspaceId,memberEmail,memberRole,memberName,memberPassword);setMemberEmail('');setMemberName('');setMemberPassword('');await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
   async function bindCurrent(){if(!token||!workspaceId||!result)return;setBusy(true);try{await bindWorkspaceDataset(token,workspaceId,result.dataset.id);await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
@@ -2955,12 +3009,7 @@ function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(
   async function enforcePrivateAI(){if(!token||!workspaceId)return;setBusy(true);try{await enforceEntreprisePrivateAI(token,workspaceId);await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
   async function cancelJob(id:string){try{await cancelEnterpriseJob(token,id);await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
 
-  if(!session) return <div className="page governance-page"><div className="page-title"><div><span className="eyebrow">TENANT-AWARE SECURITY</span><h1>Gouvernance & sécurité</h1><p>Identité, workspaces, RBAC, RLS et sécurité colonne appliqués au pipeline analytique complet. L’authentification est obligatoire par défaut. Le mode local anonyme n’est disponible qu’en développement explicite.</p></div><span className="module-state implemented">Entreprise v2.58</span></div>
-    <div className="governance-intro-grid">
-      <Panel title="Initialiser DataVision Entreprise"><div className="stack-form"><label>Email administrateur<input value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Mot de passe<input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="8 caractères minimum"/></label><div className="two-col"><label>Nom affiché<input value={displayName} onChange={e=>setDisplayName(e.target.value)}/></label><label>Organisation<input value={orgName} onChange={e=>setOrgName(e.target.value)}/></label></div><div className="button-row"><RunButton busy={busy} label="Initialiser" busyLabel="Initialisation…" onClick={()=>authenticate('bootstrap')}/><button className="secondary-btn" disabled={busy} onClick={()=>authenticate('login')}>Se connecter</button></div><small className="help-text">Le bootstrap ne fonctionne qu’une seule fois. Ensuite, utilisez la connexion.</small></div></Panel>
-      <Panel title="Connexion d’entreprise"><div className="sso-login-panel">{oidcPublic.length?oidcPublic.map((p:AnyObj)=><button key={p.id} className="sso-provider-btn" disabled={busy} onClick={()=>startSso(p.id)}><span>SSO</span><div><b>Continuer avec {p.name}</b><small>Connexion OIDC sécurisée</small></div><i>→</i></button>):<div className="quiet-empty">Aucun fournisseur SSO actif. Un Owner/Admin peut en configurer un dans Identité & Secrets.</div>}</div></Panel>
-      <Panel title="Architecture Entreprise"><div className="enterprise-status-list"><div><span>Metadata store</span><b>{status?.metadata?.url??'—'}</b><small>{status?.metadata?.dialect??'Non connecté'}</small></div><div><span>RBAC</span><b>Owner → Viewer</b><small>Permissions explicites par workspace</small></div><div><span>Jobs</span><b>{status?.queue?.available?'Redis opérationnel':'Redis à vérifier'}</b><small>{status?.queue?.available?`${status.queue.queue_depth??0} job(s) en attente`:'Le worker nécessite Redis'}</small></div><div><span>OIDC / SSO</span><b>Authorization Code + PKCE</b><small>RS256, JIT provisioning et domaines autorisés</small></div></div></Panel>
-    </div></div>;
+  if(!session) return <div className="page governance-page"><div className="page-title"><div><span className="eyebrow">TENANT-AWARE SECURITY</span><h1>Gouvernance & sécurité</h1><p>La gouvernance utilise exclusivement la session DataVision ouverte depuis l’écran standard Connexion / Inscription.</p></div><span className="module-state implemented">Entreprise v2.58</span></div><div className="collab-auth-empty"><span>◈</span><div><h3>{sessionResolved?'Session expirée':'Vérification de la session…'}</h3><p>{sessionResolved?'Retour à l’écran de connexion sécurisé.':'Chargement de votre identité et de votre workspace.'}</p></div></div></div>;
 
   const wsOptions=session.workspaces??[]; const detail=workspace?.workspace; const governedDatasets=workspace?.datasets??[]; const governancePolicies=workspace?.policies??[];
   return <div className="page governance-page"><div className="page-title"><div><span className="eyebrow">TENANT-AWARE SECURITY</span><h1>Gouvernance & sécurité</h1><p>Administration des workspaces, rôles et politiques. Les mêmes restrictions sont maintenant appliquées à SQL, statistiques, ML, AI Analyst, dashboards, rapports et jobs.</p></div><div className="governance-user"><span>{session.user?.display_name}</span><b>{session.user?.email}</b><button onClick={logout}>Déconnexion</button></div></div>
@@ -2976,7 +3025,7 @@ function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(
       {controlPlane?.dataset&&<div className="publication-readiness"><b>Publication dataset : {controlPlane.dataset.publication?.allowed?'autorisée':'bloquée'}</b><span>{(controlPlane.dataset.publication?.blockers??[]).length} bloqueur(s) · {(controlPlane.dataset.publication?.warnings??[]).length} avertissement(s) · {(controlPlane.dataset.certifications??[]).length} certification(s) active(s) · Trust {controlPlane.dataset.trust?.overall_score??'—'}/100</span></div>}
     </Panel>
     <div className="two-col governance-main-grid">
-      <Panel title="Membres & rôles" action={<span className="quiet">owner · admin · data scientist · analyst · viewer</span>}><div className="member-table">{(workspace?.members??[]).map((m:AnyObj)=><div key={m.id}><div className="member-avatar">{String(m.display_name||m.email).slice(0,2).toUpperCase()}</div><div><b>{m.display_name}</b><small>{m.email}</small></div><span className={`role-pill role-${m.role}`}>{m.role}</span></div>)}</div><details className="governance-details"><summary>Provisionner / ajouter un membre</summary><div className="stack-form compact-governance-form"><label>Email<input value={memberEmail} onChange={e=>setMemberEmail(e.target.value)}/></label><label>Nom<input value={memberName} onChange={e=>setMemberName(e.target.value)}/></label><label>Mot de passe initial<input type="password" value={memberPassword} onChange={e=>setMemberPassword(e.target.value)} placeholder="Requis si nouvel utilisateur"/></label><label>Rôle<select value={memberRole} onChange={e=>setMemberRole(e.target.value)}>{['admin','data_scientist','analyst','viewer'].map(r=><option key={r}>{r}</option>)}</select></label><button className="primary-btn" onClick={provisionMember}>Ajouter / mettre à jour</button></div></details></Panel>
+      <Panel title="Membres & rôles" action={<span className="quiet">owner · admin · data scientist · analyst · viewer</span>}><div className="member-table">{(workspace?.members??[]).map((m:AnyObj)=><div key={m.id}><div className="member-avatar">{String(m.display_name||m.email).slice(0,2).toUpperCase()}</div><div><b>{m.display_name}</b><small>{m.email}</small></div><span className={`role-pill role-${m.role}`}>{m.role}</span></div>)}</div><details className="governance-details"><summary>Provisionner / ajouter un membre</summary><div className="stack-form compact-governance-form"><label>Email<input value={memberEmail} onChange={e=>setMemberEmail(e.target.value)}/></label><label>Nom<input value={memberName} onChange={e=>setMemberName(e.target.value)}/></label><label>Mot de passe initial<PasswordInput value={memberPassword} onChange={setMemberPassword} autoComplete="new-password" placeholder="Requis si nouvel utilisateur" ariaLabel="Mot de passe initial"/></label><label>Rôle<select value={memberRole} onChange={e=>setMemberRole(e.target.value)}>{['admin','data_scientist','analyst','viewer'].map(r=><option key={r}>{r}</option>)}</select></label><button className="primary-btn" onClick={provisionMember}>Ajouter / mettre à jour</button></div></details></Panel>
       <Panel title="Datasets gouvernés" action={result?<div className="button-row governance-access-test"><button className="secondary-btn" onClick={bindCurrent}>Lier le dataset actif</button><select value={previewRole} onChange={e=>setPreviewRole(e.target.value)}><option value="data_scientist">Data scientist</option><option value="analyst">Analyst</option><option value="viewer">Viewer</option></select><button className="secondary-btn" onClick={previewGoverned}>Tester l’accès</button></div>:undefined}><div className="governed-resource-list">{governedDatasets.length?governedDatasets.map((d:AnyObj)=><div key={d.dataset_id}><span>▦</span><div><b>{d.dataset_id.slice(0,12)}…</b><small>lié le {new Date(d.created_at).toLocaleString('fr-FR')}</small></div></div>):<div className="quiet-empty">Aucun dataset lié à ce workspace.</div>}</div>{governedPreview&&<div className="governed-preview-summary"><b>Aperçu gouverné · {governedPreview.effective_role??previewRole}</b><span>{governedPreview.total_rows} lignes · {(governedPreview.columns??[]).length} colonnes</span><small>{(governedPreview.columns??[]).join(' · ')}</small></div>}{result&&<details className="governance-details"><summary>Créer une politique sur le dataset actif</summary><div className="stack-form compact-governance-form"><label>Nom<input value={policyName} onChange={e=>setPolicyName(e.target.value)}/></label><label>Colonnes autorisées<input value={policyColumns} onChange={e=>setPolicyColumns(e.target.value)} placeholder="region, sales, margin"/></label><label>Rôle<select value={policyRole} onChange={e=>setPolicyRole(e.target.value)}>{['data_scientist','analyst','viewer'].map(r=><option key={r}>{r}</option>)}</select></label><div className="policy-filter-builder"><label>Filtre ligne (optionnel)<select value={policyFilterColumn} onChange={e=>setPolicyFilterColumn(e.target.value)}><option value="">Aucun</option>{(result?.profile?.columns??[]).map((c:AnyObj)=><option key={c.name} value={c.name}>{c.name}</option>)}</select></label><label>Opérateur<select value={policyFilterOperator} onChange={e=>setPolicyFilterOperator(e.target.value)}>{['eq','neq','gt','gte','lt','lte','contains'].map(op=><option key={op} value={op}>{op}</option>)}</select></label><label>Valeur<input value={policyFilterValue} onChange={e=>setPolicyFilterValue(e.target.value)}/></label></div><button className="primary-btn" onClick={createPolicy}>Enregistrer la politique</button></div></details>}</Panel>
     </div>
     <div className="two-col governance-main-grid">

@@ -1,3 +1,24 @@
+## Livré — v2.81.6 Single Authentication Entry Point
+
+- écran standard Connexion / Inscription comme unique porte d’entrée de l’interface web ;
+- suppression du formulaire de connexion historique de Gouvernance & sécurité ;
+- suppression du contournement frontend `local_dev_enabled` ;
+- retour automatique à l’écran d’authentification lorsque la session expire.
+
+## Livré — v2.81.3 Password Visibility & Development Test Account
+
+- icône œil accessible sur les champs de mot de passe d’authentification ;
+- compte test local `demo@datavision.local` / `DataVision8!` ;
+- rôle admin dans un workspace de démonstration isolé ;
+- compte démo limité à `development`/`test` et bloqué en production ;
+- compte démo indépendant du cycle de création du premier owner.
+
+## Livré — v2.81.1 First-run Authentication UX Hotfix
+
+- Première configuration locale simplifiée sans secret visible.
+- Mot de passe minimum produit : 8 caractères.
+- Bootstrap distant réservé à la console serveur.
+
 ## Livré — v2.81.0 Security & Documentation Freeze
 
 - authentification requise par défaut ;

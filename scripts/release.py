@@ -10,11 +10,12 @@ import zipfile
 
 from verify_release import verify_archive
 
-EXCLUDED_DIRS = {
+EXCLUDED_DIR_NAMES = {
     '.git', '.pytest_cache', '__pycache__',
     'node_modules', '.next', 'playwright-report', 'test-results',
-    'dist', 'data',
+    'dist',
 }
+EXCLUDED_TOP_LEVEL_DIRS = {'data'}
 EXCLUDED_FILES = {'.env', 'RELEASE_MANIFEST.json'}
 FIXED_ZIP_TIME = (1980, 1, 1, 0, 0, 0)
 
@@ -32,7 +33,9 @@ def iter_files(root: Path):
         if not path.is_file():
             continue
         rel = path.relative_to(root)
-        if any(part in EXCLUDED_DIRS for part in rel.parts):
+        if rel.parts and rel.parts[0] in EXCLUDED_TOP_LEVEL_DIRS:
+            continue
+        if any(part in EXCLUDED_DIR_NAMES for part in rel.parts):
             continue
         if path.name in EXCLUDED_FILES or path.suffix in {'.pyc', '.tsbuildinfo'}:
             continue

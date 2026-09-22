@@ -2,7 +2,7 @@
 
 DataVision AI est une plateforme intégrée pour l’ingestion, la préparation, l’analyse, la visualisation, le machine learning, le reporting et l’aide à la décision gouvernée.
 
-Version courante : **2.81.0**.
+Version courante : **2.81.6**.
 
 ## Démarrage rapide
 
@@ -19,7 +19,9 @@ Ou avec Docker Compose :
 docker compose up --build
 ```
 
-L’authentification est obligatoire par défaut (`AUTH_MODE=required`). Le mode `local_dev` doit être activé explicitement et ne doit pas être utilisé en production.
+L’interface web utilise toujours l’écran standard **Connexion / Inscription** avant l’accès à l’application. `AUTH_MODE=local_dev` reste un mode backend de développement explicite et ne contourne plus la connexion de l’interface web ; il ne doit jamais être utilisé en production.
+
+En développement local, le compte test est activé par défaut et créé automatiquement s’il n’existe pas : `demo@datavision.local` / `DataVision8!`. Il est automatiquement indisponible hors environnements `development`/`test`.
 
 ## Documentation
 

@@ -6,6 +6,7 @@ metadata:
     {{- include "datavision.labels" . | nindent 4 }}
 data:
   APP_ENV: {{ .Values.config.appEnv | quote }}
+  DEMO_ACCOUNT_ENABLED: {{ .Values.config.demoAccountEnabled | quote }}
   FRONTEND_URL: {{ .Values.config.frontendUrl | quote }}
   CORS_ORIGINS: {{ .Values.config.corsOrigins | quote }}
   DATABASE_URL: {{ .Values.config.databaseUrl | quote }}

@@ -1,7 +1,7 @@
-# Rapport sécurité et hardening - DataVision AI v2.81.0
+# Rapport sécurité et hardening - DataVision AI v2.81.3
 
 ## 1. Position de sécurité
-La v2.81.0 est un gel de sécurité précédant la v3.0.0. Son objectif est de supprimer l'accès anonyme implicite, durcir l'authentification, consolider la supply chain et documenter les critères de go/no-go.
+La v2.81.3 est un correctif du gel de sécurité précédant la v3.0.0. Son objectif est de supprimer l'accès anonyme implicite, durcir l'authentification, consolider la supply chain et documenter les critères de go/no-go.
 
 **Important : ce rapport ne certifie pas l'absence absolue de vulnérabilités.** Aucun contrôle statique ou test unitaire ne permet une telle garantie. La sécurité production exige également des scans sur l'artefact réellement construit, un pentest indépendant et une revue de l'infrastructure cible.
 
@@ -14,8 +14,8 @@ En v2.80, certaines surfaces pouvaient fonctionner en fallback local en absence 
 - `AUTH_MODE=local_dev` est explicite et ne peut pas être utilisé selon la sémantique production ;
 - le frontend présente un écran d'authentification global.
 
-### 2.2 Bootstrap protégé
-Lorsque l'authentification est requise, la création du premier propriétaire exige `BOOTSTRAP_SECRET`. Cela réduit le risque de « first user takeover » sur une instance fraîche exposée trop tôt.
+### 2.2 Première configuration protégée
+Le `BOOTSTRAP_SECRET` n'est plus exposé à l'utilisateur. Sur une installation locale, DataVision crée automatiquement une session d'initialisation courte et aléatoire, transmise uniquement dans un cookie HttpOnly `SameSite=Strict`. Le token interne est invalidé dès que le premier propriétaire est créé. Sur une instance distante, la création du premier owner depuis le navigateur est refusée ; elle doit être effectuée depuis la console du serveur. Cela évite le modèle dangereux « first user wins » sur une instance publiée trop tôt.
 
 ### 2.3 Sessions et tokens
 - sessions persistées et révocables ;
@@ -26,9 +26,14 @@ Lorsque l'authentification est requise, la création du premier propriétaire ex
 
 Le stockage navigateur reste accessible au JavaScript de la page : une XSS réussie pourrait donc encore voler un token. La CSP, l'hygiène des dépendances et les audits réduisent ce risque sans l'annuler. Une architecture cookie HttpOnly pourrait être étudiée ultérieurement si le modèle de déploiement l'exige.
 
+### 2.4 Compte de démonstration et visibilité du mot de passe
+La v2.81.3 ajoute une icône œil sur les principaux champs de mot de passe afin que l’utilisateur puisse contrôler sa saisie. Cette fonctionnalité est purement côté interface et ne change ni le stockage ni le hash du mot de passe.
+
+Un compte de démonstration est disponible uniquement lorsque `DEMO_ACCOUNT_ENABLED=true` **et** que `APP_ENV` vaut `development` ou `test`. Il est isolé dans son propre workspace et ne compte pas comme propriétaire lors de l’initialisation. Le runtime refuse son provisionnement dans tout autre environnement ; `config_doctor.py` rejette en plus l’activation explicite du compte démo en configuration production. Aucun compte de démonstration ne doit être actif sur une instance exposée.
+
 ## 3. Authentification forte
 La plateforme supporte :
-- mot de passe avec longueur minimale de 15 caractères par défaut pour les nouveaux secrets ;
+- mot de passe avec longueur minimale produit de 8 caractères ; pour un mot de passe utilisé seul en production, une valeur de 15 caractères ou MFA est recommandée ;
 - hash mémoire-dur `scrypt` avec sel aléatoire et coût par défaut `N=2^17, r=8, p=1` ;
 - comparaison constante ;
 - limitation des tentatives de connexion ;
@@ -111,17 +116,17 @@ La CI sécurité doit exécuter :
 Le conflit Docker signalé entre `boto3==1.40.40` et `redshift-connector==2.1.16` est corrigé en v2.81 avec `boto3==1.42.22`, compatible avec le plancher requis par le connecteur Redshift.
 
 ## 12. Audit statique v2.81
-Le script `scripts/security_hardening_audit.py` exécute 19 contrôles reproductibles. Résultat de la branche v2.81 : **19/19 PASS**.
+Le script `scripts/security_hardening_audit.py` exécute 20 contrôles reproductibles. Résultat de la branche v2.81.3 : **20/20 PASS**.
 
 Il vérifie notamment : auth obligatoire, blocage local_dev en production, docs API, CORS, bootstrap, hash mot de passe, throttling, révocation/rotation, stockage navigateur, headers, CSP, policies Kubernetes, règle Rego, confinement du code dynamique et absence de `.env` dans la release.
 
 ## 13. Validation fonctionnelle locale
-- 660 tests collectés ;
-- 659 passés ;
+- 664 tests collectés ;
+- 663 passés ;
 - 1 ignoré ;
 - 0 échec ;
-- Security Documentation Acceptance : 11/11 ;
-- Security Hardening Audit : 19/19 ;
+- Security Documentation Acceptance : 13/13 ;
+- Security Hardening Audit : 20/20 ;
 - Repository Hygiene : OK ;
 - Dependency Compatibility : OK ;
 - Production Baseline : OK.
@@ -159,7 +164,7 @@ La production stable est refusée si l'un des cas suivants subsiste :
 - TLS ou IAM non validé sur cible.
 
 ## 17. Références de sécurité vérifiées
-Références consultées pour le gel v2.81 (22 septembre 2026) :
+Références consultées pour le gel v2.81.3 (22 septembre 2026) :
 
 - NIST SP 800-63B, Authentication and Authenticator Management : https://pages.nist.gov/800-63-4/sp800-63b.html
   - minimum de 15 caractères pour un mot de passe utilisé comme facteur unique ;
