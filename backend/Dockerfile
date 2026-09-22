@@ -7,6 +7,10 @@ COPY backend/requirements.txt ./requirements.txt
 RUN --mount=type=cache,target=/root/.cache/pip pip install -r requirements.txt
 COPY backend/app ./app
 COPY compliance ./compliance
-RUN mkdir -p /app/data/uploads /app/data/models /app/data/analyses /app/data/reports
+RUN groupadd --gid 10001 datavision \
+    && useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin datavision \
+    && mkdir -p /app/data/uploads /app/data/models /app/data/analyses /app/data/reports \
+    && chown -R datavision:datavision /app
+USER 10001:10001
 EXPOSE 8005
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]

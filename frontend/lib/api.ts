@@ -3,7 +3,7 @@ const API = process.env.NEXT_PUBLIC_API_URL ?? '/api/backend';
 function enterpriseContextHeaders(init?: RequestInit): Headers {
   const headers = new Headers(init?.headers ?? {});
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('dv_enterprise_token') || '';
+    const token = sessionStorage.getItem('dv_enterprise_token') || '';
     const workspace = localStorage.getItem('dv_enterprise_workspace') || '';
     if (token) headers.set('Authorization', `Bearer ${token}`);
     if (workspace && !headers.has('X-Workspace-ID')) headers.set('X-Workspace-ID', workspace);
@@ -18,7 +18,7 @@ let enterpriseRefreshPromise: Promise<any> | null = null;
 
 async function refreshEnterpriseTokens() {
   if (typeof window === 'undefined') return null;
-  const refresh = localStorage.getItem('dv_enterprise_refresh') || '';
+  const refresh = sessionStorage.getItem('dv_enterprise_refresh') || '';
   if (!refresh) return null;
   if (!enterpriseRefreshPromise) {
     enterpriseRefreshPromise = fetch(`${API}/auth/refresh`, {
@@ -26,8 +26,8 @@ async function refreshEnterpriseTokens() {
     }).then(async res => {
       if (!res.ok) throw new Error('Session expirée');
       const body = await res.json();
-      localStorage.setItem('dv_enterprise_token', body.access_token);
-      localStorage.setItem('dv_enterprise_refresh', body.refresh_token);
+      sessionStorage.setItem('dv_enterprise_token', body.access_token);
+      sessionStorage.setItem('dv_enterprise_refresh', body.refresh_token);
       return body;
     }).finally(() => { enterpriseRefreshPromise = null; });
   }
@@ -42,8 +42,8 @@ async function apiFetch(input: RequestInfo | URL, init: RequestInit = {}) {
       const refreshed = await refreshEnterpriseTokens();
       if (refreshed) { const headers=enterpriseContextHeaders(init); headers.set('Authorization',`Bearer ${refreshed.access_token}`); res = await fetch(input, { ...init, headers }); }
     } catch {
-      localStorage.removeItem('dv_enterprise_token');
-      localStorage.removeItem('dv_enterprise_refresh');
+      sessionStorage.removeItem('dv_enterprise_token');
+      sessionStorage.removeItem('dv_enterprise_refresh');
       window.dispatchEvent(new Event('datavision-enterprise-session'));
     }
   }
@@ -67,7 +67,7 @@ export async function uploadDataset(file: File) {
   body.append('file', file);
   const headers: Record<string,string> = {};
   if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('dv_enterprise_token') || '';
+    const token = sessionStorage.getItem('dv_enterprise_token') || '';
     const workspace = localStorage.getItem('dv_enterprise_workspace') || '';
     if (token && workspace) {
       headers.Authorization = `Bearer ${token}`;
@@ -522,7 +522,11 @@ function enterpriseHeaders(token?: string): Record<string,string> {
   return headers;
 }
 
-export async function bootstrapEnterprise(payload: { email:string; password:string; display_name:string; organization_name:string }) {
+export async function getEnterpriseAuthStatus() {
+  return parse<any>(await apiFetch(`${API}/auth/status`), 'Statut d’authentification indisponible');
+}
+
+export async function bootstrapEnterprise(payload: { email:string; password:string; display_name:string; organization_name:string; setup_secret?:string }) {
   return parse<any>(await apiFetch(`${API}/auth/bootstrap`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload) }), 'Initialisation Entreprise impossible');
 }
 

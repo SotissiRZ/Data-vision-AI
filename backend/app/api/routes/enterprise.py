@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 from pathlib import Path
 import asyncio
+import secrets
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, PlainTextResponse
@@ -13,6 +14,7 @@ from app.core.config import get_settings
 from app.services.auth_service import (
     bootstrap, decode_token, get_user, login, session_payload, has_permission, workspace_role,
     validate_session_payload, refresh_authenticated_session, list_user_sessions, revoke_user_session, revoke_all_user_sessions,
+    enforce_login_throttle, record_login_failure, clear_login_failures,
 )
 from app.services.audit_service import list_events, record_event
 from app.services.job_service import get_job, list_jobs, request_cancel, submit_job, queue_status
@@ -218,9 +220,10 @@ class FailoverConfirmRequest(BaseModel):
 
 class BootstrapRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
-    password: str = Field(min_length=8, max_length=200)
+    password: str = Field(min_length=15, max_length=200)
     display_name: str = Field(default="Administrateur", min_length=1, max_length=120)
     organization_name: str = Field(default="Mon organisation", min_length=1, max_length=160)
+    setup_secret: str = Field(default="", max_length=500)
 
 
 class LoginRequest(BaseModel):
@@ -372,7 +375,7 @@ class MemberRequest(BaseModel):
     email: str = Field(min_length=3, max_length=254)
     role: str = Field(pattern="^(owner|admin|data_scientist|analyst|viewer)$")
     display_name: str | None = Field(default=None, max_length=120)
-    password: str | None = Field(default=None, min_length=8, max_length=200)
+    password: str | None = Field(default=None, min_length=15, max_length=200)
 
 
 class BindDatasetRequest(BaseModel):
@@ -594,9 +597,31 @@ def _handle(exc: Exception):
     raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
+@router.get("/auth/status")
+def auth_status():
+    settings = get_settings()
+    from app.services.auth_service import user_count
+    return {
+        "authentication_required": settings.auth_mode != "local_dev" or settings.app_env.lower() == "production",
+        "bootstrap_required": user_count() == 0,
+        "local_dev_enabled": settings.auth_mode == "local_dev" and settings.app_env.lower() != "production",
+        "mfa_policy": settings.mfa_policy,
+        "password_min_length": max(8, int(settings.password_min_length)),
+    }
+
+
 @router.post("/auth/bootstrap")
 def auth_bootstrap(req: BootstrapRequest):
     try:
+        settings = get_settings()
+        bootstrap_required = settings.auth_mode == "required" or settings.app_env.lower() == "production"
+        configured = (settings.bootstrap_secret or "").strip()
+        unsafe = not configured or configured.lower().startswith(("change-", "change-this", "changeme", "example"))
+        if bootstrap_required:
+            if unsafe:
+                raise PermissionError("BOOTSTRAP_SECRET doit être configuré avec une valeur forte avant l'initialisation.")
+            if not secrets.compare_digest(req.setup_secret, configured):
+                raise PermissionError("Secret d'initialisation invalide.")
         out = bootstrap(req.email, req.password, req.display_name, req.organization_name)
         record_event("auth.bootstrap", user_id=out["user"]["id"], organization_id=out["organization_id"], workspace_id=out["workspace_id"], resource_type="user", resource_id=out["user"]["id"], payload={"email": req.email})
         return out
@@ -606,8 +631,11 @@ def auth_bootstrap(req: BootstrapRequest):
 
 @router.post("/auth/login")
 def auth_login(req: LoginRequest, request: Request):
+    client_key = request.client.host if request.client else "unknown"
     try:
+        enforce_login_throttle(req.email, client_key)
         out = begin_password_login(req.email, req.password, user_agent=request.headers.get("user-agent", ""))
+        clear_login_failures(req.email, client_key)
         user = out.get("user") or {}
         record_event(
             "auth.login_mfa_challenge" if out.get("mfa_required") else "auth.login",
@@ -618,6 +646,12 @@ def auth_login(req: LoginRequest, request: Request):
         )
         return out
     except Exception as exc:
+        try:
+            record_login_failure(req.email, client_key)
+        except Exception:
+            pass
+        if isinstance(exc, PermissionError) and "Trop de tentatives" in str(exc):
+            raise HTTPException(status_code=429, detail=str(exc), headers={"Retry-After": str(max(60, get_settings().auth_login_lockout_minutes * 60))}) from exc
         _handle(exc)
 
 
@@ -842,7 +876,7 @@ def auth_oidc_exchange(req: OIDCExchangeRequest, request: Request):
 
 @router.get("/enterprise/status")
 @router.get("/entreprise/status")
-def enterprise_status():
+def enterprise_status(user=Depends(current_user)):
     try:
         return {
             "metadata": metadata_backend(),

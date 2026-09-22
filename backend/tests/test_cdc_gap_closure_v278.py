@@ -33,7 +33,7 @@ def _boot(tmp_path: Path, monkeypatch):
         "/api/v1/auth/bootstrap",
         json={
             "email": "v278@datavision.local",
-            "password": "DataVision278!",
+            "password": "DataVision278!Safe",
             "display_name": "V278",
             "organization_name": "Gap Closure Lab",
         },

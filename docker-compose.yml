@@ -46,10 +46,14 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     env_file: .env
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     volumes:
       - ./data:/app/data
     ports:
-      - "8005:8005"
+      - "127.0.0.1:${API_PORT:-8005}:8005"
     networks:
       - default
       - notebook_sandbox
@@ -104,6 +108,10 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     env_file: .env
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     command: ["python", "-m", "app.worker"]
     volumes:
       - ./data:/app/data
@@ -131,6 +139,10 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     env_file: .env
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     command: ["python", "-m", "app.ops.migrate", "apply", "--json"]
     volumes:
       - ./data:/app/data
@@ -145,6 +157,10 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     env_file: .env
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     command: ["python", "-m", "app.ops.backup", "create", "--label", "manual"]
     volumes:
       - ./data:/app/data
@@ -159,6 +175,10 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     env_file: .env
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     command: ["python", "-m", "app.ops.backup", "drill-latest"]
     volumes:
       - ./data:/app/data
@@ -175,9 +195,9 @@ services:
     volumes:
       - ./infra/otel-collector-config.yaml:/etc/otelcol-contrib/config.yaml:ro
     ports:
-      - "4317:4317"
-      - "4318:4318"
-      - "9464:9464"
+      - "127.0.0.1:4317:4317"
+      - "127.0.0.1:4318:4318"
+      - "127.0.0.1:9464:9464"
     depends_on:
       api:
         condition: service_healthy
@@ -198,6 +218,10 @@ services:
       NEXT_PUBLIC_API_URL: /api/backend
       INTERNAL_API_URL: http://api:8005/api/v1
       PORT: 3005
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     ports:
       - "3005:3005"
     depends_on:

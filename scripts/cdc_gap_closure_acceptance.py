@@ -23,7 +23,7 @@ def checks(root: Path):
     matrix = json.loads((root / 'compliance/CDC_COVERAGE_MATRIX.json').read_text(encoding='utf-8'))
     statuses = {int(r['section']): r['status'] for r in matrix['requirements']}
     test = 'backend/tests/test_cdc_gap_closure_v278.py'
-    doc = 'docs/CDC_GAP_CLOSURE_V2780.md'
+    doc = 'docs/compliance/CDC_GAP_CLOSURE_V2780.md'
     return [
         ('product plan catalog and persistent assignment', all(x in plans for x in ('PLAN_CATALOG', 'assign_organization_plan', 'organization_plan_assignments')), ['backend/app/services/product_plans.py'], [test]),
         ('runtime entitlement and quota enforcement', 'consume_daily_quota' in assistant and 'assert_plan_feature' in enterprise and 'plan_usage_daily' in plans, ['backend/app/assistant/router.py','backend/app/api/routes/enterprise.py','backend/app/services/product_plans.py'], [test]),

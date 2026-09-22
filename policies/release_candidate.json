@@ -1,12 +1,19 @@
 {
   "product": "DataVision AI",
-  "product_version": "2.80.0",
+  "product_version": "2.81.0",
   "stage": "release_candidate",
   "feature_freeze": true,
-  "supported_direct_upgrade_from": ["2.79.x"],
+  "supported_direct_upgrade_from": [
+    "2.80.x",
+    "2.79.x"
+  ],
   "canonical_distribution": "reproducible-source-archive-v1",
   "required_installation_gate": "RELEASE_INSTALLATION_ACCEPTANCE",
-  "required_external_signoff": ["target_infrastructure", "uat"],
+  "required_external_signoff": [
+    "target_infrastructure",
+    "uat"
+  ],
   "external_signoff_status": "pending",
-  "notes": "No production-stable claim is allowed until target infrastructure and UAT evidence are verified."
+  "notes": "Security & documentation freeze after v2.80 RC. No production-stable claim until target infrastructure, UAT and independent security evidence are verified.",
+  "required_security_gate": "SECURITY_DOCUMENTATION_ACCEPTANCE"
 }

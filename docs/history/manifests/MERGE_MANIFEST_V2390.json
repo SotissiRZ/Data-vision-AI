@@ -5,7 +5,7 @@
   "changes": [
     "moved all MERGE_MANIFEST_V*.json from root to docs/history/manifests/",
     "moved MIGRATION_FROM_V212.md to docs/history/migrations/",
-    "added docs/PROJECT_STRUCTURE.md and docs/history/README.md",
+    "added docs/development/PROJECT_STRUCTURE.md and docs/history/README.md",
     "added scripts/repository_hygiene.py and CI hygiene gate",
     "added .gitignore and .editorconfig",
     "kept operational root files only; no analytics or API behavior changed"

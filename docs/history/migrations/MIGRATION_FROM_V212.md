@@ -337,7 +337,7 @@ Nouveaux fichiers :
 compliance/CDC_COVERAGE_MATRIX.json
 compliance/CDC_COVERAGE_SUMMARY.json
 docs/CDC_COVERAGE_MATRIX.md
-docs/CDC_COMPLIANCE_V2300.md
+docs/compliance/CDC_COMPLIANCE_V2300.md
 scripts/cdc_audit.py
 ```
 

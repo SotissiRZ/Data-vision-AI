@@ -38,13 +38,13 @@ def inspect(root: Path) -> dict:
     windows_ok = all(p.is_file() and "VERSION" in p.read_text(encoding="utf-8") and "v2.39.0" not in p.read_text(encoding="utf-8") for p in win_files)
     release_workflow = root / ".github/workflows/release.yml"
     checks = [
-        ("version_freeze", version == "2.80.0" and policy.get("feature_freeze") is True and policy.get("stage") == "release_candidate"),
+        ("version_freeze", version == "2.81.0" and policy.get("feature_freeze") is True and policy.get("stage") == "release_candidate"),
         ("windows_version_alignment", windows_ok),
         ("config_doctor", contains(root / "scripts/config_doctor.py", "production_secret_not_set", "compose_project_name_not_stable", "ANTIVIRUS_MODE")),
         ("upgrade_path", contains(root / "upgrade-windows.ps1", "--profile ops run --rm backup", "--profile ops run --rm migrate", "health/ready") and "down -v" not in (root / "upgrade-windows.ps1").read_text(encoding="utf-8")),
         ("stable_compose_state", contains(root / "docker-compose.yml", "name: datavision", "postgres_data:", "redis_data:", "clamav_data:")),
-        ("migration_marker", contains(root / "backend/app/services/schema_migrations.py", 'version="2.80.0-001"', 'name="release_candidate_freeze_marker"')),
-        ("release_workflow_complete", contains(release_workflow, "release_installation_acceptance.py", "quality_remediation_acceptance.py", "performance_slo_acceptance.py", "test:e2e:accessibility", "test:e2e:release-candidate", "scripts/verify_release.py")),
+        ("migration_marker", contains(root / "backend/app/services/schema_migrations.py", 'version="2.81.0-001"', 'name="security_documentation_freeze"')),
+        ("release_workflow_complete", contains(release_workflow, "release_installation_acceptance.py", "security_documentation_acceptance.py", "dependency_compatibility.py", "quality_remediation_acceptance.py", "performance_slo_acceptance.py", "test:e2e:accessibility", "test:e2e:release-candidate", "scripts/verify_release.py")),
         ("reproducible_archive_contract", contains(root / "scripts/release.py", "FIXED_ZIP_TIME", "verify_archive") and contains(root / "scripts/verify_release.py", "_safe_member", "SHA256 invalide", "Archive corrompue")),
     ]
     rows = [{"id": cid, "ok": ok} for cid, ok in checks]
@@ -70,7 +70,7 @@ def run_tests(root: Path) -> tuple[int, str]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Validate DataVision v2.80 Release Candidate installation/upgrade contract.")
+    ap = argparse.ArgumentParser(description="Validate DataVision v2.81 security/documentation freeze installation/upgrade contract.")
     ap.add_argument("--root", default=".")
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--json", action="store_true")

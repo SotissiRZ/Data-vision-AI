@@ -13,7 +13,7 @@ import {
   getDashboards, getDashboardDefinition, saveDashboardDefinition, deleteDashboardDefinition, previewDashboard,
   getSemanticModel, saveSemanticModel, evaluateSemanticMetric, getMetricPulse, getSemanticTableCatalog, validateSemanticModel, querySemanticMetric, getTrustCenter, runModelWhatIf, runModelSensitivity, runRootCauseAnalysis, optimizeModelScenarios,
   getProactiveSummary, getProactiveWatches, autoConfigureProactiveWatches, scanProactiveSignals, getProactiveInbox, updateProactiveAlertStatus,
-  bootstrapEnterprise, loginEnterprise, getEnterpriseSession, getEnterprisePreferences, saveEnterprisePreferences, getEnterpriseStatus, getEntrepriseReadiness, enforceEntreprisePrivateAI, createEnterpriseWorkspace, getEnterpriseWorkspace, addWorkspaceMember, bindWorkspaceDataset, saveWorkspacePolicy, getAuditEvents, getEnterpriseJobs, submitEnterpriseJob, cancelEnterpriseJob, getGovernedPreview, getGovernanceControlPlane, captureGovernanceSnapshot, getGovernanceSnapshots,
+  bootstrapEnterprise, loginEnterprise, getEnterpriseAuthStatus, getEnterpriseSession, getEnterprisePreferences, saveEnterprisePreferences, getEnterpriseStatus, getEntrepriseReadiness, enforceEntreprisePrivateAI, createEnterpriseWorkspace, getEnterpriseWorkspace, addWorkspaceMember, bindWorkspaceDataset, saveWorkspacePolicy, getAuditEvents, getEnterpriseJobs, submitEnterpriseJob, cancelEnterpriseJob, getGovernedPreview, getGovernanceControlPlane, captureGovernanceSnapshot, getGovernanceSnapshots,
   getEnterpriseAuthSessions, revokeEnterpriseAuthSession, logoutAllEnterpriseSessions, getEnterpriseMFAStatus, beginEnterpriseWebAuthnRegistration, verifyEnterpriseWebAuthnRegistration, disableEnterpriseWebAuthnCredential, verifyEnterpriseWebAuthnLogin, getPublicOIDCProviders, startEnterpriseOIDC, exchangeEnterpriseOIDC,
   getWorkspaceOIDCProviders, createWorkspaceOIDCProvider, disableWorkspaceOIDCProvider, getWorkspaceSecrets, createWorkspaceSecret, rotateWorkspaceSecret, testWorkspaceSecret,
   getWorkspacePlugins, installWorkspacePlugin, updateWorkspacePlugin, deleteWorkspacePlugin, testWorkspacePlugin, syncWorkspacePlugin, getWorkspacePluginDetail,
@@ -140,6 +140,8 @@ export default function Home() {
   const [trustSummary,setTrustSummary]=useState<AnyObj|null>(null);
   const [aiSeed,setAiSeed]=useState('');
   const [enterpriseBadge,setEnterpriseBadge]=useState<AnyObj|null>(null);
+  const [authStatus,setAuthStatus]=useState<AnyObj|null>(null);
+  const [authResolved,setAuthResolved]=useState(false);
   const [uiMode,setUiMode]=useState<AccessibilityMode>('comfortable');
   const [uiZoom,setUiZoom]=useState(105);
   const [locale,setLocale]=useState<Locale>('fr');
@@ -243,7 +245,7 @@ useEffect(()=>{
 },[uiMode,uiZoom,locale,highContrast,reduceMotion]);
 useEffect(()=>{
   if(typeof window==='undefined' || !enterpriseBadge || !preferencesHydratedRef.current) return;
-  const token=localStorage.getItem('dv_enterprise_token')||'';
+  const token=sessionStorage.getItem('dv_enterprise_token')||'';
   if(!token) return;
   if(preferencesSaveTimerRef.current) clearTimeout(preferencesSaveTimerRef.current);
   preferencesSaveTimerRef.current=setTimeout(()=>{
@@ -251,8 +253,8 @@ useEffect(()=>{
   },500);
   return()=>{if(preferencesSaveTimerRef.current) clearTimeout(preferencesSaveTimerRef.current);};
 },[uiMode,uiZoom,locale,highContrast,reduceMotion,enterpriseBadge?.user?.id]);
-  useEffect(()=>{ const refresh=()=>{ if(typeof window==='undefined')return; const t=localStorage.getItem('dv_enterprise_token')||''; if(!t){setEnterpriseBadge(null);return;} Promise.all([getEnterpriseSession(t),getEnterprisePreferences(t).catch(()=>({preferences:{}}))]).then(([s,prefs])=>{const preferred=localStorage.getItem('dv_enterprise_workspace')||s.workspaces?.[0]?.id||''; const ws=s.workspaces?.find((x:AnyObj)=>x.id===preferred)??s.workspaces?.[0]??null; const mode=prefs?.preferences?.accessibility_mode; const zoom=Number(prefs?.preferences?.ui_zoom); const preferredLocale=prefs?.preferences?.locale; if(mode==='normal'||mode==='comfortable'||mode==='large')setUiMode(mode); if(Number.isFinite(zoom)&&zoom>=90&&zoom<=140)setUiZoom(zoom); if(isLocale(preferredLocale))setLocale(preferredLocale); if(typeof prefs?.preferences?.high_contrast==='boolean')setHighContrast(prefs.preferences.high_contrast); if(typeof prefs?.preferences?.reduce_motion==='boolean')setReduceMotion(prefs.preferences.reduce_motion); preferencesHydratedRef.current=true; setEnterpriseBadge({user:s.user,workspace:ws});}).catch(()=>setEnterpriseBadge(null)); }; refresh(); window.addEventListener('datavision-enterprise-session',refresh); return()=>window.removeEventListener('datavision-enterprise-session',refresh); },[]);
-  useEffect(()=>{ if(typeof window==='undefined')return; const url=new URL(window.location.href); const code=url.searchParams.get('code'); const state=url.searchParams.get('state'); const provider=sessionStorage.getItem('dv_oidc_provider')||''; if(!code||!state||!provider)return; const redirectUri=window.location.origin; exchangeEnterpriseOIDC({provider_id:provider,code,state,redirect_uri:redirectUri}).then(body=>{localStorage.setItem('dv_enterprise_token',body.access_token);if(body.refresh_token)localStorage.setItem('dv_enterprise_refresh',body.refresh_token);if(body.workspace_id)localStorage.setItem('dv_enterprise_workspace',body.workspace_id);sessionStorage.removeItem('dv_oidc_provider');window.history.replaceState({},document.title,window.location.pathname);window.dispatchEvent(new Event('datavision-enterprise-session'));setView('identity');}).catch((e:unknown)=>{sessionStorage.removeItem('dv_oidc_provider');setError(e instanceof Error?e.message:String(e));window.history.replaceState({},document.title,window.location.pathname);}); },[]);
+  useEffect(()=>{ const refresh=async()=>{ if(typeof window==='undefined')return; try{const status=await getEnterpriseAuthStatus();setAuthStatus(status);const t=sessionStorage.getItem('dv_enterprise_token')||''; if(!t){setEnterpriseBadge(null);setAuthResolved(true);return;} const [session,prefs]=await Promise.all([getEnterpriseSession(t),getEnterprisePreferences(t).catch(()=>({preferences:{}}))]); const preferred=localStorage.getItem('dv_enterprise_workspace')||session.workspaces?.[0]?.id||''; const ws=session.workspaces?.find((x:AnyObj)=>x.id===preferred)??session.workspaces?.[0]??null; if(ws?.id)localStorage.setItem('dv_enterprise_workspace',ws.id); const mode=prefs?.preferences?.accessibility_mode; const zoom=Number(prefs?.preferences?.ui_zoom); const preferredLocale=prefs?.preferences?.locale; if(mode==='normal'||mode==='comfortable'||mode==='large')setUiMode(mode); if(Number.isFinite(zoom)&&zoom>=90&&zoom<=140)setUiZoom(zoom); if(isLocale(preferredLocale))setLocale(preferredLocale); if(typeof prefs?.preferences?.high_contrast==='boolean')setHighContrast(prefs.preferences.high_contrast); if(typeof prefs?.preferences?.reduce_motion==='boolean')setReduceMotion(prefs.preferences.reduce_motion); preferencesHydratedRef.current=true; setEnterpriseBadge({user:session.user,workspace:ws});}catch{setEnterpriseBadge(null);}finally{setAuthResolved(true);} }; void refresh(); window.addEventListener('datavision-enterprise-session',refresh); return()=>window.removeEventListener('datavision-enterprise-session',refresh); },[]);
+  useEffect(()=>{ if(typeof window==='undefined')return; const url=new URL(window.location.href); const code=url.searchParams.get('code'); const state=url.searchParams.get('state'); const provider=sessionStorage.getItem('dv_oidc_provider')||''; if(!code||!state||!provider)return; const redirectUri=window.location.origin; exchangeEnterpriseOIDC({provider_id:provider,code,state,redirect_uri:redirectUri}).then(body=>{sessionStorage.setItem('dv_enterprise_token',body.access_token);if(body.refresh_token)sessionStorage.setItem('dv_enterprise_refresh',body.refresh_token);if(body.workspace_id)localStorage.setItem('dv_enterprise_workspace',body.workspace_id);sessionStorage.removeItem('dv_oidc_provider');window.history.replaceState({},document.title,window.location.pathname);window.dispatchEvent(new Event('datavision-enterprise-session'));setView('identity');}).catch((e:unknown)=>{sessionStorage.removeItem('dv_oidc_provider');setError(e instanceof Error?e.message:String(e));window.history.replaceState({},document.title,window.location.pathname);}); },[]);
   useEffect(()=>{ const scope=enterpriseBadge?.workspace?.id?`workspace:${enterpriseBadge.workspace.id}`:'local'; if(previousSecurityScope.current!==scope){ setResult(null); setModel(null); setPrediction(null); setColumnAnalysis(null); setTrustSummary(null); previousSecurityScope.current=scope; } },[enterpriseBadge?.workspace?.id]);
   useEffect(()=>{ if(!result){setTrustSummary(null);return;} let cancelled=false; getTrustCenter(result.dataset.id).then(x=>{if(!cancelled)setTrustSummary(x)}).catch(()=>{if(!cancelled)setTrustSummary(null)}); return()=>{cancelled=true}; },[result?.dataset?.id]);
 
@@ -492,6 +494,8 @@ const setReadingMode = (mode:AccessibilityMode) => {
   setUiMode(mode);
   setUiZoom(preset);
 };
+if(!authResolved) return <div className="auth-loading" role="status">Vérification de la session DataVision…</div>;
+if(!enterpriseBadge && !authStatus?.local_dev_enabled) return <AuthenticationGate status={authStatus} onAuthenticated={()=>window.dispatchEvent(new Event('datavision-enterprise-session'))}/>;
 return <main className="app-shell professional-shell">
     <a className="skip-link" href="#main-content">{tr('a11y.skipToContent')}</a>
     <div className="sr-only" role="status" aria-live="polite" aria-atomic="true">{tr('a11y.viewChanged',undefined,{view:localizedViewLabel(view)})}</div>
@@ -1028,7 +1032,7 @@ function SqlWorkspace({ result, setError }: { result:AnyObj|null; setError:(s:st
   </div>;
 }
 
-function ModelView({ result, target, setTarget, algorithm, setAlgorithm, training, automlRunning, doTrain, doAutoML, model, setError }: { result: AnyObj | null; target: string; setTarget:(v:string)=>void; algorithm:string; setAlgorithm:(v:string)=>void; training:boolean; automlRunning:boolean; doTrain:()=>void; doAutoML:(c:{task:'auto'|'classification'|'regression'|'clustering';features?:string[];primary_metric:string;cv_folds:number;tune:boolean;max_candidates:number;split_strategy?:'auto'|'random'|'temporal';time_column?:string|null})=>void; model:AnyObj|null; setError:(s:string)=>void }) {
+function ModelView({ result, target, setTarget, algorithm, setAlgorithm, training, automlRunning, doTrain, doAutoML, model, setError }: { result: AnyObj | null; target: string; setTarget:(v:string)=>void; algorithm:string; setAlgorithm:(v:string)=>void; training:boolean; automlRunning:boolean; doTrain:()=>void; doAutoML:(c:{task:'auto'|'classification'|'regression'|'clustering'|'forecasting'|'anomaly_detection';features?:string[];primary_metric:string;cv_folds:number;tune:boolean;max_candidates:number;split_strategy?:'auto'|'random'|'temporal';time_column?:string|null;horizon?:number;backtest_windows?:number;contamination?:number;threshold?:number})=>void; model:AnyObj|null; setError:(s:string)=>void }) {
   const [task,setTask]=useState<'auto'|'classification'|'regression'|'clustering'|'forecasting'|'anomaly_detection'>('auto');
   const [metric,setMetric]=useState('auto');
   const [folds,setFolds]=useState(5);
@@ -2069,7 +2073,7 @@ function CollaborationCenter({result,setError,setView}:{result:AnyObj|null;setEr
   }
   useEffect(()=>{
     if(typeof window==='undefined')return;
-    const t=localStorage.getItem('dv_enterprise_token')||'';const ws=localStorage.getItem('dv_enterprise_workspace')||'';
+    const t=sessionStorage.getItem('dv_enterprise_token')||'';const ws=localStorage.getItem('dv_enterprise_workspace')||'';
     setToken(t);setWorkspaceId(ws);
     if(t){getEnterpriseSession(t).then(s=>{setSession(s);const active=ws||s.workspaces?.[0]?.id||'';setWorkspaceId(active);if(active)refresh(t,active,false);}).catch(()=>setSession(null));}
   },[]);
@@ -2202,7 +2206,7 @@ function ReliabilityLineageCenter({result,setError,setView}:{result:AnyObj|null;
   }
   useEffect(()=>{
     if(typeof window==='undefined')return;
-    const t=localStorage.getItem('dv_enterprise_token')||''; const stored=localStorage.getItem('dv_enterprise_workspace')||'';setToken(t);
+    const t=sessionStorage.getItem('dv_enterprise_token')||''; const stored=localStorage.getItem('dv_enterprise_workspace')||'';setToken(t);
     if(!t)return;
     getEnterpriseSession(t).then(s=>{setSession(s);setWorkspaceId(stored||s.workspaces?.[0]?.id||'')}).catch(()=>{setToken('');setSession(null)});
   },[]);
@@ -2325,7 +2329,7 @@ function SourcesRefreshCenter({setError,setView,onActivate}:{setError:(s:string)
   }
   useEffect(()=>{
     if(typeof window==='undefined')return;
-    const t=localStorage.getItem('dv_enterprise_token')||'';
+    const t=sessionStorage.getItem('dv_enterprise_token')||'';
     const stored=localStorage.getItem('dv_enterprise_workspace')||'';
     setToken(t);
     if(!t)return;
@@ -2485,7 +2489,7 @@ function OperationalIntelligenceCenter({result,setError,setView}:{result:AnyObj|
       if(activeSuite?.id){try{const detail=await getEvaluationSuite(t,ws,activeSuite.id);setActiveSuite(detail.suite);}catch{setActiveSuite(null)}}
     }catch(err:unknown){setError(err instanceof Error?err.message:String(err));}finally{setBusy(false)}
   }
-  useEffect(()=>{if(typeof window==='undefined')return;const t=localStorage.getItem('dv_enterprise_token')||'';const stored=localStorage.getItem('dv_enterprise_workspace')||'';if(!t)return;setToken(t);getEnterpriseSession(t).then(s=>{setSession(s);const ws=stored||s.workspaces?.[0]?.id||'';setWorkspaceId(ws);if(ws)refresh(t,ws)}).catch(()=>setSession(null));},[]);
+  useEffect(()=>{if(typeof window==='undefined')return;const t=sessionStorage.getItem('dv_enterprise_token')||'';const stored=localStorage.getItem('dv_enterprise_workspace')||'';if(!t)return;setToken(t);getEnterpriseSession(t).then(s=>{setSession(s);const ws=stored||s.workspaces?.[0]?.id||'';setWorkspaceId(ws);if(ws)refresh(t,ws)}).catch(()=>setSession(null));},[]);
   useEffect(()=>{if(token&&workspaceId)refresh(token,workspaceId);},[hours]);
   async function changeWorkspace(ws:string){setWorkspaceId(ws);setActiveSuite(null);setLatestRun(null);if(typeof window!=='undefined'){localStorage.setItem('dv_enterprise_workspace',ws);window.dispatchEvent(new Event('datavision-enterprise-session'));}await refresh(token,ws)}
   async function createSuite(){if(!result||!token||!workspaceId)return;setBusy(true);try{const r=await createEvaluationSuite(token,workspaceId,{dataset_id:result.dataset.id,name:suiteName,description:'Suite de non-régression créée depuis Operational Intelligence'});setActiveSuite(r.suite);await refresh();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
@@ -2524,7 +2528,7 @@ function GovernedActionsCenter({result,setError,setView}:{result:AnyObj|null;set
   const [messageTemplate,setMessageTemplate]=useState('DataVision: {{event.metric_label}} · {{event.severity}} · {{event.evidence}}'); const [manualSeverity,setManualSeverity]=useState('critical'); const [decisionNote,setDecisionNote]=useState('Validé depuis Actions Center'); const [testMessage,setTestMessage]=useState('');
 
   async function refresh(t=token,ws=workspaceId){if(!t||!ws)return;setBusy(true);try{const [sm,d,r,ru]=await Promise.all([getActionSummary(t,ws),getActionDestinations(t,ws),getActionRules(t,ws),getActionRuns(t,ws,'all',150)]);setSummary(sm);setDestinations(d.destinations??[]);setRules(r.rules??[]);setRuns(ru.runs??[]);if(!destinationId&&(d.destinations??[])[0])setDestinationId(d.destinations[0].id);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
-  useEffect(()=>{if(typeof window==='undefined')return;const t=localStorage.getItem('dv_enterprise_token')||'';const stored=localStorage.getItem('dv_enterprise_workspace')||'';if(!t)return;setToken(t);getEnterpriseSession(t).then(s=>{setSession(s);const ws=stored||s.workspaces?.[0]?.id||'';setWorkspaceId(ws);if(ws)refresh(t,ws)}).catch(()=>setSession(null));},[]);
+  useEffect(()=>{if(typeof window==='undefined')return;const t=sessionStorage.getItem('dv_enterprise_token')||'';const stored=localStorage.getItem('dv_enterprise_workspace')||'';if(!t)return;setToken(t);getEnterpriseSession(t).then(s=>{setSession(s);const ws=stored||s.workspaces?.[0]?.id||'';setWorkspaceId(ws);if(ws)refresh(t,ws)}).catch(()=>setSession(null));},[]);
   async function changeWorkspace(ws:string){setWorkspaceId(ws);setSelectedRun(null);if(typeof window!=='undefined'){localStorage.setItem('dv_enterprise_workspace',ws);window.dispatchEvent(new Event('datavision-enterprise-session'));}await refresh(token,ws)}
   const role=(session?.workspaces??[]).find((w:AnyObj)=>w.id===workspaceId)?.role??'viewer'; const canManage=['owner','admin'].includes(role); const canApprove=['owner','admin','data_scientist'].includes(role); const canTrigger=['owner','admin','data_scientist','analyst'].includes(role);
   function applyKind(kind:string){setDestKind(kind);setTestMessage('');if(kind==='webhook'){setDestAuth('hmac');setDestUrl('https://example.com/datavision');}else if(kind==='slack'){setDestAuth('none');setDestUrl('https://hooks.slack.com/services/...');}else if(kind==='teams'){setDestAuth('none');setDestUrl('https://...logic.azure.com/...');}else if(kind==='jira'){setDestAuth('basic');setDestUrl('https://your-domain.atlassian.net');}else if(kind==='email'){setDestAuth('smtp');setDestUrl('');}}
@@ -2602,7 +2606,7 @@ function IdentitySecurityCenter({ setError, setView }: { setError:(s:string)=>vo
       }else{setProviders([]);setSecrets([]);}
     }
   }
-  useEffect(()=>{if(typeof window==='undefined')return;const t=localStorage.getItem('dv_enterprise_token')||'';setToken(t);if(t)refresh(t).catch(e=>setError(e instanceof Error?e.message:String(e)));},[]);
+  useEffect(()=>{if(typeof window==='undefined')return;const t=sessionStorage.getItem('dv_enterprise_token')||'';setToken(t);if(t)refresh(t).catch(e=>setError(e instanceof Error?e.message:String(e)));},[]);
   async function changeWorkspace(ws:string){setWorkspaceId(ws);if(typeof window!=='undefined'){localStorage.setItem('dv_enterprise_workspace',ws);window.dispatchEvent(new Event('datavision-enterprise-session'));}await refresh(token,ws);}
   async function createProvider(){if(!token||!workspaceId)return;setBusy(true);setMessage('');try{await createWorkspaceOIDCProvider(token,workspaceId,{name:oidcName,issuer,client_id:clientId,client_secret:clientSecret,authorization_endpoint:authEndpoint||null,token_endpoint:tokenEndpoint||null,jwks_uri:jwksUri||null,allowed_domains:domains.split(',').map(x=>x.trim()).filter(Boolean),default_role:defaultRole,scopes:['openid','profile','email'],enabled:true});setClientSecret('');setMessage('Fournisseur SSO enregistré.');await refresh();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
   async function createSecretItem(){if(!token||!workspaceId)return;setBusy(true);setMessage('');try{const reference=secretProvider==='env'?{variable:envVariable}:secretProvider==='vault_kv2'?{url:vaultUrl,mount:vaultMount,path:vaultPath,field:vaultField}:{};await createWorkspaceSecret(token,workspaceId,{name:secretName,provider:secretProvider,value:secretValue,reference});setSecretName('');setSecretValue('');setMessage('Secret enregistré sans exposition de sa valeur.');await refresh();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
@@ -2706,7 +2710,7 @@ function PluginCenter({setError,setView}:{setError:(s:string)=>void;setView:(v:V
 
   useEffect(()=>{
     if(typeof window==='undefined')return;
-    const t=localStorage.getItem('dv_enterprise_token')||'';
+    const t=sessionStorage.getItem('dv_enterprise_token')||'';
     if(!t)return;
     setToken(t);
     getEnterpriseSession(t).then(s=>{
@@ -2827,6 +2831,47 @@ function PluginCenter({setError,setView}:{setError:(s:string)=>void;setView:(v:V
   </div>;
 }
 
+function AuthenticationGate({status,onAuthenticated}:{status:AnyObj|null;onAuthenticated:()=>void}) {
+  const [email,setEmail]=useState('admin@datavision.local');
+  const [password,setPassword]=useState('');
+  const [displayName,setDisplayName]=useState('Administrateur');
+  const [organizationName,setOrganizationName]=useState('DataVision Organisation');
+  const [setupSecret,setSetupSecret]=useState('');
+  const [busy,setBusy]=useState(false);
+  const [message,setMessage]=useState('');
+  const [providers,setProviders]=useState<AnyObj[]>([]);
+  useEffect(()=>{getPublicOIDCProviders().then(x=>setProviders(x.providers??[])).catch(()=>setProviders([]));},[]);
+  async function finishAuth(result:AnyObj){
+    let r=result;
+    if(r.mfa_required){
+      if(typeof navigator==='undefined'||!navigator.credentials)throw new Error('MFA WebAuthn requis mais indisponible dans ce navigateur.');
+      const credential=await navigator.credentials.get({publicKey:publicKeyOptionsFromJSON(r.publicKey) as PublicKeyCredentialRequestOptions});
+      if(!credential)throw new Error('Validation MFA annulée.');
+      r=await verifyEnterpriseWebAuthnLogin({challenge_id:r.challenge_id,credential:publicKeyCredentialToJSON(credential)});
+    }
+    sessionStorage.setItem('dv_enterprise_token',r.access_token);
+    if(r.refresh_token)sessionStorage.setItem('dv_enterprise_refresh',r.refresh_token);
+    if(r.workspace_id)localStorage.setItem('dv_enterprise_workspace',r.workspace_id);
+    onAuthenticated();
+  }
+  async function submit(mode:'bootstrap'|'login'){
+    setBusy(true);setMessage('');
+    try{
+      const r=mode==='bootstrap'
+        ? await bootstrapEnterprise({email,password,display_name:displayName,organization_name:organizationName,setup_secret:setupSecret})
+        : await loginEnterprise({email,password});
+      await finishAuth(r);
+    }catch(e:unknown){setMessage(e instanceof Error?e.message:String(e));}finally{setBusy(false);}
+  }
+  async function startSso(providerId:string){
+    if(typeof window==='undefined')return;setBusy(true);setMessage('');
+    try{sessionStorage.setItem('dv_oidc_provider',providerId);const out=await startEnterpriseOIDC(providerId,window.location.origin);window.location.href=out.authorization_url;}
+    catch(e:unknown){sessionStorage.removeItem('dv_oidc_provider');setMessage(e instanceof Error?e.message:String(e));setBusy(false);}
+  }
+  const bootstrapRequired=Boolean(status?.bootstrap_required);
+  return <main className="auth-gate"><section className="auth-card" aria-labelledby="auth-title"><div className="auth-brand"><div className="brand-mark" aria-hidden="true">DV</div><div><b>DataVision AI</b><span>Secure Analytics Platform</span></div></div><div className="auth-copy"><span className="eyebrow">AUTHENTIFICATION OBLIGATOIRE</span><h1 id="auth-title">{bootstrapRequired?'Initialiser DataVision':'Se connecter à DataVision'}</h1><p>{bootstrapRequired?'Créez le premier compte administrateur et l’organisation principale.':'Une session authentifiée et un workspace autorisé sont requis pour accéder aux données et aux outils analytiques.'}</p></div>{message&&<div className="alert" role="alert"><b>Accès refusé</b><span>{message}</span></div>}<div className="stack-form"><label>Email<input autoComplete="username" value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Mot de passe<input type="password" autoComplete={bootstrapRequired?'new-password':'current-password'} value={password} onChange={e=>setPassword(e.target.value)}/></label>{bootstrapRequired&&<><label>Nom affiché<input value={displayName} onChange={e=>setDisplayName(e.target.value)}/></label><label>Organisation<input value={organizationName} onChange={e=>setOrganizationName(e.target.value)}/></label><label>Secret d’initialisation<input type="password" autoComplete="off" value={setupSecret} onChange={e=>setSetupSecret(e.target.value)} placeholder="Secret généré lors de l’installation"/></label></>}<button className="primary-btn auth-submit" disabled={busy||!email||!password} onClick={()=>submit(bootstrapRequired?'bootstrap':'login')}>{busy?'Vérification…':bootstrapRequired?'Initialiser et se connecter':'Se connecter'}</button></div>{!bootstrapRequired&&providers.length>0&&<div className="auth-sso"><span>ou</span>{providers.map((provider:AnyObj)=><button key={provider.id} className="secondary-btn" disabled={busy} onClick={()=>startSso(provider.id)}>Continuer avec {provider.name}</button>)}</div>}<small className="auth-security-note">Sessions révocables · RBAC workspace · MFA WebAuthn/SSO selon la politique de l’organisation.</small></section></main>;
+}
+
 function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(s:string)=>void }) {
   const [status,setStatus]=useState<AnyObj|null>(null);
   const [oidcPublic,setOidcPublic]=useState<AnyObj[]>([]);
@@ -2869,7 +2914,7 @@ function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(
       const ws=workspaceId||stored||s.workspaces?.[0]?.id||''; setWorkspaceId(ws);
       if(typeof window!=='undefined'&&ws){localStorage.setItem('dv_enterprise_workspace',ws);window.dispatchEvent(new Event('datavision-enterprise-session'));}
       if(ws) await loadWorkspace(nextToken,ws);
-    }catch(e:unknown){ setSession(null); setToken(''); if(typeof window!=='undefined')localStorage.removeItem('dv_enterprise_token'); }
+    }catch(e:unknown){ setSession(null); setToken(''); if(typeof window!=='undefined')sessionStorage.removeItem('dv_enterprise_token'); }
   }
   async function loadWorkspace(nextToken=token,nextWs=workspaceId){
     if(!nextToken||!nextWs)return;
@@ -2882,7 +2927,7 @@ function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(
       setWorkspace(w);setAudit(a.events??[]);setJobs(j.jobs??[]);setControlPlane(cp);setGovernanceSnapshots(snaps.snapshots??[]);setEntrepriseReadiness(readiness);
     }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
   }
-  useEffect(()=>{getEnterpriseStatus().then(setStatus).catch(()=>setStatus(null));getPublicOIDCProviders().then(x=>setOidcPublic(x.providers??[])).catch(()=>setOidcPublic([]));if(typeof window!=='undefined'){const t=localStorage.getItem('dv_enterprise_token')||'';if(t){setToken(t);loadSession(t);}}},[]);
+  useEffect(()=>{getEnterpriseStatus().then(setStatus).catch(()=>setStatus(null));getPublicOIDCProviders().then(x=>setOidcPublic(x.providers??[])).catch(()=>setOidcPublic([]));if(typeof window!=='undefined'){const t=sessionStorage.getItem('dv_enterprise_token')||'';if(t){setToken(t);loadSession(t);}}},[]);
   useEffect(()=>{if(token&&workspaceId)loadWorkspace(token,workspaceId);},[workspaceId]);
 
   async function authenticate(mode:'bootstrap'|'login'){
@@ -2895,10 +2940,10 @@ function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(
         if(!credential)throw new Error('Validation MFA annulée.');
         r=await verifyEnterpriseWebAuthnLogin({challenge_id:r.challenge_id,credential:publicKeyCredentialToJSON(credential)});
       }
-      setToken(r.access_token); if(typeof window!=='undefined'){localStorage.setItem('dv_enterprise_token',r.access_token);if(r.refresh_token)localStorage.setItem('dv_enterprise_refresh',r.refresh_token);} await loadSession(r.access_token);
+      setToken(r.access_token); if(typeof window!=='undefined'){sessionStorage.setItem('dv_enterprise_token',r.access_token);if(r.refresh_token)sessionStorage.setItem('dv_enterprise_refresh',r.refresh_token);} await loadSession(r.access_token);
     }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}
   }
-  function logout(){setToken('');setSession(null);setWorkspace(null);setAudit([]);setJobs([]);setControlPlane(null);setGovernanceSnapshots([]);setEntrepriseReadiness(null);if(typeof window!=='undefined'){localStorage.removeItem('dv_enterprise_token');localStorage.removeItem('dv_enterprise_refresh');localStorage.removeItem('dv_enterprise_workspace');window.dispatchEvent(new Event('datavision-enterprise-session'));}}
+  function logout(){setToken('');setSession(null);setWorkspace(null);setAudit([]);setJobs([]);setControlPlane(null);setGovernanceSnapshots([]);setEntrepriseReadiness(null);if(typeof window!=='undefined'){sessionStorage.removeItem('dv_enterprise_token');sessionStorage.removeItem('dv_enterprise_refresh');localStorage.removeItem('dv_enterprise_workspace');window.dispatchEvent(new Event('datavision-enterprise-session'));}}
   async function startSso(providerId:string){if(typeof window==='undefined')return;setBusy(true);try{sessionStorage.setItem('dv_oidc_provider',providerId);const out=await startEnterpriseOIDC(providerId,window.location.origin);window.location.href=out.authorization_url;}catch(e:unknown){sessionStorage.removeItem('dv_oidc_provider');setError(e instanceof Error?e.message:String(e));setBusy(false);}}
   async function createWs(){if(!token||!session?.organizations?.[0]?.id)return;setBusy(true);try{await createEnterpriseWorkspace(token,session.organizations[0].id,newWorkspace);await loadSession(token);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
   async function provisionMember(){if(!token||!workspaceId||!memberEmail)return;setBusy(true);try{await addWorkspaceMember(token,workspaceId,memberEmail,memberRole,memberName,memberPassword);setMemberEmail('');setMemberName('');setMemberPassword('');await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
@@ -2910,7 +2955,7 @@ function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(
   async function enforcePrivateAI(){if(!token||!workspaceId)return;setBusy(true);try{await enforceEntreprisePrivateAI(token,workspaceId);await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
   async function cancelJob(id:string){try{await cancelEnterpriseJob(token,id);await loadWorkspace();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}}
 
-  if(!session) return <div className="page governance-page"><div className="page-title"><div><span className="eyebrow">TENANT-AWARE SECURITY</span><h1>Gouvernance & sécurité</h1><p>Identité, workspaces, RBAC, RLS et sécurité colonne appliqués au pipeline analytique complet. Le mode local reste disponible hors session Entreprise.</p></div><span className="module-state implemented">Entreprise v2.58</span></div>
+  if(!session) return <div className="page governance-page"><div className="page-title"><div><span className="eyebrow">TENANT-AWARE SECURITY</span><h1>Gouvernance & sécurité</h1><p>Identité, workspaces, RBAC, RLS et sécurité colonne appliqués au pipeline analytique complet. L’authentification est obligatoire par défaut. Le mode local anonyme n’est disponible qu’en développement explicite.</p></div><span className="module-state implemented">Entreprise v2.58</span></div>
     <div className="governance-intro-grid">
       <Panel title="Initialiser DataVision Entreprise"><div className="stack-form"><label>Email administrateur<input value={email} onChange={e=>setEmail(e.target.value)}/></label><label>Mot de passe<input type="password" value={password} onChange={e=>setPassword(e.target.value)} placeholder="8 caractères minimum"/></label><div className="two-col"><label>Nom affiché<input value={displayName} onChange={e=>setDisplayName(e.target.value)}/></label><label>Organisation<input value={orgName} onChange={e=>setOrgName(e.target.value)}/></label></div><div className="button-row"><RunButton busy={busy} label="Initialiser" busyLabel="Initialisation…" onClick={()=>authenticate('bootstrap')}/><button className="secondary-btn" disabled={busy} onClick={()=>authenticate('login')}>Se connecter</button></div><small className="help-text">Le bootstrap ne fonctionne qu’une seule fois. Ensuite, utilisez la connexion.</small></div></Panel>
       <Panel title="Connexion d’entreprise"><div className="sso-login-panel">{oidcPublic.length?oidcPublic.map((p:AnyObj)=><button key={p.id} className="sso-provider-btn" disabled={busy} onClick={()=>startSso(p.id)}><span>SSO</span><div><b>Continuer avec {p.name}</b><small>Connexion OIDC sécurisée</small></div><i>→</i></button>):<div className="quiet-empty">Aucun fournisseur SSO actif. Un Owner/Admin peut en configurer un dans Identité & Secrets.</div>}</div></Panel>

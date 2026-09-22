@@ -452,6 +452,22 @@ MIGRATIONS: tuple[Migration, ...] = (
         statements=(),
     ),
 
+    Migration(
+        version="2.81.0-001",
+        name="security_documentation_freeze",
+        statements=(
+            """CREATE TABLE IF NOT EXISTS auth_login_throttle (
+                principal_hash TEXT PRIMARY KEY,
+                failures INTEGER NOT NULL DEFAULT 0,
+                window_started_at TEXT NOT NULL,
+                locked_until TEXT,
+                updated_at TEXT NOT NULL
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_auth_login_throttle_locked
+               ON auth_login_throttle(locked_until)""",
+        ),
+    ),
+
 )
 
 

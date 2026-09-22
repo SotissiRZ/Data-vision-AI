@@ -20,7 +20,7 @@ def checks(root: Path):
     policy = json.loads(policy_path.read_text(encoding="utf-8"))
     runner = (root / "scripts/performance_benchmark.py").read_text(encoding="utf-8")
     test = "backend/tests/test_performance_slo_v277.py"
-    doc = "docs/PERFORMANCE_SLO_EVIDENCE_V2770.md"
+    doc = "docs/operations/PERFORMANCE_SLO_EVIDENCE_V2770.md"
     return [
         ("versioned performance slo policy", policy.get("schema") == "datavision.performance-slo-policy/v1" and "production_standard" in policy.get("profiles", {}), ["policies/performance_slo.json"], [test]),
         ("workspace evidence ledger and migration", "performance_evidence_runs" in metadata and "2.77.0-001" in migrations, ["backend/app/services/metadata_store.py", "backend/app/services/schema_migrations.py"], [test]),

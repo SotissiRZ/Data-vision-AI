@@ -8,6 +8,7 @@ class Settings(BaseSettings):
     app_name: str = "DataVision AI"
     api_host: str = "0.0.0.0"
     api_port: int = 8005
+    api_docs_enabled: bool = False
     cors_origins: str = "http://localhost:3005"
     data_root: Path = Path("./data")
     max_upload_mb: int = 250
@@ -17,6 +18,14 @@ class Settings(BaseSettings):
     ai_model: str = ""
     ai_api_key: str = ""
     auth_secret: str = "change-me-in-production-please-32chars-min"
+    auth_mode: str = "required"  # required | local_dev
+    bootstrap_secret: str = ""
+    auth_login_max_failures: int = 5
+    auth_login_lockout_minutes: int = 15
+    password_min_length: int = 15
+    password_scrypt_n: int = 131072
+    password_scrypt_r: int = 8
+    password_scrypt_p: int = 1
     connector_secret_key: str = ""
     access_token_minutes: int = 60
     refresh_token_days: int = 14

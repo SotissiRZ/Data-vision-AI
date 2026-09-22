@@ -29,7 +29,7 @@ from app.services.upload_security import antivirus_status
 from app.services.secret_crypto import kms_status
 from app.services.schema_migrations import migration_status
 
-app = FastAPI(title=settings.app_name, version="2.80.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.81.0", docs_url="/docs" if settings.api_docs_enabled else None, redoc_url="/redoc" if settings.api_docs_enabled else None, openapi_url="/openapi.json" if settings.api_docs_enabled else None)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -113,7 +113,7 @@ def _dataset_id_from_path(path: str) -> str | None:
     if not path.startswith(prefix):
         return None
     rest = path[len(prefix):]
-    if not rest or rest.startswith("catalog/"):
+    if not rest or rest == "catalog" or rest.startswith("catalog/"):
         return None
     parts = [p for p in rest.split("/") if p]
     if not parts:
@@ -307,7 +307,7 @@ def health_live():
     return {
         "status": "alive",
         "product": settings.app_name,
-        "version": "2.80.0",
+        "version": "2.81.0",
     }
 
 
@@ -316,10 +316,10 @@ def health_startup():
     try:
         migrations = migration_status()
         ok = bool(migrations.get("ready"))
-        payload = {"status": "started" if ok else "migrations_pending", "ready": ok, "version": "2.80.0", "schema_migrations": migrations}
+        payload = {"status": "started" if ok else "migrations_pending", "ready": ok, "version": "2.81.0", "schema_migrations": migrations}
         return payload if ok else JSONResponse(status_code=503, content=payload)
     except Exception as exc:
-        return JSONResponse(status_code=503, content={"status": "startup_failed", "ready": False, "version": "2.80.0", "error": type(exc).__name__})
+        return JSONResponse(status_code=503, content={"status": "startup_failed", "ready": False, "version": "2.81.0", "error": type(exc).__name__})
 
 
 @app.get("/health/ready")
@@ -390,7 +390,7 @@ def health_ready():
         "status": "ready" if ready else "not_ready",
         "ready": ready,
         "product": settings.app_name,
-        "version": "2.80.0",
+        "version": "2.81.0",
         "components": components,
     }
     if ready:
@@ -403,7 +403,7 @@ def health():
     return {
         "status": "ok",
         "product": settings.app_name,
-        "version": "2.80.0",
+        "version": "2.81.0",
     }
 
 

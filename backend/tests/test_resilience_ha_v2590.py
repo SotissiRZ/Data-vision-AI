@@ -119,5 +119,5 @@ def test_v259_operational_cli_and_runbooks_are_shipped():
     root = Path(__file__).resolve().parents[2]
     assert (root / "backend/app/ops/migrate.py").is_file()
     assert (root / "backend/app/ops/backup.py").is_file()
-    runbook = (root / "docs/RUNBOOK_DISASTER_RECOVERY.md").read_text(encoding="utf-8")
+    runbook = (root / "docs/operations/runbooks/RUNBOOK_DISASTER_RECOVERY.md").read_text(encoding="utf-8")
     assert "RTO" in runbook and "RPO" in runbook and "app.ops.backup restore" in runbook and "--confirm" in runbook

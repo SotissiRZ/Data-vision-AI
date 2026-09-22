@@ -39,12 +39,12 @@ def inspect(root: Path) -> dict:
     checks = [
         ("security_headers", _contains(main, "X-Content-Type-Options", "Strict-Transport-Security") and _contains(next_config, "X-Content-Type-Options", "Strict-Transport-Security")),
         ("strict_signoff_integrity", _contains(signoff, "evidence_sha256", "attachment sha256 mismatch", "--allow-waivers", "strict")),
-        ("ordered_idempotent_migrations", _contains(migrations, "ordered_migrations", "2.80.0-001", "release_candidate_hardening_marker")),
+        ("ordered_idempotent_migrations", _contains(migrations, "ordered_migrations", "2.81.0-001", "security_documentation_freeze", "release_candidate_hardening_marker")),
         ("backup_restore_drill", _contains(root / "backend/app/services/backup_service.py", "run_restore_drill", "_verify_manifest_files", "_safe_extract")),
         ("full_gate_ci", _contains(ci, "quality_remediation_acceptance.py", "storytelling_acceptance.py", "model_gateway_acceptance.py", "i18n_accessibility_acceptance.py", "cloud_cdc_acceptance.py", "workspace_environment_acceptance.py", "performance_slo_acceptance.py", "cdc_gap_closure_acceptance.py", "release_candidate_acceptance.py", "release_installation_acceptance.py")),
         ("release_candidate_e2e", _contains(e2e, "@release-candidate", "x-request-id", "security headers") and _contains(root / "frontend/package.json", "test:e2e:release-candidate")),
-        ("external_boundary_preserved", _contains(prod, '"acceptance": "conditional"', '"target_signoff": "pending"') and _contains(root / "docs/UAT_SIGNOFF_TEMPLATE.md", "UAT")),
-        ("versioned_release_evidence", version == "2.80.0" and _contains(root / "scripts/production_baseline.py", 'EXPECTED_VERSION = "2.80.0"')),
+        ("external_boundary_preserved", _contains(prod, '"acceptance": "conditional"', '"target_signoff": "pending"') and _contains(root / "docs/compliance/UAT_SIGNOFF_TEMPLATE.md", "UAT")),
+        ("versioned_release_evidence", version == "2.81.0" and _contains(root / "scripts/production_baseline.py", 'EXPECTED_VERSION = "2.81.0"')),
     ]
     rows = [{"id": check_id, "ok": ok} for check_id, ok in checks]
     return {
@@ -73,7 +73,7 @@ def run_tests(root: Path) -> tuple[int, str]:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Validate DataVision release-candidate hardening on v2.80.")
+    ap = argparse.ArgumentParser(description="Validate DataVision release-candidate hardening on v2.81 security/documentation freeze.")
     ap.add_argument("--root", default=".")
     ap.add_argument("--check", action="store_true")
     ap.add_argument("--json", action="store_true")

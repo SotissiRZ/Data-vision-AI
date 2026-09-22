@@ -27,7 +27,7 @@ def _boot(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "continuous_compliance_enabled", True)
     metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
     res = client.post("/api/v1/auth/bootstrap", json={
-        "email": "sec264@datavision.local", "password": "SecPass264!", "display_name": "Sec 264", "organization_name": "Entreprise Sec 264"
+        "email": "sec264@datavision.local", "password": "SecPass264!Safe", "display_name": "Sec 264", "organization_name": "Entreprise Sec 264"
     })
     assert res.status_code == 200, res.text
     body = res.json()

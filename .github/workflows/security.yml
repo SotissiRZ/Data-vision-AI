@@ -21,6 +21,8 @@ jobs:
         with:
           python-version: '3.12'
       - run: pip install pip-audit
+      - run: python scripts/dependency_compatibility.py --root . --check
+      - run: python scripts/security_hardening_audit.py --root . --check
       - run: pip-audit -r backend/requirements.txt
       - uses: actions/setup-node@v4
         with:

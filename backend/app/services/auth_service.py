@@ -33,11 +33,16 @@ def _unb64(data: str) -> bytes:
 
 
 def hash_password(password: str) -> str:
-    if len(password) < 8:
-        raise ValueError("Le mot de passe doit contenir au moins 8 caractères.")
+    settings = get_settings()
+    minimum = max(8, int(settings.password_min_length))
+    if len(password) < minimum:
+        raise ValueError(f"Le mot de passe doit contenir au moins {minimum} caractères.")
     salt = os.urandom(16)
-    key = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1, dklen=32)
-    return f"scrypt$16384$8$1${_b64(salt)}${_b64(key)}"
+    n = max(2**14, int(settings.password_scrypt_n))
+    r = max(8, int(settings.password_scrypt_r))
+    p = max(1, int(settings.password_scrypt_p))
+    key = hashlib.scrypt(password.encode(), salt=salt, n=n, r=r, p=p, dklen=32)
+    return f"scrypt${n}${r}${p}${_b64(salt)}${_b64(key)}"
 
 
 def verify_password(password: str, encoded: str) -> bool:
@@ -83,8 +88,15 @@ def decode_token(token: str) -> dict[str, Any]:
     if not hmac.compare_digest(sig, expected):
         raise ValueError("Signature du token invalide")
     payload = json.loads(_unb64(p))
-    if int(payload.get("exp", 0)) < int(datetime.now(timezone.utc).timestamp()):
+    if payload.get("iss") != "datavision-ai":
+        raise ValueError("Émetteur du token invalide")
+    now_ts = int(datetime.now(timezone.utc).timestamp())
+    if int(payload.get("exp", 0)) < now_ts:
         raise ValueError("Token expiré")
+    if int(payload.get("iat", 0)) > now_ts + 60:
+        raise ValueError("Horodatage du token invalide")
+    if not payload.get("sub"):
+        raise ValueError("Sujet du token manquant")
     return payload
 
 
@@ -122,6 +134,54 @@ def validate_session_payload(payload: dict[str, Any]) -> dict[str, Any] | None:
     validate_session_security(str(row["user_id"]), sid, row)
     execute("UPDATE auth_sessions SET last_seen_at=:now WHERE id=:id", {"now": utcnow(), "id": sid})
     return row
+
+
+
+
+def _login_principal_hash(email: str, client_key: str) -> str:
+    material = f"{email.strip().lower()}|{client_key.strip().lower()}".encode("utf-8")
+    return hashlib.sha256(material).hexdigest()
+
+
+def enforce_login_throttle(email: str, client_key: str) -> None:
+    settings = get_settings()
+    principal = _login_principal_hash(email, client_key)
+    row = fetch_one("SELECT failures,window_started_at,locked_until FROM auth_login_throttle WHERE principal_hash=:p", {"p": principal})
+    if not row:
+        return
+    locked_until = _parse_dt(row.get("locked_until"))
+    if locked_until and locked_until > datetime.now(timezone.utc):
+        remaining = max(1, int((locked_until - datetime.now(timezone.utc)).total_seconds() // 60) + 1)
+        raise PermissionError(f"Trop de tentatives de connexion. Réessayez dans environ {remaining} minute(s).")
+
+
+def record_login_failure(email: str, client_key: str) -> None:
+    settings = get_settings()
+    principal = _login_principal_hash(email, client_key)
+    now = datetime.now(timezone.utc)
+    row = fetch_one("SELECT failures,window_started_at,locked_until FROM auth_login_throttle WHERE principal_hash=:p", {"p": principal})
+    window_minutes = max(1, int(settings.auth_login_lockout_minutes))
+    failures = 1
+    window_started = now
+    if row:
+        started = _parse_dt(row.get("window_started_at"))
+        if started and (now - started) <= timedelta(minutes=window_minutes):
+            failures = int(row.get("failures") or 0) + 1
+            window_started = started
+    locked_until = None
+    if failures >= max(1, int(settings.auth_login_max_failures)):
+        locked_until = now + timedelta(minutes=window_minutes)
+    execute(
+        """INSERT INTO auth_login_throttle(principal_hash,failures,window_started_at,locked_until,updated_at)
+           VALUES(:p,:f,:w,:l,:u)
+           ON CONFLICT(principal_hash) DO UPDATE SET failures=:f,window_started_at=:w,locked_until=:l,updated_at=:u""",
+        {"p": principal, "f": failures, "w": window_started.isoformat(), "l": locked_until.isoformat() if locked_until else None, "u": now.isoformat()},
+    )
+
+
+def clear_login_failures(email: str, client_key: str) -> None:
+    principal = _login_principal_hash(email, client_key)
+    execute("DELETE FROM auth_login_throttle WHERE principal_hash=:p", {"p": principal})
 
 
 def create_authenticated_session(user_id: str, email: str, *, provider: str = "local", device_label: str = "", user_agent: str = "", mfa_verified: bool = False) -> dict[str, Any]:

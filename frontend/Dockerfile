@@ -17,7 +17,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV PORT=3005
 ENV INTERNAL_API_URL=http://api:8005/api/v1
-COPY --from=build /app/.next/standalone ./
-COPY --from=build /app/.next/static ./.next/static
+RUN addgroup -S -g 10001 datavision && adduser -S -u 10001 -G datavision datavision
+COPY --from=build --chown=10001:10001 /app/.next/standalone ./
+COPY --from=build --chown=10001:10001 /app/.next/static ./.next/static
+USER 10001:10001
 EXPOSE 3005
 CMD ["node", "server.js"]

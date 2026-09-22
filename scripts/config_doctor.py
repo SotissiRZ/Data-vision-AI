@@ -44,10 +44,21 @@ def inspect(root: Path, env_file: Path, mode: str | None = None) -> dict:
         if value and not urlparse(value).scheme:
             errors.append(f"invalid_url:{key}")
 
+    auth_mode = values.get("AUTH_MODE", "required").strip().lower() or "required"
+    if auth_mode not in {"required", "local_dev"}:
+        errors.append("unsupported_auth_mode")
+    if auth_mode == "required" and is_placeholder(values.get("BOOTSTRAP_SECRET", "")):
+        errors.append("auth_required_bootstrap_secret_not_set")
+    if effective_mode == "production" and auth_mode != "required":
+        errors.append("production_auth_mode_must_be_required")
+
     if effective_mode == "production":
-        for key in ("AUTH_SECRET", "CONNECTOR_SECRET_KEY"):
+        for key in ("AUTH_SECRET", "CONNECTOR_SECRET_KEY", "BOOTSTRAP_SECRET"):
             if is_placeholder(values.get(key, "")):
                 errors.append(f"production_secret_not_set:{key}")
+        cors = values.get("CORS_ORIGINS", "")
+        if "*" in {part.strip() for part in cors.split(",")}:
+            errors.append("production_cors_wildcard_forbidden")
         kms_provider = values.get("SECRET_KMS_PROVIDER", "local").strip().lower() or "local"
         kms_requirements = {
             "local": ("SECRET_KMS_KEY",),
@@ -62,6 +73,15 @@ def inspect(root: Path, env_file: Path, mode: str | None = None) -> dict:
             for key in kms_requirements[kms_provider]:
                 if is_placeholder(values.get(key, "")):
                     errors.append(f"production_secret_not_set:{key}")
+        if is_placeholder(values.get("POSTGRES_PASSWORD", "")):
+            errors.append("production_secret_not_set:POSTGRES_PASSWORD")
+        password_min_length = int(values.get("PASSWORD_MIN_LENGTH", "15") or "15")
+        if password_min_length < 15:
+            errors.append("production_password_min_length_must_be_at_least_15")
+        password_scrypt_n = int(values.get("PASSWORD_SCRYPT_N", "131072") or "131072")
+        password_scrypt_p = int(values.get("PASSWORD_SCRYPT_P", "1") or "1")
+        if password_scrypt_n < 131072 and password_scrypt_p < 5:
+            errors.append("production_scrypt_cost_below_security_baseline")
         if values.get("ANTIVIRUS_MODE", "").lower() != "required":
             errors.append("production_antivirus_mode_must_be_required")
         if values.get("METADATA_FALLBACK_SQLITE", "").lower() == "true":

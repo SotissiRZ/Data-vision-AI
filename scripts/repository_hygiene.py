@@ -43,8 +43,8 @@ def check(root: Path) -> list[str]:
         errors.append('Missing docs/history/manifests/')
     if not migrations.is_dir():
         errors.append('Missing docs/history/migrations/')
-    if not (root / 'docs' / 'PROJECT_STRUCTURE.md').is_file():
-        errors.append('Missing docs/PROJECT_STRUCTURE.md')
+    if not (root / 'docs' / 'development' / 'PROJECT_STRUCTURE.md').is_file():
+        errors.append('Missing docs/development/PROJECT_STRUCTURE.md')
     return errors
 
 
@@ -59,6 +59,10 @@ def main() -> int:
         print('Repository hygiene: FAIL')
         for error in errors:
             print(f'- {error}')
+        legacy_names = {'manifest.json','pytest.ini','start.bat','MIGRATION_FROM_V212.md','MIGRATION_GUIDE.md','CDC_DataVision_AI.md'}
+        if any(any(name in error for name in legacy_names) for error in errors):
+            print(r'Remediation (Windows): powershell -ExecutionPolicy Bypass -File .\scripts\cleanup-legacy-root.ps1')
+            print('Tip: extract each DataVision release into a clean directory; do not overlay archives.')
         return 1
     print('Repository hygiene: OK')
     return 0

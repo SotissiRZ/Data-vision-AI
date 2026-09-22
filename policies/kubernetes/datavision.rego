@@ -67,9 +67,14 @@ deny[msg] {
   msg := sprintf("Deployment/%s container %s allows privilege escalation", [input.metadata.name, c.name])
 }
 
+drops_all_capabilities(c) {
+  some i
+  c.securityContext.capabilities.drop[i] == "ALL"
+}
+
 deny[msg] {
   input.kind == "Deployment"
   c := input.spec.template.spec.containers[_]
-  not c.securityContext.capabilities.drop[_] == "ALL"
+  not drops_all_capabilities(c)
   msg := sprintf("Deployment/%s container %s must drop ALL capabilities", [input.metadata.name, c.name])
 }

@@ -4,6 +4,7 @@ from contextvars import ContextVar, Token
 from dataclasses import dataclass
 from typing import Any
 
+from app.core.config import get_settings
 from app.services.auth_service import decode_token, get_user, has_permission, workspace_role, validate_session_payload
 from app.services.metadata_store import fetch_all, fetch_one, execute, utcnow
 
@@ -33,16 +34,19 @@ def reset_access_context(token: Token) -> None:
 
 
 def build_access_context(authorization: str | None, workspace_id: str | None) -> DataAccessContext | None:
-    """Build an Enterprise data-access context.
+    """Build an Entreprise data-access context.
 
-    Local mode intentionally remains supported: when neither header is present, no governed
-    context is created. If either header is provided, both become mandatory so an authenticated
-    request can never silently fall back to unrestricted local access.
+    Authentication is mandatory by default. Anonymous local access exists only when
+    AUTH_MODE=local_dev and APP_ENV is not production. If either governed header is provided,
+    both remain mandatory so a request can never silently fall back to unrestricted access.
     """
     if not authorization and not workspace_id:
-        return None
+        settings = get_settings()
+        if settings.auth_mode == "local_dev" and settings.app_env.lower() != "production":
+            return None
+        raise ValueError("Authentification et workspace requis.")
     if not authorization or not authorization.lower().startswith("bearer "):
-        raise PermissionError("Authentification Bearer requise pour l'accès gouverné.")
+        raise ValueError("Authentification Bearer requise pour l'accès gouverné.")
     if not workspace_id:
         raise PermissionError("X-Workspace-ID est requis pour l'accès gouverné.")
     payload = decode_token(authorization.split(" ", 1)[1].strip())
@@ -66,7 +70,7 @@ def build_access_context(authorization: str | None, workspace_id: str | None) ->
 def require_workspace_permission(permission: str, ctx: DataAccessContext | None = None) -> DataAccessContext:
     ctx = ctx or current_access_context()
     if not ctx:
-        raise PermissionError("Contexte Enterprise absent.")
+        raise PermissionError("Contexte Entreprise absent.")
     if not has_permission(ctx.user_id, ctx.workspace_id, permission):
         raise PermissionError(f"Permission insuffisante: {permission}.")
     return ctx

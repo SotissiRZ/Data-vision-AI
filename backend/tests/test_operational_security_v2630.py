@@ -23,7 +23,7 @@ def _boot(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "release_rollback_executor", "plan_only")
     metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
     res = client.post("/api/v1/auth/bootstrap", json={
-        "email": "sec263@datavision.local", "password": "SecPass263!", "display_name": "Sec 263", "organization_name": "Entreprise Sec 263"
+        "email": "sec263@datavision.local", "password": "SecPass263!Safe", "display_name": "Sec 263", "organization_name": "Entreprise Sec 263"
     })
     assert res.status_code == 200, res.text
     body = res.json()

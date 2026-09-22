@@ -19,7 +19,7 @@ def checks(root: Path):
     api = (root / "frontend/lib/api.ts").read_text(encoding="utf-8")
     req = (root / "backend/requirements.txt").read_text(encoding="utf-8")
     test = "backend/tests/test_cloud_cdc_v275.py"
-    doc = "docs/CLOUD_CDC_INGESTION_V2750.md"
+    doc = "docs/data/CLOUD_CDC_INGESTION_V2750.md"
     return [
         ("three native object storage backends", all(token in backends for token in ['"s3": ConnectorSpec', '"gcs": ConnectorSpec', '"azure_blob": ConnectorSpec']) and all(dep in req for dep in ("boto3==", "google-cloud-storage==", "azure-storage-blob==")), ["backend/app/services/connector_backends.py", "backend/requirements.txt"], [test]),
         ("governed cloud object sources", 'allowed_kinds = {"object"}' in service and "_object_frame_from_bytes" in backends and "max_object_mb" in backends, ["backend/app/services/connector_service.py", "backend/app/services/connector_backends.py"], [test]),

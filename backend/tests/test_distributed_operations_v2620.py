@@ -26,7 +26,7 @@ def _boot(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "multi_cluster_failover_enabled", False)
     metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
     res = client.post("/api/v1/auth/bootstrap", json={
-        "email":"ops262@datavision.local", "password":"OpsPass262!", "display_name":"Ops 262", "organization_name":"Entreprise Ops 262"
+        "email":"ops262@datavision.local", "password":"OpsPass262!Safe", "display_name":"Ops 262", "organization_name":"Entreprise Ops 262"
     })
     assert res.status_code == 200, res.text
     body=res.json(); return settings, body, {"Authorization":f"Bearer {body['access_token']}"}

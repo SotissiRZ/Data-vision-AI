@@ -690,19 +690,21 @@ export function AIProviderControlCenter({
                       | "openai_compatible"
                       | "anthropic"
                       | "gemini";
-                    const defaults =
-                      providerType === "anthropic"
-                        ? { location: "external" as const, base_url: "https://api.anthropic.com", name: "Anthropic" }
-                        : providerType === "gemini"
-                          ? { location: "external" as const, base_url: "https://generativelanguage.googleapis.com/v1beta", name: "Gemini" }
-                          : providerType === "ollama"
-                            ? { location: "local" as const, base_url: "http://host.docker.internal:11434", name: "Modèle local" }
-                            : { location: current.location, base_url: current.base_url, name: current.name };
-                    setProviderDraft((current) => ({
-                      ...current,
-                      provider_type: providerType,
-                      ...defaults,
-                    }));
+                    setProviderDraft((current) => {
+                      const defaults =
+                        providerType === "anthropic"
+                          ? { location: "external" as const, base_url: "https://api.anthropic.com", name: "Anthropic" }
+                          : providerType === "gemini"
+                            ? { location: "external" as const, base_url: "https://generativelanguage.googleapis.com/v1beta", name: "Gemini" }
+                            : providerType === "ollama"
+                              ? { location: "local" as const, base_url: "http://host.docker.internal:11434", name: "Modèle local" }
+                              : { location: current.location, base_url: current.base_url, name: current.name };
+                      return {
+                        ...current,
+                        provider_type: providerType,
+                        ...defaults,
+                      };
+                    });
                   }}
                 >
                   <option value="ollama">Ollama / local compatible</option>

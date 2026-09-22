@@ -25,7 +25,7 @@ def checks(root: Path) -> list[tuple[str, bool, list[str], list[str]]]:
     routes = (root / "backend/app/api/routes/enterprise.py").read_text(encoding="utf-8")
     e2e = root / "frontend/e2e/accessibility.spec.ts"
     test = "backend/tests/test_i18n_accessibility_v274.py"
-    doc = "docs/I18N_ACCESSIBILITY_V2740.md"
+    doc = "docs/ui-reporting/I18N_ACCESSIBILITY_V2740.md"
     fr = _catalog_keys(i18n, "fr")
     parity = bool(fr) and all(_catalog_keys(i18n, loc) == fr for loc in ("en", "es", "ar"))
     return [

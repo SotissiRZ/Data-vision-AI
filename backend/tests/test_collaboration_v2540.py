@@ -39,7 +39,7 @@ def _member(ws: str, headers: dict[str, str], suffix: str, role: str = "analyst"
             "email": f"member-{suffix}@datavision.local",
             "role": role,
             "display_name": f"Member {suffix}",
-            "password": "MemberPass123!",
+            "password": "MemberPass123!Safe",
         },
     )
     assert res.status_code == 200, res.text
@@ -80,7 +80,7 @@ def test_v254_governed_share_is_targeted_and_revocable(tmp_path, monkeypatch):
     share = shared.json()["share"]
     assert share["active"] is True
     assert "token" not in share and "public_url" not in share
-    login = client.post("/api/v1/auth/login", json={"email":"member-share@datavision.local","password":"MemberPass123!"})
+    login = client.post("/api/v1/auth/login", json={"email":"member-share@datavision.local","password":"MemberPass123!Safe"})
     mh = {"Authorization": f"Bearer {login.json()['access_token']}"}
     received = client.get(f"/api/v1/workspaces/{ws}/collaboration/shares?scope=received", headers=mh)
     assert received.status_code == 200, received.text
@@ -151,7 +151,7 @@ def test_v254_mark_all_notifications_read(tmp_path, monkeypatch):
         f"/api/v1/workspaces/{ws}/reviews", headers=headers,
         json={"resource_type":"dataset","resource_id":"ds-notif","title":"Dataset notif","reviewer_user_id":member["id"]},
     )
-    login = client.post("/api/v1/auth/login", json={"email":"member-notif@datavision.local","password":"MemberPass123!"})
+    login = client.post("/api/v1/auth/login", json={"email":"member-notif@datavision.local","password":"MemberPass123!Safe"})
     mh = {"Authorization": f"Bearer {login.json()['access_token']}"}
     before = client.get(f"/api/v1/workspaces/{ws}/collaboration/notifications", headers=mh).json()["notifications"]
     assert any(not x["is_read"] for x in before)

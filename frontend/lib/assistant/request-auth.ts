@@ -3,7 +3,7 @@ export function assistantAuthHeaders(
 ): Record<string, string> {
   if (typeof window === "undefined") return { ...extra };
 
-  const token = window.localStorage.getItem("dv_enterprise_token") || "";
+  const token = window.sessionStorage.getItem("dv_enterprise_token") || "";
   const workspace =
     window.localStorage.getItem("dv_enterprise_workspace") || "";
 

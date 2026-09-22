@@ -1596,10 +1596,10 @@ def test_v260_viewer_cannot_create_review_but_can_comment(tmp_path, monkeypatch)
     metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
     boot=client.post('/api/v1/auth/bootstrap',json={"email":"owner-view@datavision.local","password":"EnterprisePass123!","display_name":"Owner","organization_name":"Viewer Org"})
     oh={"Authorization":f"Bearer {boot.json()['access_token']}"}; ws=boot.json()['workspace_id']
-    client.post(f'/api/v1/workspaces/{ws}/members',headers=oh,json={"email":"viewer260@datavision.local","role":"viewer","display_name":"Viewer","password":"ViewerPass123!"})
+    client.post(f'/api/v1/workspaces/{ws}/members',headers=oh,json={"email":"viewer260@datavision.local","role":"viewer","display_name":"Viewer","password":"ViewerPass123!Safe"})
     review=client.post(f'/api/v1/workspaces/{ws}/reviews',headers=oh,json={"resource_type":"dashboard","resource_id":"dash-1","title":"Dashboard exécutif"}).json()['review']
     rid=review['id']; client.post(f'/api/v1/workspaces/{ws}/reviews/{rid}/transition',headers=oh,json={"action":"submit"})
-    login=client.post('/api/v1/auth/login',json={"email":"viewer260@datavision.local","password":"ViewerPass123!"})
+    login=client.post('/api/v1/auth/login',json={"email":"viewer260@datavision.local","password":"ViewerPass123!Safe"})
     vh={"Authorization":f"Bearer {login.json()['access_token']}"}
     denied=client.post(f'/api/v1/workspaces/{ws}/reviews',headers=vh,json={"resource_type":"report","resource_id":"r","title":"Interdit"})
     assert denied.status_code==403
@@ -2166,10 +2166,10 @@ def test_v2110_staged_approval_chain_enforces_order_and_role(tmp_path, monkeypat
     token,ws,h=_bootstrap_v2100(tmp_path,monkeypatch,'v211-chain')
     # Provision two distinct reviewers to prove ordered separation of duties.
     ds=client.post(f'/api/v1/workspaces/{ws}/members',headers=h,json={'email':'ds-chain@datavision.local','role':'data_scientist','display_name':'Data Scientist','password':'DataSciPass123!'})
-    adm=client.post(f'/api/v1/workspaces/{ws}/members',headers=h,json={'email':'admin-chain@datavision.local','role':'admin','display_name':'Admin','password':'AdminPass123!'})
+    adm=client.post(f'/api/v1/workspaces/{ws}/members',headers=h,json={'email':'admin-chain@datavision.local','role':'admin','display_name':'Admin','password':'AdminPass123!Safe'})
     assert ds.status_code==200 and adm.status_code==200
     dlogin=client.post('/api/v1/auth/login',json={'email':'ds-chain@datavision.local','password':'DataSciPass123!'}).json()
-    alogin=client.post('/api/v1/auth/login',json={'email':'admin-chain@datavision.local','password':'AdminPass123!'}).json()
+    alogin=client.post('/api/v1/auth/login',json={'email':'admin-chain@datavision.local','password':'AdminPass123!Safe'}).json()
     dh={'Authorization':f"Bearer {dlogin['access_token']}"}; ah={'Authorization':f"Bearer {alogin['access_token']}"}
     dest=client.post(f'/api/v1/workspaces/{ws}/actions/destinations',headers=h,json={'name':'Approval hook','kind':'webhook','webhook_url':'https://example.com/action','secret':'sig'}).json()['destination']
     rule=client.post(f'/api/v1/workspaces/{ws}/actions/rules',headers=h,json={

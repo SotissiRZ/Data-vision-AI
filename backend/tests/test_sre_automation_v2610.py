@@ -31,7 +31,7 @@ def _boot(tmp_path, monkeypatch):
         "/api/v1/auth/bootstrap",
         json={
             "email": "sre261@datavision.local",
-            "password": "SrePass261!",
+            "password": "SrePass261!Safe",
             "display_name": "SRE 261",
             "organization_name": "Entreprise SRE 261",
         },

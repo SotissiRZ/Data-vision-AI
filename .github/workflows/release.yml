@@ -24,6 +24,8 @@ jobs:
         with:
           node-version: '22'
       - run: cp .env.example .env
+      - run: python scripts/repository_hygiene.py --root . --check
+      - run: python scripts/dependency_compatibility.py --root . --check
       - run: python scripts/production_baseline.py --check
       - run: python scripts/preparation_acceptance.py --root . --check
       - run: python scripts/workspace_acceptance.py --root . --check
@@ -61,6 +63,8 @@ jobs:
       - run: python scripts/cdc_gap_closure_acceptance.py --root . --check
       - run: python scripts/release_candidate_acceptance.py --root . --check
       - run: python scripts/release_installation_acceptance.py --root . --check
+      - run: python scripts/security_documentation_acceptance.py --root . --check
+      - run: python scripts/security_hardening_audit.py --root . --check
       - run: python scripts/production_acceptance.py --root . --check
       - run: python scripts/notebook_runtime_acceptance.py --root . --check
       - run: python scripts/catalog_lineage_acceptance.py --root . --check

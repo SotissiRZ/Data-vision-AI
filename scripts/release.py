@@ -34,7 +34,7 @@ def iter_files(root: Path):
         rel = path.relative_to(root)
         if any(part in EXCLUDED_DIRS for part in rel.parts):
             continue
-        if path.name in EXCLUDED_FILES or path.suffix == '.pyc':
+        if path.name in EXCLUDED_FILES or path.suffix in {'.pyc', '.tsbuildinfo'}:
             continue
         yield path, rel
 

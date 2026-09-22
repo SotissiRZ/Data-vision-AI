@@ -17,7 +17,7 @@ def checks(root: Path):
     frontend = (root / "frontend/components/NotebookStudio.tsx").read_text(encoding="utf-8")
     client = (root / "frontend/lib/notebook-client.ts").read_text(encoding="utf-8")
     test = "backend/tests/test_workspace_environment_v276.py"
-    doc = "docs/WORKSPACE_ENVIRONMENTS_V2760.md"
+    doc = "docs/operations/WORKSPACE_ENVIRONMENTS_V2760.md"
     return [
         ("workspace scoped environment ledger", "workspace_runtime_environments" in metadata and "2.76.0-001" in migrations, ["backend/app/services/metadata_store.py", "backend/app/services/schema_migrations.py"], [test]),
         ("deterministic sha256 manifests", 'datavision.workspace-environment/v1' in service and "fingerprint_sha256" in service and "sort_keys=True" in service, ["backend/app/services/workspace_environment.py"], [test]),

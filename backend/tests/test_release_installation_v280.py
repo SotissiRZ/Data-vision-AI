@@ -19,9 +19,9 @@ def _load_doctor():
 
 
 def test_version_and_rc_policy_are_frozen():
-    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "2.80.0"
+    assert (ROOT / "VERSION").read_text(encoding="utf-8").strip() == "2.81.0"
     policy = json.loads((ROOT / "policies/release_candidate.json").read_text(encoding="utf-8"))
-    assert policy["product_version"] == "2.80.0"
+    assert policy["product_version"] == "2.81.0"
     assert policy["stage"] == "release_candidate"
     assert policy["feature_freeze"] is True
     assert policy["external_signoff_status"] == "pending"
@@ -38,9 +38,9 @@ def test_latest_migration_is_rc_freeze_marker(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, "schema_auto_migrate", True)
     metadata_store._ENGINES.clear(); metadata_store._SELECTED_BACKENDS.clear()
     metadata_store.init_metadata_store()
-    assert ordered_migrations()[-1].version == "2.80.0-001"
+    assert ordered_migrations()[-1].version == "2.81.0-001"
     status = migration_status()
-    assert status["current"] == "2.80.0-001"
+    assert status["current"] == "2.81.0-001"
     assert status["ready"] is True
 
 
@@ -66,7 +66,12 @@ def test_config_doctor_accepts_example_for_development_and_rejects_placeholders_
     env_path = tmp_path / ".env"
     env_path.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
     dev = doctor.inspect(ROOT, env_path, "development")
-    assert dev["status"] == "pass"
+    assert dev["status"] == "fail"
+    assert "auth_required_bootstrap_secret_not_set" in dev["errors"]
+    hardened = env_path.read_text(encoding="utf-8").replace("BOOTSTRAP_SECRET=change-this-one-time-bootstrap-secret", "BOOTSTRAP_SECRET=v281-bootstrap-secret-generated-locally")
+    env_path.write_text(hardened, encoding="utf-8")
+    dev_ready = doctor.inspect(ROOT, env_path, "development")
+    assert dev_ready["status"] == "pass"
     prod = doctor.inspect(ROOT, env_path, "production")
     assert prod["status"] == "fail"
     assert "production_secret_not_set:AUTH_SECRET" in prod["errors"]

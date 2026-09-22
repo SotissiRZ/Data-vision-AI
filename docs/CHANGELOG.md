@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.81.0 — Security & Documentation Freeze
+
+- authentification obligatoire par défaut (`AUTH_MODE=required`) ;
+- mode anonyme limité à `local_dev` hors production ;
+- throttling login + bootstrap production protégé ;
+- tokens navigateur limités à `sessionStorage` ;
+- OpenAPI désactivé par défaut ;
+- correction conflit `boto3`/Redshift, TypeScript CI et Rego Conftest ;
+- documents technique, utilisateur, déploiement, sécurité et exploitation ;
+- outil de nettoyage des fichiers legacy après extraction superposée.
+
 ## 2.80.0 — Release Candidate
 
 - gel fonctionnel et policy RC versionnée ;
@@ -394,7 +405,7 @@
 - Racine du dépôt réduite aux fichiers opérationnels.
 - 35 manifests historiques déplacés dans `docs/history/manifests/`.
 - Guide de migration historique déplacé dans `docs/history/migrations/`.
-- Nouvelle documentation `docs/PROJECT_STRUCTURE.md`.
+- Nouvelle documentation `docs/development/PROJECT_STRUCTURE.md`.
 - Ajout de `.gitignore` et `.editorconfig`.
 - Nouveau contrôle `scripts/repository_hygiene.py --check`.
 - Contrôle d'hygiène intégré au préflight Windows et à la CI.
