@@ -29,7 +29,7 @@ from app.services.upload_security import antivirus_status
 from app.services.secret_crypto import kms_status
 from app.services.schema_migrations import migration_status
 
-app = FastAPI(title=settings.app_name, version="2.62.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.69.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -286,7 +286,7 @@ def health_live():
     return {
         "status": "alive",
         "product": settings.app_name,
-        "version": "2.62.0",
+        "version": "2.69.0",
     }
 
 
@@ -295,10 +295,10 @@ def health_startup():
     try:
         migrations = migration_status()
         ok = bool(migrations.get("ready"))
-        payload = {"status": "started" if ok else "migrations_pending", "ready": ok, "version": "2.62.0", "schema_migrations": migrations}
+        payload = {"status": "started" if ok else "migrations_pending", "ready": ok, "version": "2.69.0", "schema_migrations": migrations}
         return payload if ok else JSONResponse(status_code=503, content=payload)
     except Exception as exc:
-        return JSONResponse(status_code=503, content={"status": "startup_failed", "ready": False, "version": "2.62.0", "error": type(exc).__name__})
+        return JSONResponse(status_code=503, content={"status": "startup_failed", "ready": False, "version": "2.69.0", "error": type(exc).__name__})
 
 
 @app.get("/health/ready")
@@ -369,7 +369,7 @@ def health_ready():
         "status": "ready" if ready else "not_ready",
         "ready": ready,
         "product": settings.app_name,
-        "version": "2.62.0",
+        "version": "2.69.0",
         "components": components,
     }
     if ready:
@@ -382,7 +382,7 @@ def health():
     return {
         "status": "ok",
         "product": settings.app_name,
-        "version": "2.62.0",
+        "version": "2.69.0",
     }
 
 
@@ -432,6 +432,7 @@ def capabilities():
             "collaboration_reviews", "review_workflows", "review_comments", "review_mentions", "review_notifications", "review_decision_history",
             "postgresql_connectors", "mysql_connectors", "mariadb_connectors", "sqlite_connectors", "sqlserver_connectors", "oracle_connectors", "mongodb_connectors", "bigquery_connectors", "snowflake_connectors", "databricks_connectors", "redshift_connectors", "connector_runtime_catalog", "connector_driver_health", "encrypted_connector_credentials", "source_discovery", "manual_refresh",
             "scheduled_refresh", "incremental_refresh", "refresh_watermarks", "freshness_sla", "schema_drift_detection", "connector_observability",
+            "zip_dataset_import", "connector_retry_backoff", "business_data_catalog", "catalog_asset_ownership", "catalog_stewardship", "catalog_certification", "catalog_search", "cross_system_lineage",
             "data_contracts", "contract_rule_engine", "distribution_drift_detection", "reliability_events", "end_to_end_lineage",
             "impact_analysis", "publication_reliability_gate", "contract_aware_report_export", "contract_aware_certification", "automatic_contract_checks_on_derived_versions",
             "platform_telemetry", "feature_usage_analytics", "operational_slo_dashboard", "job_attempt_tracking", "job_retry_backoff", "ai_evaluation_suites", "ai_regression_benchmarks",

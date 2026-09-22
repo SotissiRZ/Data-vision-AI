@@ -1,0 +1,55 @@
+{
+  "product_version": "2.69.0",
+  "passed": 8,
+  "total": 8,
+  "checks": [
+    {
+      "id": "provenance_generator",
+      "ok": true,
+      "missing": [],
+      "path": "scripts/generate_provenance.py"
+    },
+    {
+      "id": "deployment_policy_rego",
+      "ok": true,
+      "missing": [],
+      "path": "policies/kubernetes/datavision.rego"
+    },
+    {
+      "id": "policy_ci",
+      "ok": true,
+      "missing": [],
+      "path": ".github/workflows/ci.yml"
+    },
+    {
+      "id": "signed_release",
+      "ok": true,
+      "missing": [],
+      "path": ".github/workflows/release.yml"
+    },
+    {
+      "id": "signed_images",
+      "ok": true,
+      "missing": [],
+      "path": ".github/workflows/release.yml"
+    },
+    {
+      "id": "secret_rotation",
+      "ok": true,
+      "missing": [],
+      "path": "backend/app/services/operational_security.py"
+    },
+    {
+      "id": "rollback_confirmation",
+      "ok": true,
+      "missing": [],
+      "path": "backend/app/services/operational_security.py"
+    },
+    {
+      "id": "helm_rotation_job",
+      "ok": true,
+      "missing": [],
+      "path": "deploy/helm/datavision/templates/secret-rotation-cronjob.yaml"
+    }
+  ]
+}

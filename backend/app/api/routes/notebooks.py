@@ -12,14 +12,20 @@ from app.services.notebook_service import (
     delete_cell,
     delete_notebook,
     get_notebook,
+    get_notebook_environment,
     list_notebooks,
     list_runs,
+    notebook_kernel_status,
     promote_artifact_to_dataset,
+    restart_notebook_kernel,
+    restart_notebook_kernels,
     run_cell,
     run_notebook,
     runtime_status,
+    sync_notebook_environment,
     update_cell,
     update_notebook,
+    update_notebook_environment,
 )
 
 router = APIRouter(prefix="/notebooks", tags=["notebooks"])
@@ -52,6 +58,15 @@ class CellCreateRequest(BaseModel):
     position: int | None = Field(default=None, ge=0)
 
 
+class NotebookEnvironmentRequest(BaseModel):
+    python_requirements: list[str] | None = None
+    r_requirements: list[str] | None = None
+
+
+class KernelRestartAllRequest(BaseModel):
+    replay: bool = False
+
+
 class CellUpdateRequest(BaseModel):
     language: str | None = Field(
         default=None,
@@ -76,6 +91,67 @@ def _error(exc: Exception):
 @router.get("/runtime")
 def notebook_runtime():
     return runtime_status()
+
+
+@router.get("/{notebook_id}/environment")
+def notebook_environment(notebook_id: str):
+    try:
+        return get_notebook_environment(notebook_id)
+    except Exception as exc:
+        _error(exc)
+
+
+@router.put("/{notebook_id}/environment")
+def notebook_environment_update(
+    notebook_id: str,
+    payload: NotebookEnvironmentRequest,
+):
+    try:
+        return update_notebook_environment(
+            notebook_id,
+            python_requirements=payload.python_requirements,
+            r_requirements=payload.r_requirements,
+        )
+    except Exception as exc:
+        _error(exc)
+
+
+@router.post("/{notebook_id}/environment/sync")
+def notebook_environment_sync(notebook_id: str):
+    try:
+        return sync_notebook_environment(notebook_id)
+    except Exception as exc:
+        _error(exc)
+
+
+@router.get("/{notebook_id}/kernels")
+def notebook_kernels(notebook_id: str):
+    try:
+        return notebook_kernel_status(notebook_id)
+    except Exception as exc:
+        _error(exc)
+
+
+@router.post("/{notebook_id}/kernels/{language}/restart")
+def notebook_kernel_restart(notebook_id: str, language: str):
+    try:
+        return restart_notebook_kernel(notebook_id, language)
+    except Exception as exc:
+        _error(exc)
+
+
+@router.post("/{notebook_id}/kernels/restart")
+def notebook_kernels_restart(
+    notebook_id: str,
+    payload: KernelRestartAllRequest | None = None,
+):
+    try:
+        return restart_notebook_kernels(
+            notebook_id,
+            replay=bool(payload and payload.replay),
+        )
+    except Exception as exc:
+        _error(exc)
 
 
 @router.get("")

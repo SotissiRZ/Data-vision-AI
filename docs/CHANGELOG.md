@@ -1,4 +1,61 @@
+## v2.69.0 — Visual Analytics & NL→Viz avancé
+
+- recommandations classées par score/confiance et justification ;
+- violin, bubble, treemap, Sankey, carte de points, PCA et projection de clusters ;
+- édition conversationnelle d'un graphique existant ;
+- composition automatique multi-vues ;
+- gate `VISUAL_ANALYTICS_ACCEPTANCE 8/8` et tests dédiés.
+
+## v2.68.0 — Connecteurs, Data Catalog & Lineage
+
+- Import ZIP natif multi-fichiers avec limites anti ZIP-bomb, filtrage des formats et scan antivirus des membres.
+- Retries/backoff exponentiels configurables sur test, discovery et lecture des connecteurs.
+- Data Catalog unifié avec recherche, domaine métier, owner, steward, tags, glossaire et statut de certification.
+- Lineage cross-system : connecteur → objet externe → source → dataset → analyses/modèles/dashboards/rapports.
+- UI de discovery et documentation métier intégrée à Fiabilité & Lineage.
+- Migration `2.68.0-001` et gate `CATALOG_LINEAGE_ACCEPTANCE 8/8`.
+
+## v2.67.0 — Notebook Runtime persistant Python/R
+
+- Kernels Python/R persistants isolés avec namespace/workspace conservé entre cellules.
+- Session déterministe par notebook/langage, TTL et redémarrage explicite.
+- Reconstruction optionnelle de l’état par réexécution ordonnée du notebook.
+- Environnements projet déclaratifs et lock des packages présents dans l’image sandbox.
+- UI runtime persistante avec variables, compteur d’exécutions et reset kernels.
+- Gate `NOTEBOOK_RUNTIME_ACCEPTANCE 8/8`.
+
+## v2.66.0 — Production Acceptance & E2E
+
+- Gate P0 `PRODUCTION_ACCEPTANCE 8/8`.
+- Playwright production suite and release-candidate E2E.
+- HTTP load smoke with p95/error-rate thresholds.
+- Helm lint + render + Conftest in CI/release.
+- Production evidence registry and sign-off verifier.
+- Windows Docker Desktop production acceptance runner.
+- CI/security evidence artifacts; UAT remains an explicit human sign-off.
+
+## v2.65.0
+
+- posture réglementaire consolidée par workspace et historique de snapshots SHA-256 ;
+- catalogue de contrôles avec mappings de familles de référentiels, sans revendication de certification ;
+- exceptions gouvernées et temporaires avec contrôles compensatoires ;
+- remédiation assistée `proposal_only` ;
+- evidence packs ZIP exportables et téléchargeables ;
+- UI de conformité réglementaire intégrée à Gouvernance & sécurité ;
+- gate `REGULATORY_COMPLIANCE_ACCEPTANCE`.
+
 # Changelog
+
+## v2.63.0 — Sécurité opérationnelle & supply chain
+
+- SBOM backend/frontend/source avec index de digests.
+- Provenance in-toto/SLSA de l’archive source reproductible.
+- Signatures keyless Sigstore/Cosign des artefacts et images GHCR.
+- Policy-as-code Rego exécutée sur les manifests Helm rendus.
+- Rotation automatique limitée aux secrets explicitement générés.
+- Rollback de release en deux phases avec confirmation et drill non destructif.
+- Gate `SUPPLY_CHAIN_ACCEPTANCE 8/8`.
+
 
 ## v2.62.0 — Observabilité distribuée & opérations multi-cluster
 
@@ -621,3 +678,24 @@ v1.0.2
 - caches BuildKit pip/npm ;
 - ports conservés à 3005/8005 ;
 - 13 tests backend.
+## v2.64.1
+
+- Hotfix assistant : le panneau Contexte actif devient scrollable et ne peut plus être tronqué par la hauteur de la fenêtre.
+- Affichage contextuel enrichi : workspace, rôle, navigation, qualité, sélection, modèle, gouvernance, schéma et événements récents.
+- Ajout d’un snapshot technique complet, repliable, correspondant au contexte réellement transmis à l’orchestrateur.
+- Projection sémantique enrichie côté backend avec maintien des garde-fous de confidentialité et exclusion des lignes brutes.
+- Synchronisation des graphiques/rapports générés dans le contexte actif.
+
+## v2.64.0
+
+- admission Kubernetes opt-in via Kyverno `ClusterPolicy` ;
+- vérification Sigstore/Cosign keyless des images configurable ;
+- durcissement runtime API/Web/Worker/Sandbox/OTel : non-root, seccomp RuntimeDefault, no privilege escalation, drop ALL capabilities ;
+- root filesystem en lecture seule avec volumes temporaires dédiés ;
+- règles Falco livrées pour shells, écritures sensibles et package managers ;
+- ingestion d'événements runtime security ;
+- scans de conformité continue avec détection de dérive ;
+- evidence packs JSON signés par digest SHA-256 ;
+- CronJob Kubernetes de conformité continue ;
+- policy-as-code Rego étendue aux contrôles runtime ;
+- gate `RUNTIME_SECURITY_ACCEPTANCE` intégré à la CI et à la release.

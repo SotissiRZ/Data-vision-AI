@@ -58,6 +58,33 @@ export type DatasetVersionRef = {
   created_at?: string | null;
 };
 
+export type NotebookKernel = {
+  language: "python" | "r";
+  session_id: string;
+  status?: string;
+  state_status?: "new" | "ready" | "reset" | "lost" | string;
+  execution_count: number;
+  generation?: string | null;
+  persistent: boolean;
+  variables?: string[];
+};
+
+export type NotebookEnvironment = {
+  notebook_id: string;
+  python_requirements: string[];
+  r_requirements: string[];
+  python_lock: Record<string, string>;
+  r_lock: Record<string, string>;
+  policy: Record<string, unknown>;
+  created_at?: string | null;
+  updated_at?: string | null;
+  status?: string;
+  missing_python?: string[];
+  missing_r?: string[];
+  inventory_policy?: string;
+  dynamic_install?: boolean;
+};
+
 export type NotebookDocument = {
   id: string;
   dataset_id?: string | null;
@@ -71,6 +98,8 @@ export type NotebookDocument = {
     created_at?: string | null;
     operation?: Record<string, unknown> | null;
   } | null;
+  environment?: NotebookEnvironment | null;
+  kernels?: { python?: NotebookKernel; r?: NotebookKernel };
   name: string;
   description: string;
   created_at: string;
@@ -102,9 +131,10 @@ function headers(json = false) {
 export async function getNotebookRuntime() {
   return parse<{
     sql: { status: string; boundary: string };
-    python: { status: string; boundary: string };
-    r: { status: string; boundary: string };
+    python: { status: string; boundary: string; persistent?: boolean };
+    r: { status: string; boundary: string; persistent?: boolean };
     sandbox: Record<string, unknown>;
+    environment?: { install_mode: string; dynamic_install: boolean };
   }>(
     await fetch(`${API}/notebooks/runtime`, {
       credentials: "include",
@@ -361,4 +391,73 @@ export async function downloadNotebookArtifact(
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(href);
+}
+
+export async function getNotebookEnvironment(notebookId: string) {
+  return parse<NotebookEnvironment>(
+    await fetch(`${API}/notebooks/${encodeURIComponent(notebookId)}/environment`, {
+      credentials: "include",
+      headers: headers(),
+    }),
+    "Environnement notebook indisponible.",
+  );
+}
+
+export async function updateNotebookEnvironment(
+  notebookId: string,
+  input: { python_requirements?: string[]; r_requirements?: string[] },
+) {
+  return parse<NotebookEnvironment>(
+    await fetch(`${API}/notebooks/${encodeURIComponent(notebookId)}/environment`, {
+      method: "PUT",
+      credentials: "include",
+      headers: headers(true),
+      body: JSON.stringify(input),
+    }),
+    "Mise à jour de l'environnement notebook impossible.",
+  );
+}
+
+export async function syncNotebookEnvironment(notebookId: string) {
+  return parse<NotebookEnvironment>(
+    await fetch(`${API}/notebooks/${encodeURIComponent(notebookId)}/environment/sync`, {
+      method: "POST",
+      credentials: "include",
+      headers: headers(),
+    }),
+    "Validation des packages notebook impossible.",
+  );
+}
+
+export async function getNotebookKernels(notebookId: string) {
+  return parse<{ notebook_id: string; persistent: boolean; kernels: { python: NotebookKernel; r: NotebookKernel } }>(
+    await fetch(`${API}/notebooks/${encodeURIComponent(notebookId)}/kernels`, {
+      credentials: "include",
+      headers: headers(),
+    }),
+    "État des kernels indisponible.",
+  );
+}
+
+export async function restartNotebookKernel(notebookId: string, language: "python" | "r") {
+  return parse<NotebookKernel>(
+    await fetch(`${API}/notebooks/${encodeURIComponent(notebookId)}/kernels/${language}/restart`, {
+      method: "POST",
+      credentials: "include",
+      headers: headers(),
+    }),
+    "Redémarrage du kernel impossible.",
+  );
+}
+
+export async function restartNotebookKernels(notebookId: string, replay = false) {
+  return parse<{ notebook_id: string; kernels: Record<string, NotebookKernel>; replayed: boolean; replay_result?: unknown }>(
+    await fetch(`${API}/notebooks/${encodeURIComponent(notebookId)}/kernels/restart`, {
+      method: "POST",
+      credentials: "include",
+      headers: headers(true),
+      body: JSON.stringify({ replay }),
+    }),
+    "Redémarrage des kernels impossible.",
+  );
 }

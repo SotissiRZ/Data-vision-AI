@@ -1,4 +1,5 @@
 from typing import Any
+from pathlib import Path
 import time
 from fastapi import APIRouter, File, HTTPException, UploadFile, Request
 from fastapi.responses import FileResponse, StreamingResponse
@@ -6,7 +7,7 @@ from pydantic import BaseModel, Field
 
 from app.services.upload_security import scan_upload
 from app.services.storage import (
-    save_upload, load_dataframe, get_meta, save_dataframe_version,
+    save_upload, save_zip_upload, load_dataframe, get_meta, save_dataframe_version,
     get_lineage, list_versions, list_dataset_catalog,
 )
 from app.services.profiling import profile_dataframe
@@ -20,7 +21,7 @@ from app.services.preparation import apply_operation, combine_dataframes
 from app.services.pipelines import list_pipelines, save_lineage_as_pipeline, run_pipeline, validate_pipeline
 from app.services.statistics_engine import correlation_analysis, statistical_test, test_advisor
 from app.services.data_workspace import engine_info, run_sql
-from app.services.visualization import build_visualization, recommend_visualizations
+from app.services.visualization import build_visualization, recommend_visualizations, edit_visualization, build_visualization_composition
 from app.services.forecasting import forecast_series
 from app.services.anomaly_detection import detect_anomalies
 from app.services.xai import model_diagnostics, local_explanation, xai_capabilities, partial_dependence, shap_explanation, generate_counterfactuals, xai_audit
@@ -222,12 +223,28 @@ class VisualizationRequest(BaseModel):
     x: str | None = None
     y: str | None = None
     color: str | None = None
+    size: str | None = None
+    facet: str | None = None
     aggregation: str = "none"
     bins: int = Field(default=20, ge=5, le=80)
+    columns: list[str] = Field(default_factory=list)
+    cluster_k: int = Field(default=3, ge=2, le=10)
+    max_points: int = Field(default=3000, ge=100, le=10000)
 
 
 class VisualizationRecommendRequest(BaseModel):
-    columns: list[str] = []
+    columns: list[str] = Field(default_factory=list)
+
+
+class VisualizationEditRequest(BaseModel):
+    visualization: dict
+    instruction: str = Field(min_length=2, max_length=500)
+
+
+class VisualizationComposeRequest(BaseModel):
+    columns: list[str] = Field(default_factory=list)
+    intent: str = Field(default="overview", max_length=80)
+    max_views: int = Field(default=4, ge=2, le=6)
 
 
 class ForecastRequest(BaseModel):
@@ -595,14 +612,20 @@ def _bundle(meta: dict, frame=None) -> dict:
 async def upload_dataset(request: Request, file: UploadFile = File(...)):
     try:
         content = await file.read()
-        scan = scan_upload(file.filename or "dataset", content)
-        meta = save_upload(file.filename or "dataset", content)
-        meta["security_scan"] = {
-            "id": scan.get("id"),
-            "status": scan.get("status"),
-            "engine": scan.get("engine"),
-            "sha256": scan.get("sha256"),
-        }
+        filename = file.filename or "dataset"
+        scan = scan_upload(filename, content)
+        if Path(filename).suffix.lower() == ".zip":
+            metas = save_zip_upload(filename, content, scan_member=scan_upload)
+        else:
+            metas = [save_upload(filename, content)]
+        for meta in metas:
+            meta["security_scan"] = {
+                "id": scan.get("id"),
+                "status": scan.get("status"),
+                "engine": scan.get("engine"),
+                "sha256": scan.get("sha256"),
+            }
+        meta = metas[0]
         workspace_id = request.headers.get("x-workspace-id")
         authorization = request.headers.get("authorization")
         if workspace_id and authorization and authorization.lower().startswith("bearer "):
@@ -614,14 +637,15 @@ async def upload_dataset(request: Request, file: UploadFile = File(...)):
                 user = get_user(payload["sub"])
                 if not user:
                     raise ValueError("Utilisateur introuvable")
-                bind_dataset(user["id"], workspace_id, meta["id"])
                 ws = get_workspace(user["id"], workspace_id)
-                record_event("dataset.upload", user_id=user["id"], organization_id=ws["organization_id"], workspace_id=workspace_id, resource_type="dataset", resource_id=meta["id"], payload={"name": meta["original_name"]})
+                for imported_meta in metas:
+                    bind_dataset(user["id"], workspace_id, imported_meta["id"])
+                    record_event("dataset.upload", user_id=user["id"], organization_id=ws["organization_id"], workspace_id=workspace_id, resource_type="dataset", resource_id=imported_meta["id"], payload={"name": imported_meta["original_name"], "archive": imported_meta.get("archive")})
             except PermissionError as exc:
                 raise HTTPException(status_code=403, detail=str(exc)) from exc
             except Exception as exc:
                 raise HTTPException(status_code=401, detail=f"Contexte workspace invalide: {exc}") from exc
-        return {"dataset": {"id": meta["id"], "name": meta["original_name"], "format": meta["extension"]}}
+        return {"dataset": {"id": meta["id"], "name": meta["original_name"], "format": meta["extension"]}, "datasets": [{"id": x["id"], "name": x["original_name"], "format": x["extension"], "archive": x.get("archive")} for x in metas], "imported_count": len(metas)}
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -2366,10 +2390,40 @@ def dataset_visualization_recommend(dataset_id: str, request: VisualizationRecom
 @router.post("/{dataset_id}/visualizations/build")
 def dataset_visualization_build(dataset_id: str, request: VisualizationRequest):
     try:
-        return build_visualization(load_dataframe(dataset_id), chart_type=request.chart_type, x=request.x, y=request.y, color=request.color, aggregation=request.aggregation, bins=request.bins)
+        return build_visualization(
+            load_dataframe(dataset_id), chart_type=request.chart_type, x=request.x, y=request.y,
+            color=request.color, size=request.size, facet=request.facet, aggregation=request.aggregation,
+            bins=request.bins, columns=request.columns, cluster_k=request.cluster_k, max_points=request.max_points,
+        )
     except FileNotFoundError as exc:
         raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
         raise HTTPException(status_code=422, detail=f"Visualisation impossible: {exc}") from exc
+
+
+@router.post("/{dataset_id}/visualizations/edit")
+def dataset_visualization_edit(dataset_id: str, request: VisualizationEditRequest):
+    try:
+        return edit_visualization(load_dataframe(dataset_id), request.visualization, request.instruction)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Édition de visualisation impossible: {exc}") from exc
+
+
+@router.post("/{dataset_id}/visualizations/compose")
+def dataset_visualization_compose(dataset_id: str, request: VisualizationComposeRequest):
+    try:
+        return build_visualization_composition(
+            load_dataframe(dataset_id), columns=request.columns, intent=request.intent, max_views=request.max_views,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"Composition de visualisations impossible: {exc}") from exc

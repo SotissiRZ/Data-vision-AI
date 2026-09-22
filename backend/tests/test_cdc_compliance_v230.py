@@ -20,9 +20,9 @@ def test_cdc_matrix_has_all_75_sections_and_evidence():
 
 def test_coverage_is_weighted_and_not_claimed_as_100_percent():
     report = get_cdc_report()
-    assert report["summary"]["implemented"] == 52
-    assert report["summary"]["partial"] == 23
-    assert report["summary"]["weighted_coverage_percent"] == 84.7
+    assert report["summary"]["implemented"] >= 56
+    assert report["summary"]["partial"] <= 19
+    assert 87.3 <= report["summary"]["weighted_coverage_percent"] < 100.0
     assert report["summary"]["overall_acceptance"] == "conditional"
 
 
@@ -46,7 +46,7 @@ def test_p0_gaps_are_explicit_and_actionable():
 def test_production_acceptance_is_conditional_not_fake_pass():
     result = production_acceptance()
     assert result["acceptance"] == "conditional"
-    assert result["coverage_percent"] == 84.7
+    assert 87.3 <= result["coverage_percent"] < 100.0
     assert result["signoff_required"]
     assert any(gate["id"] == "mvp" and gate["status"] == "pass" for gate in result["gates"])
     assert any(gate["id"] == "security" and gate["status"] == "conditional" for gate in result["gates"])

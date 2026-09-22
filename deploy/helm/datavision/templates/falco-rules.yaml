@@ -1,0 +1,28 @@
+{{- if and .Values.runtimeSecurity.runtimeDetection.enabled .Values.runtimeSecurity.runtimeDetection.shipFalcoRules }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "datavision.fullname" . }}-falco-rules
+  labels:
+    {{- include "datavision.labels" . | nindent 4 }}
+data:
+  datavision_rules.yaml: |
+    - rule: DataVision Shell Spawned In Application Container
+      desc: Detect interactive shells in DataVision application containers
+      condition: spawned_process and container and proc.name in (bash, sh, zsh, ash) and k8s.ns.name != ""
+      output: "DataVision runtime shell detected (user=%user.name command=%proc.cmdline container=%container.name pod=%k8s.pod.name)"
+      priority: WARNING
+      tags: [datavision, runtime, shell]
+    - rule: DataVision Sensitive Path Write
+      desc: Detect writes to sensitive system paths from DataVision containers
+      condition: open_write and container and fd.name startswith /etc
+      output: "DataVision sensitive path write (file=%fd.name command=%proc.cmdline container=%container.name pod=%k8s.pod.name)"
+      priority: ERROR
+      tags: [datavision, runtime, filesystem]
+    - rule: DataVision Package Manager Execution
+      desc: Detect package manager execution at runtime
+      condition: spawned_process and container and proc.name in (apt, apt-get, apk, yum, dnf, rpm, pip, npm)
+      output: "DataVision package manager execution (command=%proc.cmdline container=%container.name pod=%k8s.pod.name)"
+      priority: WARNING
+      tags: [datavision, runtime, package-manager]
+{{- end }}

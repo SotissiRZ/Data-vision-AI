@@ -111,6 +111,28 @@ class Settings(BaseSettings):
     multi_cluster_require_verified_backup: bool = True
     multi_cluster_backup_max_age_hours: int = 26
 
+    # v2.63 operational security / supply chain
+    secret_auto_rotation_enabled: bool = False
+    secret_rotation_default_days: int = 90
+    secret_rotation_generated_bytes: int = 32
+    release_rollback_enabled: bool = False
+    release_rollback_executor: str = "plan_only"  # plan_only | webhook
+    release_rollback_webhook_url: str = ""
+    release_rollback_webhook_secret: str = ""
+    release_rollback_timeout_seconds: int = 10
+    release_rollback_confirmation_ttl_minutes: int = 10
+
+    # v2.64 admission / runtime security / continuous compliance
+    admission_verify_images_enabled: bool = False
+    runtime_security_seccomp_runtime_default: bool = True
+    runtime_security_run_as_non_root: bool = True
+    runtime_security_read_only_root_filesystem: bool = True
+    runtime_security_drop_all_capabilities: bool = True
+    runtime_security_disallow_privilege_escalation: bool = True
+    runtime_detection_enabled: bool = False
+    continuous_compliance_enabled: bool = False
+    continuous_compliance_schedule: str = "23 */6 * * *"
+
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     @property

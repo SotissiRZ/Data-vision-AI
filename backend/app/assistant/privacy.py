@@ -73,18 +73,66 @@ def project_context_for_model(
         projected["dataset_schema"] = safe_schema
 
     if context.uiState:
-        for key in ("target", "algorithm", "qualityScore"):
+        safe_scalar_keys = (
+            "areaKey",
+            "areaLabel",
+            "workspaceRole",
+            "datasetName",
+            "datasetVersion",
+            "datasetCreatedAt",
+            "rowCount",
+            "columnCount",
+            "duplicateCount",
+            "missingCells",
+            "qualityScore",
+            "qualityIssuesCount",
+            "numericColumnCount",
+            "categoricalColumnCount",
+            "accessMode",
+            "accessGoverned",
+            "accessRole",
+            "accessPolicyCount",
+            "target",
+            "algorithm",
+            "modelTask",
+            "modelAlgorithm",
+            "modelPrimaryMetric",
+            "modelFeatureCount",
+            "trustScore",
+            "trustGrade",
+        )
+        name_like_keys = {"datasetName", "target"}
+        for key in safe_scalar_keys:
             value = context.uiState.get(key)
             if value is None:
                 continue
             if (
                 external
-                and key == "target"
+                and key in name_like_keys
                 and not policy.include_column_names_external
             ):
                 projected[key] = None
             else:
                 projected[key] = value
+
+        temporal = context.uiState.get("temporalCoverage")
+        if isinstance(temporal, dict):
+            primary = temporal.get("primary")
+            if isinstance(primary, dict):
+                projected["temporal_coverage"] = {
+                    "detected": bool(temporal.get("detected")),
+                    "primary": {
+                        "column": (
+                            None
+                            if external and not policy.include_column_names_external
+                            else primary.get("column")
+                        ),
+                        "start": primary.get("start"),
+                        "end": primary.get("end"),
+                        "kind": primary.get("kind"),
+                        "confidence": primary.get("confidence"),
+                    },
+                }
 
     max_events = len(context.recentEvents)
     if external:

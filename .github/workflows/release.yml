@@ -7,6 +7,9 @@ on:
 
 permissions:
   contents: write
+  packages: write
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -26,6 +29,7 @@ jobs:
       - run: python scripts/workspace_acceptance.py --root . --check
       - run: python scripts/assistant_acceptance.py --root . --check
       - run: python scripts/assistant_window_acceptance.py --root . --check
+      - run: python scripts/assistant_context_acceptance.py --root . --check
       - run: python scripts/assistant_multimodal_acceptance.py --root . --check
       - run: python scripts/multi_agent_acceptance.py --root . --check
       - run: python scripts/semantic_acceptance.py --root . --check
@@ -44,12 +48,51 @@ jobs:
       - run: python scripts/sre_acceptance.py --root . --check
       - run: python scripts/sre_automation_acceptance.py --root . --check
       - run: python scripts/distributed_ops_acceptance.py --root . --check
+      - run: python scripts/supply_chain_acceptance.py --root . --check
+      - run: python scripts/runtime_security_acceptance.py --root . --check
+      - run: python scripts/regulatory_compliance_acceptance.py --root . --check
+      - run: python scripts/production_acceptance.py --root . --check
+      - run: python scripts/notebook_runtime_acceptance.py --root . --check
+      - run: python scripts/catalog_lineage_acceptance.py --root . --check
+      - run: python scripts/visual_analytics_acceptance.py --root . --check
+      - run: python scripts/deployment_policy_check.py --root . --check
+      - uses: azure/setup-helm@v4
+      - run: helm lint deploy/helm/datavision -f deploy/policy/ci-values.yaml
+      - run: helm template datavision deploy/helm/datavision -f deploy/policy/ci-values.yaml > /tmp/datavision-rendered.yaml
+      - run: docker run --rm -v /tmp:/work -v "$PWD/policies/kubernetes:/policy:ro" openpolicyagent/conftest:v0.56.0 test --policy /policy /work/datavision-rendered.yaml
       - run: docker compose config -q
-      - run: docker compose build api web sandbox
+      - run: docker compose build api web sandbox worker
       - working-directory: frontend
         run: npm install
       - working-directory: frontend
         run: npm run typecheck && npm run build
+      - name: Start release candidate stack
+        run: docker compose up -d postgres redis sandbox api worker web
+      - name: Wait for release candidate readiness
+        shell: bash
+        run: |
+          for i in $(seq 1 90); do
+            if curl -fsS http://127.0.0.1:3005/api/health >/dev/null; then exit 0; fi
+            sleep 3
+          done
+          docker compose ps
+          docker compose logs --no-color api web sandbox worker
+          exit 1
+      - working-directory: frontend
+        run: npx playwright install --with-deps chromium
+      - name: Release candidate E2E
+        working-directory: frontend
+        env:
+          PLAYWRIGHT_BASE_URL: http://127.0.0.1:3005
+        run: |
+          npm run test:e2e:smoke
+          npm run test:e2e:mvp
+          npm run test:e2e:production
+      - name: Release candidate load smoke
+        run: python scripts/load_smoke.py --url http://127.0.0.1:3005/api/health --requests 120 --concurrency 12 --json-out /tmp/production-load.json
+      - name: Stop release candidate stack
+        if: always()
+        run: docker compose down -v
       - run: python scripts/release.py --output dist
       - run: python scripts/verify_release.py dist/datavision-ai-v$(cat VERSION)-complet.zip --sha-file dist/datavision-ai-v$(cat VERSION)-complet.zip.sha256
       - run: pip install cyclonedx-bom
@@ -61,6 +104,71 @@ jobs:
           path: .
           format: spdx-json
           output-file: dist/source.spdx.json
+      - run: python scripts/generate_provenance.py --root . --dist dist
+      - uses: sigstore/cosign-installer@v4.0.0
+      - name: Sign release artifacts with keyless Sigstore
+        shell: bash
+        run: |
+          for f in dist/datavision-ai-v$(cat VERSION)-complet.zip dist/datavision-ai-v$(cat VERSION)-complet.zip.sha256 dist/backend.cdx.json dist/frontend.cdx.json dist/source.spdx.json dist/sbom-index.json dist/provenance.intoto.json; do
+            cosign sign-blob --yes --bundle "${f}.sigstore.json" "$f"
+          done
+      - uses: actions/attest@v4
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          subject-path: dist/datavision-ai-v*-complet.zip
+      - name: Normalize GHCR image prefix
+        if: startsWith(github.ref, 'refs/tags/')
+        id: image
+        shell: bash
+        run: echo "prefix=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - uses: docker/login-action@v3
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/setup-buildx-action@v3
+        if: startsWith(github.ref, 'refs/tags/')
+      - name: Build and push signed API image
+        if: startsWith(github.ref, 'refs/tags/')
+        id: api-image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: backend/Dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.prefix }}/api:${{ github.ref_name }}
+          sbom: true
+          provenance: mode=max
+      - name: Build and push signed Web image
+        if: startsWith(github.ref, 'refs/tags/')
+        id: web-image
+        uses: docker/build-push-action@v6
+        with:
+          context: frontend
+          file: frontend/Dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.prefix }}/web:${{ github.ref_name }}
+          sbom: true
+          provenance: mode=max
+      - name: Build and push signed Sandbox image
+        if: startsWith(github.ref, 'refs/tags/')
+        id: sandbox-image
+        uses: docker/build-push-action@v6
+        with:
+          context: sandbox
+          file: sandbox/Dockerfile
+          push: true
+          tags: ${{ steps.image.outputs.prefix }}/sandbox:${{ github.ref_name }}
+          sbom: true
+          provenance: mode=max
+      - name: Sign container image digests
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          cosign sign --yes "${{ steps.image.outputs.prefix }}/api@${{ steps.api-image.outputs.digest }}"
+          cosign sign --yes "${{ steps.image.outputs.prefix }}/web@${{ steps.web-image.outputs.digest }}"
+          cosign sign --yes "${{ steps.image.outputs.prefix }}/sandbox@${{ steps.sandbox-image.outputs.digest }}"
       - uses: actions/upload-artifact@v4
         with:
           name: datavision-release

@@ -1,4 +1,4 @@
-# DataVision AI — UI & Visual Analytics v1.0.2
+# DataVision AI — UI & Visual Analytics v2.69
 
 ## Objectif
 
@@ -79,14 +79,16 @@ Les informations AIC/BIC et diagnostics détaillés restent disponibles dans une
 - alertes par sévérité.
 
 ### Visualization Studio
-- histogramme ;
-- densité KDE ;
-- scatter ;
-- boxplot ;
-- bar ;
-- line ;
-- area ;
-- heatmap de corrélation.
+- recommandations scorées et expliquées ;
+- histogramme, densité KDE, scatter, bubble ;
+- boxplot et violin ;
+- bar, line, area ;
+- heatmap de corrélation ;
+- treemap et Sankey ;
+- carte de points géographiques ;
+- projection PCA et clusters ;
+- édition conversationnelle d'un graphique existant ;
+- composition automatique multi-vues.
 
 ### ACP
 - scree plot ;

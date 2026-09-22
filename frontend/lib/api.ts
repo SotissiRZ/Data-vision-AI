@@ -232,6 +232,18 @@ export async function buildVisualization(id: string, payload: Record<string, unk
   }), 'Visualisation impossible');
 }
 
+export async function editVisualization(id: string, visualization: Record<string, unknown>, instruction: string) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/visualizations/edit`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ visualization, instruction }),
+  }), 'Édition conversationnelle de la visualisation impossible');
+}
+
+export async function composeVisualizations(id: string, payload: { columns?: string[]; intent?: string; max_views?: number }) {
+  return parse<any>(await apiFetch(`${API}/datasets/${id}/visualizations/compose`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+  }), 'Composition de visualisations impossible');
+}
+
 export async function runAutoML(id: string, payload: { target?: string | null; task?: 'auto' | 'classification' | 'regression' | 'clustering'; features?: string[] | null; primary_metric?: string; cv_folds?: number; tune?: boolean; max_candidates?: number; split_strategy?: 'auto'|'random'|'temporal'; time_column?: string | null }) {
   return parse<any>(await apiFetch(`${API}/datasets/${id}/models/automl`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
@@ -532,6 +544,48 @@ export async function getEntreprisePrivateAI(token:string, workspace_id:string) 
 
 export async function enforceEntreprisePrivateAI(token:string, workspace_id:string) {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/entreprise/private-ai/enforce`, { method:'POST', headers:enterpriseHeaders(token) }), 'Activation Private AI impossible');
+}
+
+export async function getRegulatoryCatalog(token:string, workspace_id:string, framework_id?:string) {
+  const qs=framework_id?`?framework_id=${encodeURIComponent(framework_id)}`:'';
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/regulatory/catalog${qs}`, { headers:enterpriseHeaders(token) }), 'Catalogue réglementaire indisponible');
+}
+export async function getRegulatoryPosture(token:string, workspace_id:string, framework_id?:string) {
+  const qs=framework_id?`?framework_id=${encodeURIComponent(framework_id)}`:'';
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/regulatory/posture${qs}`, { headers:enterpriseHeaders(token) }), 'Posture réglementaire indisponible');
+}
+export async function captureRegulatoryPosture(token:string, workspace_id:string, framework_id?:string) {
+  const qs=framework_id?`?framework_id=${encodeURIComponent(framework_id)}`:'';
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/regulatory/posture/snapshot${qs}`, { method:'POST', headers:enterpriseHeaders(token) }), 'Capture de posture impossible');
+}
+export async function getRegulatoryHistory(token:string, workspace_id:string, framework_id?:string) {
+  const qs=new URLSearchParams(); if(framework_id)qs.set('framework_id',framework_id); qs.set('limit','30');
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/regulatory/posture/history?${qs.toString()}`, { headers:enterpriseHeaders(token) }), 'Historique de posture indisponible');
+}
+export async function getRegulatoryExceptions(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/regulatory/exceptions`, { headers:enterpriseHeaders(token) }), 'Exceptions de conformité indisponibles');
+}
+export async function createRegulatoryException(token:string, workspace_id:string, payload:{control_id:string;reason:string;compensating_controls?:string[];expires_at:string;owner?:string}) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/regulatory/exceptions`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Création de l’exception impossible');
+}
+export async function decideRegulatoryException(token:string, workspace_id:string, exception_id:string, decision:'approved'|'rejected'|'revoked', note='') {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/regulatory/exceptions/${encodeURIComponent(exception_id)}/decision`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({decision,note}) }), 'Décision sur l’exception impossible');
+}
+export async function getRegulatoryRemediation(token:string, workspace_id:string, framework_id?:string) {
+  const qs=framework_id?`?framework_id=${encodeURIComponent(framework_id)}`:'';
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/regulatory/remediation${qs}`, { headers:enterpriseHeaders(token) }), 'Plan de remédiation indisponible');
+}
+export async function createRegulatoryEvidencePack(token:string, workspace_id:string, framework_id?:string) {
+  const qs=framework_id?`?framework_id=${encodeURIComponent(framework_id)}`:'';
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/regulatory/evidence-pack${qs}`, { method:'POST', headers:enterpriseHeaders(token) }), 'Export de preuves impossible');
+}
+export async function getRegulatoryEvidencePacks(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/regulatory/evidence-packs`, { headers:enterpriseHeaders(token) }), 'Exports de preuves indisponibles');
+}
+export async function downloadRegulatoryEvidencePack(token:string, workspace_id:string, export_id:string) {
+  const response=await apiFetch(`${API}/workspaces/${workspace_id}/regulatory/evidence-packs/${encodeURIComponent(export_id)}/download`, { headers:enterpriseHeaders(token) });
+  if(!response.ok) throw new Error('Téléchargement du pack de preuves impossible');
+  return response.blob();
 }
 
 export async function getScimTokens(token:string, organization_id:string) {
@@ -845,6 +899,18 @@ export async function saveConnectorSchedule(token:string, workspace_id:string, s
 export async function getRefreshRuns(token:string, workspace_id:string, source_id?:string) {
   const params=new URLSearchParams(); if(source_id)params.set('source_id',source_id); params.set('limit','100');
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/refresh-runs?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Historique des refresh indisponible');
+}
+
+// ---------------------------- Data Catalog & Discovery v2.68 ----------------------------
+export async function getDataCatalogAssets(token:string, workspace_id:string, query='', resource_type='') {
+  const params=new URLSearchParams(); if(query)params.set('q',query); if(resource_type)params.set('resource_type',resource_type); params.set('limit','500');
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/catalog/assets?${params.toString()}`, { headers:enterpriseHeaders(token) }), 'Data Catalog indisponible');
+}
+export async function getDataCatalogSummary(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/catalog/summary`, { headers:enterpriseHeaders(token) }), 'Synthèse Data Catalog indisponible');
+}
+export async function saveDataCatalogAsset(token:string, workspace_id:string, resource_type:string, resource_id:string, payload:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/catalog/assets/${encodeURIComponent(resource_type)}/${encodeURIComponent(resource_id)}`, { method:'PUT', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Mise à jour du catalogue impossible');
 }
 
 // ---------------------------- Data Reliability & Lineage v2.8 ----------------------------

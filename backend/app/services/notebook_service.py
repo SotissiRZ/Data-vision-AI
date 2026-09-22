@@ -24,8 +24,14 @@ from app.services.metadata_store import (
 )
 from app.services.notebook_sandbox import (
     NotebookSandboxUnavailable,
+    close_kernel_session,
     execute_sandboxed,
+    execute_sandboxed_session,
+    kernel_session_status,
+    kernel_session_variables,
+    restart_kernel_session,
     sandbox_health,
+    sandbox_packages,
 )
 from app.services.storage import (
     get_lineage,
@@ -71,6 +77,30 @@ def _ensure_tables() -> None:
         )"""
     )
     execute(
+        """CREATE TABLE IF NOT EXISTS notebook_environments (
+            notebook_id TEXT PRIMARY KEY,
+            python_requirements_json TEXT NOT NULL,
+            r_requirements_json TEXT NOT NULL,
+            python_lock_json TEXT NOT NULL,
+            r_lock_json TEXT NOT NULL,
+            policy_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )"""
+    )
+    execute(
+        """CREATE TABLE IF NOT EXISTS notebook_kernel_sessions (
+            notebook_id TEXT NOT NULL,
+            language TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            generation TEXT,
+            state_status TEXT NOT NULL,
+            execution_count INTEGER NOT NULL,
+            last_seen_at TEXT NOT NULL,
+            PRIMARY KEY(notebook_id, language)
+        )"""
+    )
+    execute(
         """CREATE TABLE IF NOT EXISTS notebook_runs (
             id TEXT PRIMARY KEY,
             notebook_id TEXT NOT NULL,
@@ -110,6 +140,207 @@ def _scope(require_run: bool = False) -> tuple[str, str, str | None]:
         raise PermissionError("Permission insuffisante: analysis:run.")
 
     return "workspace", access.workspace_id, access.user_id
+
+
+
+_PACKAGE_RE = re.compile(r"^[A-Za-z0-9_.-]+(?:\s*(?:==|>=|<=|~=|>|<)\s*[A-Za-z0-9_.+!-]+)?$")
+
+
+def _kernel_session_id(notebook_id: str, language: str) -> str:
+    scope_type, scope_id, _actor = _scope()
+    digest = hashlib.sha256(
+        f"{scope_type}:{scope_id}:{notebook_id}:{language}".encode("utf-8")
+    ).hexdigest()[:32]
+    return f"dv-{language}-{digest}"
+
+
+def _normalize_requirements(values: list[str] | None) -> list[str]:
+    normalized: list[str] = []
+    for raw in values or []:
+        value = str(raw or "").strip()
+        if not value:
+            continue
+        if len(value) > 120 or not _PACKAGE_RE.fullmatch(value):
+            raise ValueError(f"Exigence package invalide: {value[:80]}")
+        if value not in normalized:
+            normalized.append(value)
+    return normalized[:100]
+
+
+def _requirement_name(value: str) -> str:
+    return re.split(r"\s*(?:==|>=|<=|~=|>|<)\s*", value.strip(), maxsplit=1)[0].lower()
+
+
+def _environment_row(notebook_id: str, *, create: bool = True) -> dict[str, Any] | None:
+    _ensure_tables()
+    row = fetch_one(
+        "SELECT * FROM notebook_environments WHERE notebook_id=:id",
+        {"id": notebook_id},
+    )
+    if row or not create:
+        return row
+    now = utcnow()
+    execute(
+        """INSERT INTO notebook_environments(
+            notebook_id,python_requirements_json,r_requirements_json,
+            python_lock_json,r_lock_json,policy_json,created_at,updated_at
+        ) VALUES(
+            :id,:python,:r,:python_lock,:r_lock,:policy,:created,:updated
+        )""",
+        {
+            "id": notebook_id,
+            "python": "[]",
+            "r": "[]",
+            "python_lock": "{}",
+            "r_lock": "{}",
+            "policy": json_dumps({
+                "install_mode": "image-managed",
+                "dynamic_install": False,
+                "isolation": "sandbox",
+            }),
+            "created": now,
+            "updated": now,
+        },
+    )
+    return fetch_one(
+        "SELECT * FROM notebook_environments WHERE notebook_id=:id",
+        {"id": notebook_id},
+    )
+
+
+def _environment_payload(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "notebook_id": row["notebook_id"],
+        "python_requirements": json_loads(row.get("python_requirements_json"), []),
+        "r_requirements": json_loads(row.get("r_requirements_json"), []),
+        "python_lock": json_loads(row.get("python_lock_json"), {}),
+        "r_lock": json_loads(row.get("r_lock_json"), {}),
+        "policy": json_loads(row.get("policy_json"), {}),
+        "created_at": row.get("created_at"),
+        "updated_at": row.get("updated_at"),
+    }
+
+
+def _kernel_row(notebook_id: str, language: str) -> dict[str, Any] | None:
+    _ensure_tables()
+    return fetch_one(
+        """SELECT * FROM notebook_kernel_sessions
+           WHERE notebook_id=:notebook AND language=:language""",
+        {"notebook": notebook_id, "language": language},
+    )
+
+
+def _update_kernel_tracking(
+    notebook_id: str,
+    language: str,
+    runtime: dict[str, Any],
+    *,
+    state_status: str | None = None,
+) -> dict[str, Any]:
+    kernel = runtime.get("kernel") if isinstance(runtime.get("kernel"), dict) else runtime
+    session_id = str(kernel.get("session_id") or _kernel_session_id(notebook_id, language))
+    generation = kernel.get("generation")
+    execution_count = int(kernel.get("execution_count") or runtime.get("execution_count") or 0)
+    previous = _kernel_row(notebook_id, language)
+    prior_generation = previous.get("generation") if previous else None
+    created = bool(runtime.get("kernel_created") or kernel.get("created"))
+    if state_status is None:
+        if created and previous and previous.get("execution_count", 0):
+            state_status = "reset"
+        elif prior_generation and generation and prior_generation != generation:
+            state_status = "reset"
+        else:
+            state_status = "ready"
+    now = utcnow()
+    if previous:
+        execute(
+            """UPDATE notebook_kernel_sessions
+               SET session_id=:session,generation=:generation,state_status=:state,
+                   execution_count=:count,last_seen_at=:seen
+               WHERE notebook_id=:notebook AND language=:language""",
+            {
+                "session": session_id,
+                "generation": generation,
+                "state": state_status,
+                "count": execution_count,
+                "seen": now,
+                "notebook": notebook_id,
+                "language": language,
+            },
+        )
+    else:
+        execute(
+            """INSERT INTO notebook_kernel_sessions(
+                notebook_id,language,session_id,generation,state_status,
+                execution_count,last_seen_at
+            ) VALUES(
+                :notebook,:language,:session,:generation,:state,:count,:seen
+            )""",
+            {
+                "notebook": notebook_id,
+                "language": language,
+                "session": session_id,
+                "generation": generation,
+                "state": state_status,
+                "count": execution_count,
+                "seen": now,
+            },
+        )
+    row = _kernel_row(notebook_id, language) or {}
+    return {
+        "language": language,
+        "session_id": row.get("session_id"),
+        "generation": row.get("generation"),
+        "state_status": row.get("state_status", state_status),
+        "execution_count": int(row.get("execution_count") or 0),
+        "last_seen_at": row.get("last_seen_at"),
+        "persistent": True,
+    }
+
+
+def _kernel_payload(
+    notebook_id: str,
+    language: str,
+    *,
+    live: bool = False,
+) -> dict[str, Any]:
+    session_id = _kernel_session_id(notebook_id, language)
+    tracked = _kernel_row(notebook_id, language)
+    base = {
+        "language": language,
+        "session_id": session_id,
+        "status": "stopped" if tracked is None else "tracked",
+        "state_status": "new" if tracked is None else tracked.get("state_status", "ready"),
+        "execution_count": int((tracked or {}).get("execution_count") or 0),
+        "generation": (tracked or {}).get("generation"),
+        "persistent": True,
+        "variables": [],
+    }
+    if not live:
+        return base
+    try:
+        status = kernel_session_status(session_id)
+    except NotebookSandboxUnavailable:
+        status = None
+    if status is None:
+        if tracked:
+            base["status"] = "lost"
+            base["state_status"] = "reset"
+        return base
+    variables: list[str] = []
+    try:
+        inspected = kernel_session_variables(session_id)
+        variables = list(inspected.get("variables") or [])[:200]
+    except Exception:
+        variables = []
+    return {
+        **base,
+        "status": status.get("status", "ready"),
+        "state_status": "ready",
+        "execution_count": int(status.get("execution_count") or 0),
+        "generation": status.get("generation"),
+        "variables": variables,
+    }
 
 
 def _authorize_dataset(dataset_id: str | None, permission: str = "dataset:read") -> None:
@@ -321,6 +552,12 @@ def _notebook_payload(row: dict[str, Any], *, include_cells: bool = True) -> dic
             }
             for cell in cells
         ]
+        env_row = _environment_row(row["id"], create=True)
+        payload["environment"] = _environment_payload(env_row or {}) if env_row else None
+        payload["kernels"] = {
+            language: _kernel_payload(row["id"], language)
+            for language in ("python", "r")
+        }
 
     return payload
 
@@ -395,6 +632,8 @@ def create_notebook(
             "updated_at": now,
         },
     )
+
+    _environment_row(notebook_id, create=True)
 
     seed_cells = [
         (
@@ -490,6 +729,23 @@ def bind_notebook_dataset(
             "id": notebook_id,
         },
     )
+    if row.get("dataset_id") != dataset_id:
+        for kernel_language in ("python", "r"):
+            try:
+                close_kernel_session(_kernel_session_id(notebook_id, kernel_language))
+            except Exception:
+                pass
+            if _kernel_row(notebook_id, kernel_language):
+                execute(
+                    """UPDATE notebook_kernel_sessions
+                       SET state_status='reset',execution_count=0,last_seen_at=:seen
+                       WHERE notebook_id=:notebook AND language=:language""",
+                    {
+                        "seen": utcnow(),
+                        "notebook": notebook_id,
+                        "language": kernel_language,
+                    },
+                )
     record_event(
         "notebook.dataset_bind",
         user_id=actor,
@@ -508,6 +764,19 @@ def bind_notebook_dataset(
 def delete_notebook(notebook_id: str) -> None:
     row = _notebook_row(notebook_id)
     scope_type, scope_id, actor = _scope(require_run=True)
+    for language in ("python", "r"):
+        try:
+            close_kernel_session(_kernel_session_id(notebook_id, language))
+        except Exception:
+            pass
+    execute(
+        "DELETE FROM notebook_kernel_sessions WHERE notebook_id=:id",
+        {"id": notebook_id},
+    )
+    execute(
+        "DELETE FROM notebook_environments WHERE notebook_id=:id",
+        {"id": notebook_id},
+    )
     execute(
         "DELETE FROM notebook_runs WHERE notebook_id=:id",
         {"id": notebook_id},
@@ -712,22 +981,28 @@ def run_cell(notebook_id: str, cell_id: str) -> dict[str, Any]:
                     "error_type": type(exc).__name__,
                 }
         elif language in {"python", "r"}:
+            session_id = _kernel_session_id(notebook_id, language)
             try:
-                runtime_result = execute_sandboxed(
+                runtime_result = execute_sandboxed_session(
+                    session_id=session_id,
                     language=language,
                     code=source,
                     dataframe=frame,
                 )
+                runtime_result["kernel_tracking"] = _update_kernel_tracking(
+                    notebook_id, language, runtime_result
+                )
             except NotebookSandboxUnavailable as exc:
                 runtime_result = {
                     "status": "failed",
-                    "engine": language,
+                    "engine": f"{language}-persistent",
                     "stdout": "",
                     "stderr": str(exc),
                     "result": None,
                     "artifacts": [],
                     "elapsed_ms": 0.0,
                     "error_type": "SandboxUnavailable",
+                    "kernel_tracking": _kernel_payload(notebook_id, language),
                 }
         else:
             raise ValueError("Langage de cellule non supporté.")
@@ -755,10 +1030,12 @@ def run_cell(notebook_id: str, cell_id: str) -> dict[str, Any]:
         "execution_boundary": (
             "read-only SQL engine"
             if language == "sql"
-            else "isolated sandbox service"
+            else "isolated persistent sandbox kernel"
             if language in {"python", "r"}
             else "non-executable markdown"
         ),
+        "kernel": runtime_result.get("kernel_tracking") if language in {"python", "r"} else None,
+        "kernel_created": bool(runtime_result.get("kernel_created")) if language in {"python", "r"} else False,
         "workspace_id": scope_id if scope_type == "workspace" else None,
     }
 
@@ -961,6 +1238,178 @@ def artifact_path(
     return path
 
 
+
+def get_notebook_environment(notebook_id: str) -> dict[str, Any]:
+    _notebook_row(notebook_id)
+    row = _environment_row(notebook_id, create=True)
+    assert row is not None
+    return _environment_payload(row)
+
+
+def update_notebook_environment(
+    notebook_id: str,
+    *,
+    python_requirements: list[str] | None = None,
+    r_requirements: list[str] | None = None,
+) -> dict[str, Any]:
+    _notebook_row(notebook_id)
+    scope_type, scope_id, actor = _scope(require_run=True)
+    row = _environment_row(notebook_id, create=True)
+    assert row is not None
+    python = (
+        _normalize_requirements(python_requirements)
+        if python_requirements is not None
+        else json_loads(row.get("python_requirements_json"), [])
+    )
+    r = (
+        _normalize_requirements(r_requirements)
+        if r_requirements is not None
+        else json_loads(row.get("r_requirements_json"), [])
+    )
+    execute(
+        """UPDATE notebook_environments
+           SET python_requirements_json=:python,r_requirements_json=:r,
+               python_lock_json='{}',r_lock_json='{}',updated_at=:updated
+           WHERE notebook_id=:id""",
+        {
+            "python": json_dumps(python),
+            "r": json_dumps(r),
+            "updated": utcnow(),
+            "id": notebook_id,
+        },
+    )
+    record_event(
+        "notebook.environment_update",
+        user_id=actor,
+        workspace_id=scope_id if scope_type == "workspace" else None,
+        resource_type="notebook",
+        resource_id=notebook_id,
+        payload={
+            "python_requirements": python,
+            "r_requirements": r,
+            "install_mode": "image-managed",
+        },
+    )
+    return get_notebook_environment(notebook_id)
+
+
+def sync_notebook_environment(notebook_id: str) -> dict[str, Any]:
+    _notebook_row(notebook_id)
+    scope_type, scope_id, actor = _scope(require_run=True)
+    row = _environment_row(notebook_id, create=True)
+    assert row is not None
+    env = _environment_payload(row)
+    inventory = sandbox_packages()
+    python_inventory = {
+        str(k).lower(): str(v)
+        for k, v in (inventory.get("python") or {}).items()
+    }
+    r_inventory = {
+        str(k).lower(): str(v)
+        for k, v in (inventory.get("r") or {}).items()
+    }
+    python_lock: dict[str, str] = {}
+    r_lock: dict[str, str] = {}
+    missing_python: list[str] = []
+    missing_r: list[str] = []
+    for requirement in env["python_requirements"]:
+        name = _requirement_name(requirement)
+        if name in python_inventory:
+            python_lock[name] = python_inventory[name]
+        else:
+            missing_python.append(requirement)
+    for requirement in env["r_requirements"]:
+        name = _requirement_name(requirement)
+        if name in r_inventory:
+            r_lock[name] = r_inventory[name]
+        else:
+            missing_r.append(requirement)
+    execute(
+        """UPDATE notebook_environments
+           SET python_lock_json=:python_lock,r_lock_json=:r_lock,updated_at=:updated
+           WHERE notebook_id=:id""",
+        {
+            "python_lock": json_dumps(python_lock),
+            "r_lock": json_dumps(r_lock),
+            "updated": utcnow(),
+            "id": notebook_id,
+        },
+    )
+    status = "ready" if not missing_python and not missing_r else "missing_packages"
+    record_event(
+        "notebook.environment_sync",
+        user_id=actor,
+        workspace_id=scope_id if scope_type == "workspace" else None,
+        resource_type="notebook",
+        resource_id=notebook_id,
+        outcome="success" if status == "ready" else "warning",
+        payload={
+            "status": status,
+            "missing_python": missing_python,
+            "missing_r": missing_r,
+        },
+    )
+    return {
+        **get_notebook_environment(notebook_id),
+        "status": status,
+        "missing_python": missing_python,
+        "missing_r": missing_r,
+        "inventory_policy": inventory.get("install_policy", "image-managed"),
+        "dynamic_install": bool(inventory.get("dynamic_install", False)),
+    }
+
+
+def notebook_kernel_status(notebook_id: str) -> dict[str, Any]:
+    _notebook_row(notebook_id)
+    return {
+        "notebook_id": notebook_id,
+        "persistent": True,
+        "kernels": {
+            language: _kernel_payload(notebook_id, language, live=True)
+            for language in ("python", "r")
+        },
+    }
+
+
+def restart_notebook_kernel(notebook_id: str, language: str) -> dict[str, Any]:
+    _notebook_row(notebook_id)
+    scope_type, scope_id, actor = _scope(require_run=True)
+    if language not in {"python", "r"}:
+        raise ValueError("Kernel non supporté.")
+    session_id = _kernel_session_id(notebook_id, language)
+    runtime = restart_kernel_session(session_id=session_id, language=language)
+    tracked = _update_kernel_tracking(
+        notebook_id,
+        language,
+        {"kernel": runtime, "kernel_created": True},
+        state_status="reset",
+    )
+    record_event(
+        "notebook.kernel_restart",
+        user_id=actor,
+        workspace_id=scope_id if scope_type == "workspace" else None,
+        resource_type="notebook",
+        resource_id=notebook_id,
+        payload={"language": language, "session_id": session_id},
+    )
+    return tracked
+
+
+def restart_notebook_kernels(notebook_id: str, *, replay: bool = False) -> dict[str, Any]:
+    _notebook_row(notebook_id)
+    kernels = {
+        language: restart_notebook_kernel(notebook_id, language)
+        for language in ("python", "r")
+    }
+    replay_result = run_notebook(notebook_id, continue_on_error=False) if replay else None
+    return {
+        "notebook_id": notebook_id,
+        "kernels": kernels,
+        "replayed": bool(replay),
+        "replay_result": replay_result,
+    }
+
+
 def runtime_status() -> dict[str, Any]:
     try:
         sandbox = sandbox_health()
@@ -977,10 +1426,16 @@ def runtime_status() -> dict[str, Any]:
         "sandbox": sandbox,
         "python": {
             "status": "ok" if sandbox_ok else "unavailable",
-            "boundary": "isolated sandbox service",
+            "boundary": "isolated persistent sandbox kernel",
+            "persistent": True,
         },
         "r": {
             "status": "ok" if sandbox_ok else "unavailable",
-            "boundary": "isolated sandbox service",
+            "boundary": "isolated persistent sandbox kernel",
+            "persistent": True,
+        },
+        "environment": {
+            "install_mode": "image-managed",
+            "dynamic_install": False,
         },
     }

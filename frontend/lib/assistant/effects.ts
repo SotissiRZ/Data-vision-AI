@@ -42,6 +42,7 @@ export function applyAssistantHostEffects(
   let datasetId: string | undefined;
   let datasetVersion: string | undefined;
   let modelId: string | undefined;
+  let chartId: string | undefined;
   let reportId: string | undefined;
   let preferredView: string | undefined;
   let forceDatasetReload = false;
@@ -74,6 +75,8 @@ export function applyAssistantHostEffects(
     }
 
     if (tool === "create_visualization") {
+      if (typeof result.chart_id === "string") chartId = result.chart_id;
+      else if (typeof result.visualization_id === "string") chartId = result.visualization_id;
       preferredView = "visual";
     }
 
@@ -103,7 +106,25 @@ export function applyAssistantHostEffects(
     });
   }
 
-  if (datasetId || modelId || reportId || preferredView) {
+  if (chartId) {
+    assistantEventBus.setContext({ activeChartId: chartId });
+    assistantEventBus.emit({
+      type: "assistant.chart.changed",
+      severity: "info",
+      payload: { chartId },
+    });
+  }
+
+  if (reportId) {
+    assistantEventBus.setContext({ activeReportId: reportId });
+    assistantEventBus.emit({
+      type: "assistant.report.changed",
+      severity: "info",
+      payload: { reportId },
+    });
+  }
+
+  if (datasetId || modelId || chartId || reportId || preferredView) {
     window.dispatchEvent(
       new CustomEvent("datavision:assistant-navigate", {
         detail: {
@@ -111,6 +132,7 @@ export function applyAssistantHostEffects(
           datasetId,
           datasetVersion,
           modelId,
+          chartId,
           reportId,
           refreshDataset: forceDatasetReload,
           source: "assistant-action",

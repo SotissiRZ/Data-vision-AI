@@ -1,0 +1,54 @@
+{{- if .Values.runtimeSecurity.admission.enabled }}
+apiVersion: kyverno.io/v1
+kind: ClusterPolicy
+metadata:
+  name: {{ include "datavision.fullname" . }}-admission
+  labels:
+    {{- include "datavision.labels" . | nindent 4 }}
+spec:
+  validationFailureAction: Enforce
+  background: true
+  rules:
+    - name: require-runtime-hardening
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+              selector:
+                matchLabels:
+                  app.kubernetes.io/instance: {{ .Release.Name | quote }}
+      validate:
+        message: "DataVision pods must run non-root with RuntimeDefault seccomp and without privilege escalation."
+        pattern:
+          spec:
+            securityContext:
+              runAsNonRoot: true
+              seccompProfile:
+                type: RuntimeDefault
+            containers:
+              - securityContext:
+                  allowPrivilegeEscalation: false
+                  capabilities:
+                    drop: ["ALL"]
+    {{- if .Values.runtimeSecurity.admission.verifyImages }}
+    - name: verify-signed-images
+      match:
+        any:
+          - resources:
+              kinds: ["Pod"]
+              selector:
+                matchLabels:
+                  app.kubernetes.io/instance: {{ .Release.Name | quote }}
+      verifyImages:
+        - imageReferences:
+            {{- toYaml .Values.runtimeSecurity.admission.imageReferences | nindent 12 }}
+          mutateDigest: true
+          verifyDigest: true
+          required: true
+          attestors:
+            - entries:
+                - keyless:
+                    issuer: {{ .Values.runtimeSecurity.admission.keylessIssuer | quote }}
+                    subject: {{ .Values.runtimeSecurity.admission.keylessSubject | quote }}
+    {{- end }}
+{{- end }}

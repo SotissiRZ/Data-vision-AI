@@ -40,3 +40,5 @@ datavision/
 4. La racine ne contient que les fichiers nécessaires au lancement, au build,
    à la sécurité, aux tests et à la documentation principale.
 5. `scripts/repository_hygiene.py --check` vérifie automatiquement ces règles.
+
+- `production-acceptance-windows.ps1` — validation locale de production (Docker Desktop, build frontend, E2E, charge et preuves).

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import io
 import json
 import uuid
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -10,6 +12,7 @@ import pandas as pd
 from app.core.config import get_settings
 
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".json", ".parquet", ".txt"}
+ARCHIVE_EXTENSIONS = {".zip"}
 
 
 def _now() -> str:
@@ -90,6 +93,54 @@ def save_upload(filename: str, content: bytes) -> dict:
     _write_meta(meta)
     return meta
 
+
+
+def save_zip_upload(filename: str, content: bytes, *, scan_member=None) -> list[dict]:
+    """Safely import up to 50 supported data files from a ZIP archive.
+
+    Archive paths are flattened to basenames, unsupported members are ignored, and
+    the total uncompressed payload is bounded by MAX_UPLOAD_MB to resist ZIP bombs.
+    """
+    settings = get_settings()
+    if Path(filename).suffix.lower() not in ARCHIVE_EXTENSIONS:
+        raise ValueError("Archive ZIP attendue")
+    if len(content) > settings.max_upload_mb * 1024 * 1024:
+        raise ValueError(f"Fichier trop volumineux (max {settings.max_upload_mb} MB)")
+    try:
+        archive = zipfile.ZipFile(io.BytesIO(content))
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Archive ZIP invalide") from exc
+    infos = [i for i in archive.infolist() if not i.is_dir()]
+    if len(infos) > 50:
+        raise ValueError("Archive ZIP trop volumineuse: maximum 50 fichiers")
+    max_uncompressed = settings.max_upload_mb * 1024 * 1024
+    total = sum(max(0, int(i.file_size)) for i in infos)
+    if total > max_uncompressed:
+        raise ValueError(f"Contenu ZIP décompressé trop volumineux (max {settings.max_upload_mb} MB)")
+    imported: list[dict] = []
+    seen_names: set[str] = set()
+    for info in infos:
+        raw_name = str(info.filename or "")
+        safe_name = Path(raw_name.replace("\\", "/")).name
+        if not safe_name or safe_name in {".", ".."}:
+            continue
+        ext = Path(safe_name).suffix.lower()
+        if ext not in ALLOWED_EXTENSIONS:
+            continue
+        if safe_name in seen_names:
+            stem, suffix = Path(safe_name).stem, Path(safe_name).suffix
+            safe_name = f"{stem}_{len(seen_names)+1}{suffix}"
+        seen_names.add(safe_name)
+        payload = archive.read(info)
+        if scan_member is not None:
+            scan_member(safe_name, payload)
+        meta = save_upload(safe_name, payload)
+        meta["archive"] = {"name": Path(filename).name, "member": raw_name}
+        _write_meta(meta)
+        imported.append(meta)
+    if not imported:
+        raise ValueError("L'archive ne contient aucun fichier de données supporté")
+    return imported
 
 def save_dataframe_version(parent_id: str, df: pd.DataFrame, operation: dict, *, governance_materialized: bool = True) -> dict:
     """Persist a transformed dataframe as an immutable CSV version with schema metadata."""

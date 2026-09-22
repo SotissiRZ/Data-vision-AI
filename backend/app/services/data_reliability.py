@@ -321,9 +321,20 @@ def build_lineage_graph(workspace_id: str, dataset_id: str | None=None) -> dict[
         if parent and parent in allowed:
             _add_node(nodes,"dataset",parent,str(get_meta(parent).get("original_name") or parent),version=int(get_meta(parent).get("version",1)))
             edge("dataset",str(parent),"dataset",ds,"transformed_to",operation=m.get("operation"))
-    # connector sources + refresh history
-    for src in fetch_all("SELECT id,name,dataset_id FROM connector_sources WHERE workspace_id=:ws",{"ws":workspace_id}):
-        sid=str(src["id"]);_add_node(nodes,"source",sid,str(src.get("name") or sid))
+    # connector systems + external objects + sources + refresh history
+    connectors = {str(c["id"]): c for c in fetch_all("SELECT id,name,connector_type,host,database_name FROM data_connectors WHERE workspace_id=:ws", {"ws": workspace_id})}
+    for connector_id, connector in connectors.items():
+        _add_node(nodes, "connector", connector_id, str(connector.get("name") or connector_id), connector_type=connector.get("connector_type"), host=connector.get("host"), database=connector.get("database_name"))
+    for src in fetch_all("SELECT id,name,dataset_id,connector_id,source_kind,table_name,source_query FROM connector_sources WHERE workspace_id=:ws",{"ws":workspace_id}):
+        sid=str(src["id"]); connector_id=str(src.get("connector_id") or "")
+        _add_node(nodes,"source",sid,str(src.get("name") or sid), source_kind=src.get("source_kind"))
+        if connector_id and connector_id in connectors:
+            edge("connector", connector_id, "source", sid, "exposes_source")
+            object_name = str(src.get("table_name") or "query")
+            object_id = f"{connector_id}:{sid}"
+            _add_node(nodes, "external_object", object_id, object_name, source_kind=src.get("source_kind"), connector_id=connector_id)
+            edge("connector", connector_id, "external_object", object_id, "contains")
+            edge("external_object", object_id, "source", sid, "ingested_through")
         runs=fetch_all("SELECT dataset_id_after,mode,started_at FROM refresh_runs WHERE workspace_id=:ws AND source_id=:sid AND status='completed'",{"ws":workspace_id,"sid":sid})
         for r in runs:
             ds=str(r.get("dataset_id_after") or "")

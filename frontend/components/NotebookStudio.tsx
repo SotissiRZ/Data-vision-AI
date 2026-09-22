@@ -13,7 +13,12 @@ import {
   getNotebook,
   getNotebookDatasetVersions,
   getNotebookRuntime,
+  getNotebookKernels,
   listNotebooks,
+  restartNotebookKernel,
+  restartNotebookKernels,
+  syncNotebookEnvironment,
+  updateNotebookEnvironment,
   promoteNotebookArtifact,
   runNotebook,
   runNotebookCell,
@@ -50,6 +55,9 @@ export function NotebookStudio({
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [versions, setVersions] = useState<DatasetVersionRef[]>([]);
   const [message, setMessage] = useState("");
+  const [pythonRequirements, setPythonRequirements] = useState("");
+  const [rRequirements, setRRequirements] = useState("");
+  const [environmentStatus, setEnvironmentStatus] = useState<string | null>(null);
 
   async function loadList(selectId?: string) {
     try {
@@ -105,6 +113,25 @@ export function NotebookStudio({
   }, [active?.dataset_id, dataset?.id]);
 
   useEffect(() => {
+    if (!active?.id) return;
+    let cancelled = false;
+    getNotebookKernels(active.id)
+      .then((payload) => {
+        if (!cancelled) {
+          setActive((current) => current?.id === active.id ? { ...current, kernels: payload.kernels } : current);
+        }
+      })
+      .catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [active?.id]);
+
+  useEffect(() => {
+    setPythonRequirements((active?.environment?.python_requirements ?? []).join("\n"));
+    setRRequirements((active?.environment?.r_requirements ?? []).join("\n"));
+    setEnvironmentStatus(active?.environment?.status ?? null);
+  }, [active?.id, active?.environment?.updated_at]);
+
+  useEffect(() => {
     if (!active) return;
     const current = assistantEventBus.getContext();
     assistantEventBus.setContext({
@@ -115,6 +142,12 @@ export function NotebookStudio({
         metadata: {
           datasetId: active.dataset_id,
           datasetVersion: active.dataset_version,
+          pythonKernelState: active.kernels?.python?.state_status ?? "new",
+          rKernelState: active.kernels?.r?.state_status ?? "new",
+          pythonKernelVariables: active.kernels?.python?.variables?.slice(0, 30) ?? [],
+          rKernelVariables: active.kernels?.r?.variables?.slice(0, 30) ?? [],
+          pythonRequirements: active.environment?.python_requirements ?? [],
+          rRequirements: active.environment?.r_requirements ?? [],
         },
       },
       uiState: {
@@ -123,7 +156,7 @@ export function NotebookStudio({
         activeNotebookName: active.name,
       },
     });
-  }, [active?.id, active?.name]);
+  }, [active?.id, active?.name, active?.dataset_id, active?.dataset_version, active?.kernels?.python?.state_status, active?.kernels?.r?.state_status, active?.environment?.updated_at]);
 
   async function openNotebook(id: string) {
     try {
@@ -361,6 +394,62 @@ export function NotebookStudio({
     }
   }
 
+  async function restartKernel(language: "python" | "r") {
+    if (!active) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await restartNotebookKernel(active.id, language);
+      const notebook = await getNotebook(active.id);
+      setActive(notebook);
+      setMessage(`Kernel ${language.toUpperCase()} redémarré. Réexécutez les cellules nécessaires pour reconstruire son état.`);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function restartAllKernels(replay = false) {
+    if (!active) return;
+    if (replay && !window.confirm("Redémarrer les kernels puis réexécuter le notebook depuis le début ?")) return;
+    setBusy(true);
+    setMessage("");
+    try {
+      await restartNotebookKernels(active.id, replay);
+      const notebook = await getNotebook(active.id);
+      setActive(notebook);
+      setMessage(replay ? "Kernels redémarrés et état reconstruit par réexécution." : "Kernels redémarrés. Leur namespace est vide.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveEnvironment() {
+    if (!active) return;
+    setBusy(true);
+    setEnvironmentStatus(null);
+    try {
+      const parseLines = (value: string) => value.split(/[,\n]/).map((item) => item.trim()).filter(Boolean);
+      await updateNotebookEnvironment(active.id, {
+        python_requirements: parseLines(pythonRequirements),
+        r_requirements: parseLines(rRequirements),
+      });
+      const synced = await syncNotebookEnvironment(active.id);
+      setEnvironmentStatus(synced.status ?? "ready");
+      const notebook = await getNotebook(active.id);
+      setActive(notebook);
+      const missing = [...(synced.missing_python ?? []), ...(synced.missing_r ?? [])];
+      setMessage(missing.length ? `Environnement enregistré · packages absents: ${missing.join(", ")}` : "Environnement notebook verrouillé sur les packages disponibles.");
+    } catch (error) {
+      setError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const cells = useMemo(
     () => [...(active?.cells ?? [])].sort((a, b) => a.position - b.position),
     [active?.cells],
@@ -375,8 +464,8 @@ export function NotebookStudio({
           </span>
           <h1>Notebook Workspace</h1>
           <p>
-            Exécutez des analyses reproductibles. Python et R s'exécutent
-            dans un sandbox isolé ; SQL reste strictement read-only.
+            Exécutez des analyses reproductibles. Python et R disposent maintenant
+            de kernels persistants isolés ; SQL reste strictement read-only.
           </p>
         </div>
         <div className={styles.runtime}>
@@ -490,6 +579,46 @@ export function NotebookStudio({
                   </button>
                 </div>
               </header>
+
+              <section className={styles.kernelPanel}>
+                <div className={styles.kernelPanelHead}>
+                  <div>
+                    <strong>Runtime persistant</strong>
+                    <small>Les variables restent disponibles entre les cellules d'un même langage.</small>
+                  </div>
+                  <div className={styles.kernelActions}>
+                    <button type="button" disabled={busy} onClick={() => void restartAllKernels(false)}>Redémarrer</button>
+                    <button type="button" disabled={busy || !active.dataset_id} onClick={() => void restartAllKernels(true)}>Redémarrer + reconstruire</button>
+                  </div>
+                </div>
+                <div className={styles.kernelGrid}>
+                  {(["python", "r"] as const).map((language) => {
+                    const kernel = active.kernels?.[language];
+                    return (
+                      <article key={language} className={styles.kernelCard}>
+                        <div><b>{language.toUpperCase()}</b><span className={kernel?.state_status === "ready" ? styles.kernelReady : styles.kernelReset}>{kernel?.state_status ?? "new"}</span></div>
+                        <small>{kernel?.execution_count ?? 0} exécution(s) · {kernel?.persistent ? "persistant" : "stateless"}</small>
+                        {!!kernel?.variables?.length && <p>Variables: {kernel.variables.slice(0, 8).join(", ")}{kernel.variables.length > 8 ? "…" : ""}</p>}
+                        <button type="button" disabled={busy} onClick={() => void restartKernel(language)}>Réinitialiser {language.toUpperCase()}</button>
+                      </article>
+                    );
+                  })}
+                </div>
+                <details className={styles.environmentPanel}>
+                  <summary>Environnement & packages {environmentStatus ? `· ${environmentStatus}` : ""}</summary>
+                  <p>Les packages sont gérés par l'image sandbox. Déclarez ici les dépendances du projet pour vérifier et verrouiller leurs versions sans installation réseau implicite.</p>
+                  <div className={styles.environmentGrid}>
+                    <label><span>Python · une dépendance par ligne</span><textarea value={pythonRequirements} onChange={(event) => setPythonRequirements(event.target.value)} rows={4} placeholder="pandas>=2.3\nscikit-learn" /></label>
+                    <label><span>R · une dépendance par ligne</span><textarea value={rRequirements} onChange={(event) => setRRequirements(event.target.value)} rows={4} placeholder="dplyr\nggplot2" /></label>
+                  </div>
+                  <div className={styles.environmentMeta}>
+                    <span>Mode: {String(active.environment?.policy?.install_mode ?? "image-managed")}</span>
+                    <span>Python lock: {Object.keys(active.environment?.python_lock ?? {}).length}</span>
+                    <span>R lock: {Object.keys(active.environment?.r_lock ?? {}).length}</span>
+                    <button type="button" disabled={busy} onClick={() => void saveEnvironment()}>Enregistrer & valider</button>
+                  </div>
+                </details>
+              </section>
 
               <div className={styles.cellToolbar}>
                 <span>Ajouter :</span>

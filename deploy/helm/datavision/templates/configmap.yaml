@@ -52,5 +52,22 @@ data:
   MULTI_CLUSTER_CONFIRMATION_TTL_MINUTES: {{ .Values.multiCluster.confirmationTtlMinutes | quote }}
   MULTI_CLUSTER_REQUIRE_VERIFIED_BACKUP: {{ .Values.multiCluster.requireVerifiedBackup | quote }}
   MULTI_CLUSTER_BACKUP_MAX_AGE_HOURS: {{ .Values.multiCluster.backupMaxAgeHours | quote }}
+  SECRET_AUTO_ROTATION_ENABLED: {{ .Values.operationalSecurity.secretRotation.enabled | quote }}
+  SECRET_ROTATION_DEFAULT_DAYS: {{ .Values.operationalSecurity.secretRotation.defaultDays | quote }}
+  SECRET_ROTATION_GENERATED_BYTES: {{ .Values.operationalSecurity.secretRotation.generatedBytes | quote }}
+  RELEASE_ROLLBACK_ENABLED: {{ .Values.operationalSecurity.releaseRollback.enabled | quote }}
+  RELEASE_ROLLBACK_EXECUTOR: {{ .Values.operationalSecurity.releaseRollback.executor | quote }}
+  RELEASE_ROLLBACK_WEBHOOK_URL: {{ .Values.operationalSecurity.releaseRollback.webhookUrl | quote }}
+  RELEASE_ROLLBACK_TIMEOUT_SECONDS: {{ .Values.operationalSecurity.releaseRollback.webhookTimeoutSeconds | quote }}
+  RELEASE_ROLLBACK_CONFIRMATION_TTL_MINUTES: {{ .Values.operationalSecurity.releaseRollback.confirmationTtlMinutes | quote }}
   NEXT_PUBLIC_API_URL: "/api/backend"
   INTERNAL_API_URL: "http://{{ include "datavision.fullname" . }}-api:8005/api/v1"
+  ADMISSION_VERIFY_IMAGES_ENABLED: {{ .Values.runtimeSecurity.admission.verifyImages | quote }}
+  RUNTIME_SECURITY_SECCOMP_RUNTIME_DEFAULT: {{ eq .Values.runtimeSecurity.podSecurityContext.seccompProfile "RuntimeDefault" | quote }}
+  RUNTIME_SECURITY_RUN_AS_NON_ROOT: {{ .Values.runtimeSecurity.podSecurityContext.runAsNonRoot | quote }}
+  RUNTIME_SECURITY_READ_ONLY_ROOT_FILESYSTEM: {{ .Values.runtimeSecurity.containerSecurityContext.readOnlyRootFilesystem | quote }}
+  RUNTIME_SECURITY_DROP_ALL_CAPABILITIES: {{ .Values.runtimeSecurity.containerSecurityContext.dropAllCapabilities | quote }}
+  RUNTIME_SECURITY_DISALLOW_PRIVILEGE_ESCALATION: {{ not .Values.runtimeSecurity.containerSecurityContext.allowPrivilegeEscalation | quote }}
+  RUNTIME_DETECTION_ENABLED: {{ .Values.runtimeSecurity.runtimeDetection.enabled | quote }}
+  CONTINUOUS_COMPLIANCE_ENABLED: {{ .Values.continuousCompliance.enabled | quote }}
+  CONTINUOUS_COMPLIANCE_SCHEDULE: {{ .Values.continuousCompliance.schedule | quote }}

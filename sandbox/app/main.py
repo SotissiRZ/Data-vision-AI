@@ -13,10 +13,13 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from pydantic import BaseModel, Field
+
+from app.kernel_manager import manager as kernel_manager
 
 app = FastAPI(
     title="DataVision Notebook Sandbox",
-    version="2.29.0",
+    version="2.69.0",
     docs_url=None,
     redoc_url=None,
 )
@@ -354,9 +357,11 @@ def _health_payload() -> dict[str, Any]:
     return {
         "status": "ok",
         "service": "datavision-notebook-sandbox",
-        "version": "2.29.0",
+        "version": "2.69.0",
         "languages": ["python", "r"],
         "network_policy": "internal-only",
+        "persistent_kernels": True,
+        "active_kernels": len(kernel_manager.list()),
     }
 
 
@@ -402,3 +407,126 @@ async def execute(
         )
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Sandbox failure: {type(exc).__name__}") from exc
+
+
+class KernelOpenRequest(BaseModel):
+    session_id: str = Field(min_length=8, max_length=180)
+    language: str = Field(pattern="^(python|r)$")
+    memory_mb: int = Field(default=768, ge=128, le=2048)
+
+
+@app.post("/sessions/open")
+def session_open(payload: KernelOpenRequest):
+    try:
+        session, created = kernel_manager.open(
+            payload.session_id,
+            payload.language,
+            payload.memory_mb,
+        )
+        return session.info(created=created)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Kernel open failure: {type(exc).__name__}") from exc
+
+
+@app.get("/sessions")
+def sessions_list():
+    return {"items": kernel_manager.list()}
+
+
+@app.get("/sessions/{session_id}")
+def session_status(session_id: str):
+    session = kernel_manager.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Kernel introuvable.")
+    return session.info()
+
+
+@app.get("/sessions/{session_id}/variables")
+def session_variables(session_id: str):
+    session = kernel_manager.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Kernel introuvable.")
+    return session.inspect()
+
+
+@app.post("/sessions/{session_id}/restart")
+def session_restart(session_id: str, payload: KernelOpenRequest):
+    if payload.session_id != session_id:
+        raise HTTPException(status_code=422, detail="Session incohérente.")
+    try:
+        session = kernel_manager.restart(
+            session_id,
+            payload.language,
+            payload.memory_mb,
+        )
+        return session.info(created=True)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Kernel restart failure: {type(exc).__name__}") from exc
+
+
+@app.delete("/sessions/{session_id}")
+def session_close(session_id: str):
+    return {"ok": kernel_manager.close(session_id)}
+
+
+@app.post("/sessions/{session_id}/execute")
+async def session_execute(
+    session_id: str,
+    code: str = Form(...),
+    timeout_seconds: int = Form(20),
+    dataset: UploadFile = File(...),
+):
+    session = kernel_manager.get(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Kernel introuvable.")
+    if len(code) > 100_000:
+        raise HTTPException(status_code=413, detail="Cellule trop volumineuse.")
+    raw = await dataset.read()
+    if len(raw) > 200 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="Dataset trop volumineux pour cette exécution.")
+    try:
+        return session.execute(
+            code=code,
+            dataset_bytes=raw,
+            timeout_seconds=max(1, min(int(timeout_seconds), 60)),
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Kernel execution failure: {type(exc).__name__}") from exc
+
+
+@app.get("/packages")
+def package_inventory():
+    import importlib.metadata
+    python_packages = {
+        dist.metadata.get("Name", "").lower(): dist.version
+        for dist in importlib.metadata.distributions()
+        if dist.metadata.get("Name")
+    }
+    r_packages: dict[str, str] = {}
+    try:
+        completed = subprocess.run(
+            [
+                "Rscript",
+                "--vanilla",
+                "-e",
+                "ip<-installed.packages();cat(jsonlite::toJSON(as.list(setNames(ip[,3],tolower(rownames(ip)))),auto_unbox=TRUE))",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=8,
+            env={**os.environ, "HOME": "/tmp/datavision-home"},
+        )
+        if completed.returncode == 0 and completed.stdout.strip():
+            raw = json.loads(completed.stdout)
+            if isinstance(raw, dict):
+                r_packages = {str(k): str(v) for k, v in raw.items()}
+    except Exception:
+        r_packages = {}
+    return {
+        "python": python_packages,
+        "r": r_packages,
+        "install_policy": "image-managed",
+        "dynamic_install": False,
+    }

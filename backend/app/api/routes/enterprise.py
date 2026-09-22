@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from typing import Any
+from pathlib import Path
 import asyncio
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import FileResponse, PlainTextResponse
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
@@ -44,6 +45,9 @@ from app.services.data_reliability import (
     save_contract, get_contract, list_contracts, delete_contract, run_contract, list_contract_runs,
     build_lineage_graph, impact_analysis, publication_gate, reliability_summary,
 )
+from app.services.data_catalog import (
+    catalog_assets, catalog_summary, get_catalog_entry, save_catalog_entry,
+)
 from app.services.governed_actions import (
     action_summary, approve_run, create_destination, delete_destination, delete_rule, dispatch_event,
     get_run as get_action_run, list_destinations, list_rules as list_action_rules, list_runs as list_action_runs,
@@ -76,6 +80,20 @@ from app.services.entreprise_platform import (
 from app.services.session_security import (
     get_organization_security_policy, save_organization_security_policy, list_trusted_devices,
     trust_session_device, revoke_trusted_device, internal_metrics_token_valid,
+)
+from app.services.operational_security import (
+    secret_rotation_status, rotate_due_secrets, list_secret_rotation_events,
+    create_rollback_plan, confirm_rollback, rollback_drill,
+)
+from app.services.continuous_compliance import (
+    run_compliance_scan, latest_compliance_scan, list_compliance_scans, create_evidence_pack, list_evidence_packs,
+    record_runtime_security_event, list_runtime_security_events,
+)
+from app.services.regulatory_compliance import (
+    control_catalog, posture as regulatory_posture, capture_posture_snapshot, posture_history,
+    create_exception as create_compliance_exception, list_exceptions as list_compliance_exceptions,
+    decide_exception as decide_compliance_exception, remediation_plan as regulatory_remediation_plan,
+    create_regulatory_evidence_pack, list_regulatory_evidence_exports, get_regulatory_evidence_export,
 )
 from app.services.workspace_service import (
     bind_dataset,
@@ -110,6 +128,17 @@ class ContractRunRequest(BaseModel):
 
 class PublicationGateRequest(BaseModel):
     dataset_id: str
+
+
+class CatalogAssetUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, max_length=300)
+    description: str = Field(default="", max_length=8000)
+    business_domain: str = Field(default="", max_length=500)
+    owner_user_id: str | None = Field(default=None, max_length=128)
+    steward_user_id: str | None = Field(default=None, max_length=128)
+    tags: list[str] = Field(default_factory=list, max_length=100)
+    glossary: dict[str, str] = Field(default_factory=dict)
+    certification_status: str = Field(default="unreviewed", pattern="^(unreviewed|draft|certified|deprecated)$")
 
 
 class PluginInstallRequest(BaseModel):
@@ -241,6 +270,51 @@ class SecretCreateRequest(BaseModel):
 
 class SecretRotateRequest(BaseModel):
     value: str = Field(default="", max_length=12000)
+
+
+class SecretAutoRotateRequest(BaseModel):
+    confirm: bool = False
+
+
+class ReleaseRollbackPlanRequest(BaseModel):
+    target_version: str = Field(pattern=r"^\d+(?:\.\d+){1,3}$")
+    reason: str = Field(min_length=4, max_length=1000)
+    artifact_sha256: str = Field(default="", max_length=64)
+
+
+class ReleaseRollbackConfirmRequest(BaseModel):
+    plan_id: str
+    confirmation_token: str = Field(min_length=16, max_length=512)
+
+
+class ReleaseRollbackDrillRequest(BaseModel):
+    target_version: str = Field(pattern=r"^\d+(?:\.\d+){1,3}$")
+    artifact_sha256: str = Field(default="", max_length=64)
+
+
+class ComplianceScanRequest(BaseModel):
+    observed: dict[str, Any] | None = None
+    source: str = Field(default="api", min_length=1, max_length=120)
+
+
+class RuntimeSecurityEventRequest(BaseModel):
+    source: str = Field(min_length=1, max_length=120)
+    severity: str = Field(default="medium", pattern="^(info|low|medium|high|critical)$")
+    rule: str = Field(min_length=1, max_length=240)
+    details: dict[str, Any] = {}
+
+
+class ComplianceExceptionRequest(BaseModel):
+    control_id: str = Field(min_length=3, max_length=80)
+    reason: str = Field(min_length=10, max_length=4000)
+    compensating_controls: list[str] = Field(default_factory=list, max_length=50)
+    expires_at: str = Field(min_length=10, max_length=80)
+    owner: str = Field(default="", max_length=180)
+
+
+class ComplianceExceptionDecisionRequest(BaseModel):
+    decision: str = Field(pattern="^(approved|rejected|revoked)$")
+    note: str = Field(default="", max_length=2000)
 
 
 class WorkspaceCreateRequest(BaseModel):
@@ -797,6 +871,187 @@ def organization_kms_rotate(organization_id: str, user=Depends(current_user)):
         _handle(exc)
 
 
+@router.post("/organizations/{organization_id}/release/rollback/plan")
+def release_rollback_plan(organization_id: str, req: ReleaseRollbackPlanRequest, user=Depends(current_user)):
+    try:
+        member = fetch_one("SELECT role FROM organization_members WHERE organization_id=:org AND user_id=:user", {"org": organization_id, "user": user["id"]})
+        if not member or member.get("role") not in {"owner", "admin"}:
+            raise PermissionError("Administration de l’organisation requise.")
+        return create_rollback_plan(user["id"], target_version=req.target_version, reason=req.reason, artifact_sha256=req.artifact_sha256)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/organizations/{organization_id}/release/rollback/confirm")
+def release_rollback_confirm(organization_id: str, req: ReleaseRollbackConfirmRequest, user=Depends(current_user)):
+    try:
+        member = fetch_one("SELECT role FROM organization_members WHERE organization_id=:org AND user_id=:user", {"org": organization_id, "user": user["id"]})
+        if not member or member.get("role") not in {"owner", "admin"}:
+            raise PermissionError("Administration de l’organisation requise.")
+        return confirm_rollback(user["id"], plan_id=req.plan_id, confirmation_token=req.confirmation_token)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/organizations/{organization_id}/release/rollback/drill")
+def release_rollback_drill(organization_id: str, req: ReleaseRollbackDrillRequest, user=Depends(current_user)):
+    try:
+        member = fetch_one("SELECT role FROM organization_members WHERE organization_id=:org AND user_id=:user", {"org": organization_id, "user": user["id"]})
+        if not member or member.get("role") not in {"owner", "admin"}:
+            raise PermissionError("Administration de l’organisation requise.")
+        return rollback_drill(user["id"], target_version=req.target_version, artifact_sha256=req.artifact_sha256)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/compliance/status")
+def workspace_compliance_status(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return {"latest": latest_compliance_scan(workspace_id), "scans": list_compliance_scans(workspace_id, 20), "evidence_packs": list_evidence_packs(workspace_id, 20)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/compliance/scan")
+def workspace_compliance_scan(workspace_id: str, req: ComplianceScanRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return run_compliance_scan(user["id"], workspace_id=workspace_id, observed=req.observed, source=req.source)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/compliance/evidence-pack")
+def workspace_compliance_evidence_pack(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return create_evidence_pack(user["id"], workspace_id=workspace_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/regulatory/catalog")
+def workspace_regulatory_catalog(workspace_id: str, framework_id: str | None = Query(default=None), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return control_catalog(framework_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/regulatory/posture")
+def workspace_regulatory_posture(workspace_id: str, framework_id: str | None = Query(default=None), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return regulatory_posture(workspace_id, actor_id=user["id"], framework_id=framework_id, ensure_scan=True)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/regulatory/posture/snapshot")
+def workspace_regulatory_posture_snapshot(workspace_id: str, framework_id: str | None = Query(default=None), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return capture_posture_snapshot(user["id"], workspace_id=workspace_id, framework_id=framework_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/regulatory/posture/history")
+def workspace_regulatory_posture_history(workspace_id: str, framework_id: str | None = Query(default=None), limit: int = Query(default=90, ge=1, le=365), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return {"history": posture_history(workspace_id, framework_id=framework_id, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/regulatory/exceptions")
+def workspace_regulatory_exceptions(workspace_id: str, include_expired: bool = Query(default=True), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return {"exceptions": list_compliance_exceptions(workspace_id, include_expired=include_expired)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/regulatory/exceptions")
+def workspace_regulatory_exception_create(workspace_id: str, req: ComplianceExceptionRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return create_compliance_exception(user["id"], workspace_id=workspace_id, control_id=req.control_id, reason=req.reason, compensating_controls=req.compensating_controls, expires_at=req.expires_at, owner=req.owner)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/regulatory/exceptions/{exception_id}/decision")
+def workspace_regulatory_exception_decision(workspace_id: str, exception_id: str, req: ComplianceExceptionDecisionRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return decide_compliance_exception(user["id"], workspace_id=workspace_id, exception_id=exception_id, decision=req.decision, note=req.note)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/regulatory/remediation")
+def workspace_regulatory_remediation(workspace_id: str, framework_id: str | None = Query(default=None), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return regulatory_remediation_plan(workspace_id, framework_id=framework_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/regulatory/evidence-pack")
+def workspace_regulatory_evidence_pack(workspace_id: str, framework_id: str | None = Query(default=None), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return create_regulatory_evidence_pack(user["id"], workspace_id=workspace_id, framework_id=framework_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/regulatory/evidence-packs")
+def workspace_regulatory_evidence_packs(workspace_id: str, limit: int = Query(default=100, ge=1, le=500), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return {"exports": list_regulatory_evidence_exports(workspace_id, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/regulatory/evidence-packs/{export_id}/download")
+def workspace_regulatory_evidence_download(workspace_id: str, export_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        item = get_regulatory_evidence_export(workspace_id, export_id)
+        path = str(item.get("path") or "")
+        if not path or not Path(path).is_file():
+            raise ValueError("Archive de conformité indisponible")
+        return FileResponse(path, media_type="application/zip", filename=f"datavision-regulatory-evidence-{export_id}.zip")
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/runtime-security/events")
+def workspace_runtime_security_events(workspace_id: str, min_severity: str = Query(default="info", pattern="^(info|low|medium|high|critical)$"), limit: int = Query(default=100, ge=1, le=500), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return {"events": list_runtime_security_events(workspace_id, min_severity=min_severity, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/runtime-security/events")
+def workspace_runtime_security_event(workspace_id: str, req: RuntimeSecurityEventRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return record_runtime_security_event(user["id"], workspace_id=workspace_id, source=req.source, severity=req.severity, rule=req.rule, details=req.details)
+    except Exception as exc:
+        _handle(exc)
+
+
 @router.get("/organizations/{organization_id}/scim/tokens")
 def scim_tokens_list(organization_id: str, user=Depends(current_user)):
     try:
@@ -1132,6 +1387,33 @@ def workspace_secret_test(workspace_id: str, secret_id: str, user=Depends(curren
         result = test_secret(workspace_id, secret_id)
         record_event("secret.test", user_id=user["id"], workspace_id=workspace_id, resource_type="secret", resource_id=secret_id, payload={"ok": result.get("ok")})
         return result
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/secrets/rotation/status")
+def workspace_secret_rotation_status(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return secret_rotation_status(workspace_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/secrets/rotation/events")
+def workspace_secret_rotation_events(workspace_id: str, limit: int = Query(default=100, ge=1, le=500), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return {"events": list_secret_rotation_events(workspace_id, limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/secrets/rotation/run")
+def workspace_secret_rotation_run(workspace_id: str, req: SecretAutoRotateRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        return rotate_due_secrets(user["id"], workspace_id=workspace_id, confirm=req.confirm)
     except Exception as exc:
         _handle(exc)
 
@@ -2197,6 +2479,61 @@ def connector_refresh_runs(workspace_id: str, source_id: str | None = Query(defa
         return {"runs": get_refresh_runs(workspace_id, source_id, limit)}
     except Exception as exc:
         _handle(exc)
+
+# ---------------------------- Data Catalog & Discovery v2.68 ----------------------------
+
+@router.get("/workspaces/{workspace_id}/catalog/assets")
+def workspace_catalog_assets(
+    workspace_id: str,
+    q: str = Query(default="", max_length=300),
+    resource_type: str | None = Query(default=None, max_length=80),
+    certification_status: str | None = Query(default=None, max_length=40),
+    limit: int = Query(default=250, ge=1, le=1000),
+    user=Depends(current_user),
+):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:read")
+        return catalog_assets(workspace_id, query=q, resource_type=resource_type, certification_status=certification_status, limit=limit)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/catalog/summary")
+def workspace_catalog_summary(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:read")
+        return catalog_summary(workspace_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/catalog/assets/{resource_type}/{resource_id}")
+def workspace_catalog_asset_detail(workspace_id: str, resource_type: str, resource_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:read")
+        item = get_catalog_entry(workspace_id, resource_type, resource_id)
+        if item is None:
+            raise KeyError("Entrée de catalogue introuvable")
+        return {"entry": item}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.put("/workspaces/{workspace_id}/catalog/assets/{resource_type}/{resource_id}")
+def workspace_catalog_asset_update(workspace_id: str, resource_type: str, resource_id: str, req: CatalogAssetUpdateRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "reliability:manage")
+        item = save_catalog_entry(
+            user["id"], workspace_id, resource_type, resource_id,
+            title=req.title, description=req.description, business_domain=req.business_domain,
+            owner_user_id=req.owner_user_id, steward_user_id=req.steward_user_id, tags=req.tags,
+            glossary=req.glossary, certification_status=req.certification_status,
+        )
+        record_event("catalog.asset.update", user_id=user["id"], workspace_id=workspace_id, resource_type=resource_type, resource_id=resource_id, payload={"certification_status": req.certification_status, "tags": req.tags})
+        return {"entry": item}
+    except Exception as exc:
+        _handle(exc)
+
 
 # ---------------------------- Data Reliability & Lineage v2.8 ----------------------------
 

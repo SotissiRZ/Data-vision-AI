@@ -1,0 +1,55 @@
+{
+  "product_version": "2.69.0",
+  "passed": 8,
+  "total": 8,
+  "checks": [
+    {
+      "id": "continuous_compliance_service",
+      "ok": true,
+      "missing": [],
+      "path": "backend/app/services/continuous_compliance.py"
+    },
+    {
+      "id": "runtime_event_ingestion",
+      "ok": true,
+      "missing": [],
+      "path": "backend/app/services/continuous_compliance.py"
+    },
+    {
+      "id": "admission_signature_policy",
+      "ok": true,
+      "missing": [],
+      "path": "deploy/helm/datavision/templates/admission-policy.yaml"
+    },
+    {
+      "id": "runtime_hardening",
+      "ok": true,
+      "missing": [],
+      "path": "deploy/helm/datavision/templates/api.yaml"
+    },
+    {
+      "id": "falco_rules",
+      "ok": true,
+      "missing": [],
+      "path": "deploy/helm/datavision/templates/falco-rules.yaml"
+    },
+    {
+      "id": "continuous_scan_cron",
+      "ok": true,
+      "missing": [],
+      "path": "deploy/helm/datavision/templates/compliance-cronjob.yaml"
+    },
+    {
+      "id": "policy_as_code_runtime",
+      "ok": true,
+      "missing": [],
+      "path": "policies/kubernetes/datavision.rego"
+    },
+    {
+      "id": "evidence_runbook",
+      "ok": true,
+      "missing": [],
+      "path": "backend/app/ops/compliance.py"
+    }
+  ]
+}

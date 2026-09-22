@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import re
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
@@ -25,6 +26,34 @@ from app.services.connector_backends import (
 
 SUPPORTED_CONNECTORS = set(CONNECTOR_SPECS)
 SUPPORTED_REFRESH_MODES = {"full", "incremental"}
+
+
+def _retry_policy(connector: dict[str, Any]) -> tuple[int, float]:
+    options = connector.get("options") or {}
+    attempts = max(1, min(int(options.get("retry_attempts", 3) or 3), 6))
+    backoff = max(0.0, min(float(options.get("retry_backoff_seconds", 0.25) or 0.25), 10.0))
+    return attempts, backoff
+
+
+def _retry_backend(connector: dict[str, Any], operation: str, fn):
+    attempts, backoff = _retry_policy(connector)
+    last_exc: Exception | None = None
+    for attempt in range(1, attempts + 1):
+        try:
+            value = fn()
+            return value, attempt
+        except Exception as exc:
+            last_exc = exc
+            message = str(exc)
+            if message.startswith("driver_missing:") or attempt >= attempts:
+                break
+            if backoff > 0:
+                time.sleep(backoff * (2 ** (attempt - 1)))
+    assert last_exc is not None
+    if str(last_exc).startswith("driver_missing:"):
+        raise last_exc
+    raise RuntimeError(f"{operation} échoué après {attempts} tentative(s): {last_exc}") from last_exc
+
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_$]*(?:\.[A-Za-z_][A-Za-z0-9_$]*)*$")
 
 
@@ -241,7 +270,7 @@ def test_connector(
     connector = _get_connector_secret(workspace_id, connector_id)
     now = utcnow()
     try:
-        result = test_backend(connector)
+        result, attempts = _retry_backend(connector, "test connecteur", lambda: test_backend(connector))
         execute(
             """UPDATE data_connectors
                SET status='healthy',last_tested_at=:now,last_error=NULL,
@@ -255,6 +284,7 @@ def test_connector(
             "tested_at": now,
             "connector_id": connector_id,
             "backend": connector["connector_type"],
+            "attempts": attempts,
             **(result or {}),
         }
     except Exception as exc:
@@ -288,13 +318,15 @@ def discover_connector(
     max_tables: int = 250,
 ) -> dict[str, Any]:
     connector = _get_connector_secret(workspace_id, connector_id)
-    discovered = discover_backend(
+    discovered, attempts = _retry_backend(
         connector,
-        max_tables=max(1, min(int(max_tables), 1000)),
+        "discovery connecteur",
+        lambda: discover_backend(connector, max_tables=max(1, min(int(max_tables), 1000))),
     )
     safe = _row_to_connector(dict(connector))
     return {
         "connector": safe,
+        "retry": {"attempts": attempts, "policy": {"max_attempts": _retry_policy(connector)[0], "backoff_seconds": _retry_policy(connector)[1]}},
         **discovered,
     }
 
@@ -426,12 +458,12 @@ def fetch_source_frame(
         source["connector_id"],
     )
     try:
-        return fetch_backend(
+        frame, _attempts = _retry_backend(
             connector,
-            source,
-            watermark=watermark,
-            limit=limit,
+            "lecture source",
+            lambda: fetch_backend(connector, source, watermark=watermark, limit=limit),
         )
+        return frame
     except Exception as exc:
         raise RuntimeError(
             _safe_error(exc, connector.get("password", ""))

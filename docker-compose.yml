@@ -74,6 +74,9 @@ services:
   sandbox:
     build: ./sandbox
     read_only: true
+    environment:
+      DATAVISION_KERNEL_MAX_SESSIONS: ${NOTEBOOK_KERNEL_MAX_SESSIONS:-32}
+      DATAVISION_KERNEL_TTL_SECONDS: ${NOTEBOOK_KERNEL_TTL_SECONDS:-3600}
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=768m
     cap_drop:

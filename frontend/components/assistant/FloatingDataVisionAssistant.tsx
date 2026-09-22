@@ -100,24 +100,98 @@ export function FloatingDataVisionAssistant({
       | { primary?: { column?: string; start?: string; end?: string } | null }
       | undefined;
     const primary = temporal?.primary ?? null;
+    const schema = Array.isArray(ui.datasetSchema)
+      ? (ui.datasetSchema as Array<Record<string, unknown>>)
+      : [];
+    const operationState =
+      ui.operationState && typeof ui.operationState === "object" && !Array.isArray(ui.operationState)
+        ? (ui.operationState as Record<string, unknown>)
+        : {};
+    const selectedMetadata = context.selectedEntity?.metadata ?? {};
+    const availableFieldCount = [
+      context.workspaceId,
+      context.organizationId,
+      context.route,
+      context.screen,
+      context.activeDatasetId,
+      context.activeDatasetVersionId,
+      context.activeModelId,
+      context.activeChartId,
+      context.activeReportId,
+      context.selectedEntity?.id,
+      ...Object.values(ui),
+    ].filter(contextValueAvailable).length;
+
     return {
       datasetName: String(ui.datasetName ?? ""),
+      datasetId: context.activeDatasetId ?? String(ui.datasetId ?? ""),
       datasetVersion: ui.datasetVersion ?? context.activeDatasetVersionId,
+      datasetCreatedAt: ui.datasetCreatedAt,
       rowCount: ui.rowCount,
       columnCount: ui.columnCount,
       qualityScore: ui.qualityScore,
+      qualityIssuesCount: ui.qualityIssuesCount,
+      duplicateCount: ui.duplicateCount,
+      missingCells: ui.missingCells,
+      numericColumnCount: ui.numericColumnCount,
+      categoricalColumnCount: ui.categoricalColumnCount,
+      schema,
       selected: context.selectedEntity?.label ?? context.selectedEntity?.id ?? "",
+      selectedType: context.selectedEntity?.type ?? "",
+      selectedMetadata,
       screen: context.screen ?? context.route ?? "application",
+      route: context.route ?? "",
+      areaLabel: String(ui.areaLabel ?? ""),
+      workspaceName: String(ui.workspaceName ?? ""),
+      workspaceRole: String(ui.workspaceRole ?? ui.accessRole ?? ""),
+      userDisplayName: String(ui.userDisplayName ?? ""),
+      accessMode: String(ui.accessMode ?? ""),
+      accessGoverned: ui.accessGoverned,
+      accessPolicyCount: ui.accessPolicyCount,
+      target: ui.target,
+      algorithm: ui.algorithm,
+      modelTask: ui.modelTask,
+      modelAlgorithm: ui.modelAlgorithm,
+      modelPrimaryMetric: ui.modelPrimaryMetric,
+      modelFeatureCount: ui.modelFeatureCount,
+      trustScore: ui.trustScore,
+      trustGrade: ui.trustGrade,
+      operationState,
       period:
         primary?.start && primary?.end
           ? `${formatContextDate(primary.start)} → ${formatContextDate(primary.end)}`
           : "",
       periodColumn: primary?.column ?? "",
+      availableFieldCount,
     };
   }, [context]);
 
+  const technicalContextSnapshot = useMemo(
+    () => ({
+      workspaceId: context.workspaceId ?? null,
+      organizationId: context.organizationId ?? null,
+      route: context.route ?? null,
+      screen: context.screen ?? null,
+      activeDatasetId: context.activeDatasetId ?? null,
+      activeDatasetVersionId: context.activeDatasetVersionId ?? null,
+      activeModelId: context.activeModelId ?? null,
+      activeChartId: context.activeChartId ?? null,
+      activeReportId: context.activeReportId ?? null,
+      selectedEntity: context.selectedEntity ?? null,
+      uiState: context.uiState ?? {},
+      recentEvents: context.recentEvents ?? [],
+    }),
+    [context],
+  );
+
   const hasGroundedContext = Boolean(
-    context.activeDatasetId || context.activeModelId || context.selectedEntity,
+    context.workspaceId ||
+      context.activeDatasetId ||
+      context.activeModelId ||
+      context.activeChartId ||
+      context.activeReportId ||
+      context.selectedEntity ||
+      context.screen,
   );
 
   function clampAssistantWindowSize(size: AssistantWindowSize): AssistantWindowSize {
@@ -786,15 +860,28 @@ useEffect(() => {
               <span>
                 <b>{hasGroundedContext ? "Contexte actif" : "Contexte limité"}</b>
                 <small>
-                  {contextDetails.datasetName || contextDetails.screen}
+                  {contextDetails.datasetName || contextDetails.workspaceName || contextDetails.screen}
                   {contextDetails.selected ? ` · ${contextDetails.selected}` : ""}
+                  {contextDetails.availableFieldCount ? ` · ${contextDetails.availableFieldCount} éléments` : ""}
                 </small>
               </span>
               <i>{contextOpen ? "⌃" : "⌄"}</i>
             </button>
 
             {contextOpen && (
-              <div className={styles.contextDetails}>
+              <div
+                className={styles.contextDetails}
+                style={{ maxHeight: Math.max(180, Math.min(590, assistantWindowSize.height - 210)) }}
+              >
+                {contextDetails.workspaceName && (
+                  <div><span>Workspace</span><b>{contextDetails.workspaceName}</b></div>
+                )}
+                {contextDetails.workspaceRole && (
+                  <div><span>Rôle</span><b>{contextDetails.workspaceRole}</b></div>
+                )}
+                {contextDetails.areaLabel && (
+                  <div><span>Zone</span><b>{contextDetails.areaLabel}</b></div>
+                )}
                 <div><span>Vue</span><b>{contextDetails.screen}</b></div>
                 <div><span>Dataset</span><b>{contextDetails.datasetName || "Aucun dataset actif"}</b></div>
                 {contextDetails.datasetVersion != null && (
@@ -809,6 +896,21 @@ useEffect(() => {
                 {contextDetails.qualityScore != null && (
                   <div><span>Qualité</span><b>{String(contextDetails.qualityScore)}/100</b></div>
                 )}
+                {contextDetails.qualityIssuesCount != null && (
+                  <div><span>Problèmes qualité</span><b>{String(contextDetails.qualityIssuesCount)}</b></div>
+                )}
+                {contextDetails.missingCells != null && (
+                  <div><span>Cellules manquantes</span><b>{String(contextDetails.missingCells)}</b></div>
+                )}
+                {contextDetails.duplicateCount != null && (
+                  <div><span>Doublons</span><b>{String(contextDetails.duplicateCount)}</b></div>
+                )}
+                {contextDetails.numericColumnCount != null && (
+                  <div><span>Numériques</span><b>{String(contextDetails.numericColumnCount)}</b></div>
+                )}
+                {contextDetails.categoricalColumnCount != null && (
+                  <div><span>Catégorielles</span><b>{String(contextDetails.categoricalColumnCount)}</b></div>
+                )}
                 {contextDetails.selected && (
                   <div><span>Variable</span><b>{contextDetails.selected}</b></div>
                 )}
@@ -818,6 +920,108 @@ useEffect(() => {
                     <b>{contextDetails.period}</b>
                   </div>
                 )}
+
+                {(contextDetails.target || context.activeModelId || contextDetails.algorithm || contextDetails.modelTask) && (
+                  <details className={styles.contextSection} open>
+                    <summary>
+                      <span>Analyse & modèle</span>
+                      <small>{context.activeModelId ? "modèle actif" : "paramètres actifs"}</small>
+                    </summary>
+                    <div className={styles.contextSectionGrid}>
+                      {contextDetails.target != null && <div><span>Cible</span><b>{String(contextDetails.target || "—")}</b></div>}
+                      {contextDetails.algorithm != null && <div><span>Algorithme demandé</span><b>{String(contextDetails.algorithm || "—")}</b></div>}
+                      {context.activeModelId && <div><span>Model ID</span><code>{context.activeModelId}</code></div>}
+                      {contextDetails.modelTask != null && <div><span>Tâche</span><b>{String(contextDetails.modelTask)}</b></div>}
+                      {contextDetails.modelAlgorithm != null && <div><span>Algorithme modèle</span><b>{String(contextDetails.modelAlgorithm)}</b></div>}
+                      {contextDetails.modelPrimaryMetric != null && <div><span>Métrique principale</span><b>{String(contextDetails.modelPrimaryMetric)}</b></div>}
+                      {contextDetails.modelFeatureCount != null && <div><span>Features</span><b>{String(contextDetails.modelFeatureCount)}</b></div>}
+                    </div>
+                  </details>
+                )}
+
+                {(contextDetails.accessMode || contextDetails.workspaceRole || contextDetails.accessPolicyCount != null || contextDetails.trustScore != null) && (
+                  <details className={styles.contextSection}>
+                    <summary>
+                      <span>Gouvernance & accès</span>
+                      <small>{contextDetails.accessGoverned ? "accès gouverné" : contextDetails.accessMode || "local"}</small>
+                    </summary>
+                    <div className={styles.contextSectionGrid}>
+                      {contextDetails.accessMode && <div><span>Mode</span><b>{contextDetails.accessMode}</b></div>}
+                      {contextDetails.workspaceRole && <div><span>Rôle effectif</span><b>{contextDetails.workspaceRole}</b></div>}
+                      {contextDetails.accessPolicyCount != null && <div><span>Politiques actives</span><b>{String(contextDetails.accessPolicyCount)}</b></div>}
+                      {context.workspaceId && <div><span>Workspace ID</span><code>{context.workspaceId}</code></div>}
+                      {context.organizationId && <div><span>Organisation ID</span><code>{context.organizationId}</code></div>}
+                      {contextDetails.trustScore != null && <div><span>Trust</span><b>{String(contextDetails.trustScore)}/100{contextDetails.trustGrade ? ` · ${String(contextDetails.trustGrade)}` : ""}</b></div>}
+                    </div>
+                  </details>
+                )}
+
+                {contextDetails.selected && (
+                  <details className={styles.contextSection}>
+                    <summary>
+                      <span>Sélection active</span>
+                      <small>{contextDetails.selectedType || "entité"}</small>
+                    </summary>
+                    <div className={styles.contextSectionGrid}>
+                      <div><span>Libellé</span><b>{contextDetails.selected}</b></div>
+                      {context.selectedEntity?.id && <div><span>ID</span><code>{context.selectedEntity.id}</code></div>}
+                      {Object.entries(contextDetails.selectedMetadata).map(([key, value]) => (
+                        contextValueAvailable(value) ? (
+                          <div key={key}><span>{humanizeContextKey(key)}</span><b>{formatContextScalar(value)}</b></div>
+                        ) : null
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                {contextDetails.schema.length > 0 && (
+                  <details className={styles.contextSection}>
+                    <summary>
+                      <span>Schéma du dataset</span>
+                      <small>{contextDetails.schema.length} variable(s)</small>
+                    </summary>
+                    <div className={styles.contextSchemaList}>
+                      {contextDetails.schema.map((column, index) => (
+                        <div key={`${String(column.name ?? "colonne")}-${index}`}>
+                          <b>{String(column.name ?? `Variable ${index + 1}`)}</b>
+                          <code>{String(column.dtype ?? "type inconnu")}</code>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                {Object.values(contextDetails.operationState).some(Boolean) && (
+                  <details className={styles.contextSection}>
+                    <summary>
+                      <span>État d'exécution</span>
+                      <small>activité en cours</small>
+                    </summary>
+                    <div className={styles.contextSectionGrid}>
+                      {Object.entries(contextDetails.operationState).map(([key, value]) => (
+                        <div key={key}><span>{humanizeContextKey(key)}</span><b>{formatContextScalar(value)}</b></div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
+                {context.recentEvents.length > 0 && (
+                  <details className={styles.contextSection}>
+                    <summary>
+                      <span>Activité récente</span>
+                      <small>{context.recentEvents.length} événement(s)</small>
+                    </summary>
+                    <div className={styles.contextEventList}>
+                      {[...context.recentEvents].reverse().map((event) => (
+                        <div key={event.id ?? `${event.type}-${event.timestamp}`}>
+                          <span data-severity={event.severity ?? "info"}>{event.severity ?? "info"}</span>
+                          <div><b>{event.type}</b><small>{event.timestamp ? formatContextDateTime(event.timestamp) : ""}</small></div>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                )}
+
                 {recentArtifacts.length > 0 && (
                   <div className={styles.contextWide}>
                     <span>Résultats mémorisés</span>
@@ -938,8 +1142,15 @@ useEffect(() => {
                     </small>
                   </div>
                 )}
+                <details className={styles.contextSection}>
+                  <summary>
+                    <span>Contexte technique complet</span>
+                    <small>{contextDetails.availableFieldCount} élément(s) synchronisé(s)</small>
+                  </summary>
+                  <pre className={styles.contextRaw}>{JSON.stringify(technicalContextSnapshot, null, 2)}</pre>
+                </details>
                 <small className={styles.contextNote}>
-                  Contexte sémantique + mémoire projet gouvernée + rappel local explicable. Aucun transcript brut n’est utilisé comme mémoire longue.
+                  Contexte sémantique + mémoire projet gouvernée + rappel local explicable. Le volet technique ci-dessus reflète le snapshot réellement transmis à l’orchestrateur ; aucun transcript brut n’est utilisé comme mémoire longue.
                 </small>
               </div>
             )}
@@ -1237,6 +1448,48 @@ useEffect(() => {
       )}
     </div>
   );
+}
+
+function contextValueAvailable(value: unknown) {
+  if (value == null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value as Record<string, unknown>).length > 0;
+  return true;
+}
+
+function humanizeContextKey(value: string) {
+  return value
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2")
+    .replace(/[_-]+/g, " ")
+    .replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function formatContextScalar(value: unknown) {
+  if (value == null || value === "") return "—";
+  if (typeof value === "boolean") return value ? "Oui" : "Non";
+  if (typeof value === "number") return new Intl.NumberFormat("fr-FR").format(value);
+  if (Array.isArray(value)) return value.map((item) => String(item)).join(" · ") || "—";
+  if (typeof value === "object") {
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return "Objet contextuel";
+    }
+  }
+  return String(value);
+}
+
+function formatContextDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("fr-FR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
 }
 
 function formatContextDate(value: string) {

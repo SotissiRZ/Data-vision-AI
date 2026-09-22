@@ -1,6 +1,6 @@
 {
   "cdc_version": "1.0 — August 2026",
-  "product_version": "2.53.0",
+  "product_version": "2.69.0",
   "status_model": {
     "implemented": 1.0,
     "partial": 0.5,
@@ -26,13 +26,15 @@
       "priority": "P2",
       "evidence": [
         "docs/NOTEBOOK_SANDBOX_V2180.md",
-        "backend/app/services/data_workspace.py"
+        "backend/app/services/data_workspace.py",
+        "docs/NOTEBOOK_RUNTIME_V2670.md",
+        "sandbox/app/kernel_manager.py"
       ],
       "tests": [
         "backend/tests/test_notebook_v218.py"
       ],
       "gaps": [
-        "Kernel R/Python persistant et expérience notebook plus proche de Jupyter encore partiels."
+        "Runtime Python/R persistant livré; l’équivalence complète avec l’écosystème Shiny/Jupyter externe reste hors du périmètre natif."
       ]
     },
     {
@@ -109,19 +111,19 @@
     {
       "section": 9,
       "title": "Import & connecteurs",
-      "status": "partial",
+      "status": "implemented",
       "priority": "P1",
       "evidence": [
-        "backend/app/services/storage.py",
+        "backend/app/api/routes/datasets.py",
+        "backend/app/services/connector_backends.py",
         "backend/app/services/connector_service.py",
-        "backend/app/services/connector_backends.py"
+        "backend/app/services/storage.py"
       ],
       "tests": [
+        "backend/tests/test_catalog_lineage_v268.py",
         "backend/tests/test_connectors_v221.py"
       ],
-      "gaps": [
-        "Import ZIP contenant des données non couvert comme chemin natif."
-      ]
+      "gaps": []
     },
     {
       "section": 10,
@@ -227,30 +229,33 @@
     {
       "section": 18,
       "title": "Visualisation",
-      "status": "partial",
+      "status": "implemented",
       "priority": "P1",
       "evidence": [
         "backend/app/services/visualization.py",
-        "frontend/app/page.tsx"
+        "frontend/app/page.tsx",
+        "frontend/lib/api.ts"
       ],
-      "tests": [],
-      "gaps": [
-        "La liste complète des visualisations du CDC n’est pas encore couverte de façon homogène."
-      ]
+      "tests": [
+        "backend/tests/test_visual_analytics_v2690.py"
+      ],
+      "gaps": []
     },
     {
       "section": 19,
       "title": "Langage naturel vers visualisation",
-      "status": "partial",
+      "status": "implemented",
       "priority": "P1",
       "evidence": [
         "backend/app/services/ai_analyst.py",
-        "backend/app/services/visualization.py"
+        "backend/app/services/visualization.py",
+        "backend/app/api/routes/datasets.py",
+        "frontend/app/page.tsx"
       ],
-      "tests": [],
-      "gaps": [
-        "NL→viz existe mais n’atteint pas encore toute la profondeur de composition demandée."
-      ]
+      "tests": [
+        "backend/tests/test_visual_analytics_v2690.py"
+      ],
+      "gaps": []
     },
     {
       "section": 20,
@@ -509,19 +514,21 @@
     {
       "section": 38,
       "title": "Notebook",
-      "status": "partial",
+      "status": "implemented",
       "priority": "P1",
       "evidence": [
         "backend/app/services/notebook_service.py",
         "backend/app/services/notebook_sandbox.py",
-        "sandbox/app/main.py"
+        "sandbox/app/kernel_manager.py",
+        "sandbox/app/kernel_worker.py",
+        "sandbox/app/r_kernel_worker.R",
+        "frontend/components/NotebookStudio.tsx"
       ],
       "tests": [
-        "backend/tests/test_notebook_v218.py"
+        "backend/tests/test_notebook_v218.py",
+        "backend/tests/test_notebook_persistent_v267.py"
       ],
-      "gaps": [
-        "Cellules Python/R stateless entre exécutions; pas de kernel persistant/Jupyter protocol."
-      ]
+      "gaps": []
     },
     {
       "section": 39,
@@ -541,11 +548,15 @@
       "priority": "P1",
       "evidence": [
         "backend/app/services/notebook_sandbox.py",
-        "sandbox/app/main.py"
+        "sandbox/app/kernel_manager.py",
+        "sandbox/app/kernel_worker.py",
+        "frontend/components/NotebookStudio.tsx"
       ],
-      "tests": [],
+      "tests": [
+        "backend/tests/test_notebook_persistent_v267.py"
+      ],
       "gaps": [
-        "Exécution réelle sandboxée, mais pas de kernel Python persistant ni environnements Conda utilisateur."
+        "Kernel Python persistant et lock de dépendances projet livrés; environnements Conda/venv utilisateur avec installation dynamique restent hors du runtime sécurisé actuel."
       ]
     },
     {
@@ -555,11 +566,15 @@
       "priority": "P1",
       "evidence": [
         "backend/app/services/notebook_sandbox.py",
-        "sandbox/app/main.py"
+        "sandbox/app/kernel_manager.py",
+        "sandbox/app/r_kernel_worker.R",
+        "frontend/components/NotebookStudio.tsx"
       ],
-      "tests": [],
+      "tests": [
+        "backend/tests/test_notebook_persistent_v267.py"
+      ],
       "gaps": [
-        "Exécution R réelle, mais pas de kernel persistant ni gestion de packages projet."
+        "Kernel R persistant et dépendances projet verrouillées livrés; installation dynamique de packages R reste image-managed par sécurité."
       ]
     },
     {
@@ -577,16 +592,17 @@
     {
       "section": 43,
       "title": "Data Catalog",
-      "status": "partial",
+      "status": "implemented",
       "priority": "P1",
       "evidence": [
-        "backend/app/services/metadata_store.py",
-        "backend/app/services/connector_service.py"
+        "backend/app/services/data_catalog.py",
+        "backend/app/api/routes/enterprise.py",
+        "frontend/app/page.tsx"
       ],
-      "tests": [],
-      "gaps": [
-        "Catalogue fonctionnel mais expérience de discovery/documentation métier encore moins riche que le CDC cible."
-      ]
+      "tests": [
+        "backend/tests/test_catalog_lineage_v268.py"
+      ],
+      "gaps": []
     },
     {
       "section": 44,
@@ -927,7 +943,7 @@
       ],
       "tests": [],
       "gaps": [
-        "Notebook persistent kernel, quelques profondeurs connecteurs/UX et certains détails Enterprise restent partiels."
+        "Quelques profondeurs connecteurs/UX et détails de workspace avancé restent partiels."
       ]
     },
     {
@@ -951,11 +967,19 @@
       "priority": "P0",
       "evidence": [
         ".github/workflows/ci.yml",
-        "docs/PRODUCTION_HARDENING_V2290.md"
+        "docs/PRODUCTION_HARDENING_V2290.md",
+        "frontend/e2e/production.spec.ts",
+        "production-acceptance-windows.ps1",
+        "scripts/load_smoke.py",
+        "scripts/production_acceptance.py",
+        "scripts/production_signoff.py"
       ],
-      "tests": [],
+      "tests": [
+        "backend/tests/test_production_acceptance_v2660.py",
+        "frontend/e2e/production.spec.ts"
+      ],
       "gaps": [
-        "CI est définie mais son exécution GitHub réelle doit être observée; charge/performance production et acceptance utilisateur restent à signer."
+        "CI/E2E/charge/Helm sont désormais automatisés; l’exécution cible et l’acceptance utilisateur métier doivent encore être signées comme preuves externes."
       ]
     },
     {
@@ -992,12 +1016,18 @@
       "priority": "P0",
       "evidence": [
         ".github/workflows/ci.yml",
+        ".github/workflows/release.yml",
         ".github/workflows/security.yml",
+        "docs/UAT_SIGNOFF_TEMPLATE.md",
+        "scripts/production_acceptance.py",
+        "scripts/production_signoff.py",
         "scripts/release.py"
       ],
-      "tests": [],
+      "tests": [
+        "backend/tests/test_production_acceptance_v2660.py"
+      ],
       "gaps": [
-        "DoD code/test/package outillée; validation production réelle, scans CI et E2E doivent être exécutés dans l’environnement cible avant signature finale."
+        "La DoD technique est exécutable de bout en bout; le sign-off final reste conditionné aux preuves de l’environnement cible et à l’UAT signée."
       ]
     },
     {

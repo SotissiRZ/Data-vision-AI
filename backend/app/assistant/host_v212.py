@@ -82,12 +82,12 @@ class V212HostAuthorization:
     ) -> tuple[bool, str]:
         access = current_access_context()
 
-        # Local DataVision mode: no Enterprise workspace selected.
+        # Local DataVision mode: no Entreprise workspace selected.
         if context.workspaceId is None:
             return True, "mode local DataVision"
 
         if access is None:
-            return False, "workspace Enterprise fourni sans contexte d'authentification"
+            return False, "workspace Entreprise fourni sans contexte d'authentification"
 
         if str(access.workspace_id) != str(context.workspaceId):
             return False, "workspace du contexte assistant différent du workspace authentifié"
@@ -299,6 +299,8 @@ class V212VisualizationBridge:
             x=x,
             y=y,
             color=color,
+            size=size,
+            facet=facet,
             aggregation=aggregation or "none",
         )
         result["dataset_id"] = dataset_id
@@ -944,7 +946,7 @@ class V212MLOpsBridge:
         if context.workspaceId is None:
             return LOCAL_ACTOR, LOCAL_WORKSPACE
         if access is None:
-            raise PermissionError("Contexte Enterprise requis pour cette opération MLOps.")
+            raise PermissionError("Contexte Entreprise requis pour cette opération MLOps.")
         return str(access.user_id), str(access.workspace_id)
 
     def get_model_registry_status(

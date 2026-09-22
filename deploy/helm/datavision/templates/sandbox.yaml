@@ -17,6 +17,11 @@ spec:
           image: "{{ .Values.images.sandbox.repository }}:{{ .Values.images.sandbox.tag }}"
           imagePullPolicy: {{ .Values.images.sandbox.pullPolicy }}
           ports: [{containerPort: 8090}]
+          env:
+            - name: DATAVISION_KERNEL_MAX_SESSIONS
+              value: {{ .Values.config.notebookKernelMaxSessions | quote }}
+            - name: DATAVISION_KERNEL_TTL_SECONDS
+              value: {{ .Values.config.notebookKernelTtlSeconds | quote }}
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

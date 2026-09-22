@@ -719,6 +719,10 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  max-height: min(58vh, 590px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 
 .contextDetails > div {
@@ -746,6 +750,194 @@
 
 .contextWide {
   grid-column: 1 / -1;
+}
+
+.contextSection {
+  grid-column: 1 / -1;
+  min-width: 0;
+  border: 1px solid #dce6ea;
+  border-radius: 10px;
+  background: #f8fbfc;
+  overflow: hidden;
+}
+
+.contextSection > summary {
+  min-height: 42px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  color: #36515f;
+}
+
+.contextSection > summary::-webkit-details-marker { display: none; }
+
+.contextSection > summary::after {
+  content: "⌄";
+  flex: 0 0 auto;
+  color: #78909b;
+  font-weight: 900;
+}
+
+.contextSection[open] > summary::after { content: "⌃"; }
+
+.contextSection > summary span {
+  color: #4f6874;
+  font-size: calc(14.5px * var(--dv-font-scale, 1));
+  font-weight: 900;
+  letter-spacing: .035em;
+  text-transform: uppercase;
+}
+
+.contextSection > summary small {
+  margin-left: auto;
+  color: #71848e;
+  font-size: calc(14px * var(--dv-font-scale, 1));
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+
+.contextSectionGrid {
+  padding: 0 9px 9px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.contextSectionGrid > div {
+  min-width: 0;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: #ffffff;
+  display: grid;
+  gap: 2px;
+}
+
+.contextSectionGrid span {
+  color: #7a8b95;
+  font-size: calc(14px * var(--dv-font-scale, 1));
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.contextSectionGrid b,
+.contextSectionGrid code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: #2a4552;
+  font-size: calc(14.5px * var(--dv-font-scale, 1));
+}
+
+.contextSectionGrid code {
+  padding: 2px 4px;
+  border-radius: 5px;
+  background: #eef5f7;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.contextSchemaList {
+  padding: 0 9px 9px;
+  display: grid;
+  gap: 5px;
+}
+
+.contextSchemaList > div {
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: #ffffff;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.contextSchemaList b {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #2a4552;
+  font-size: calc(14.5px * var(--dv-font-scale, 1));
+}
+
+.contextSchemaList code {
+  color: #607984;
+  font-size: calc(14px * var(--dv-font-scale, 1));
+}
+
+.contextEventList {
+  padding: 0 9px 9px;
+  display: grid;
+  gap: 5px;
+}
+
+.contextEventList > div {
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: #ffffff;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 7px;
+  align-items: start;
+}
+
+.contextEventList > div > span {
+  margin-top: 1px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: #edf3f5;
+  color: #607984;
+  font-size: calc(12.5px * var(--dv-font-scale, 1));
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.contextEventList > div > span[data-severity="warning"] {
+  background: #fff5df;
+  color: #8d6214;
+}
+
+.contextEventList > div > span[data-severity="critical"] {
+  background: #fff0ee;
+  color: #a43d33;
+}
+
+.contextEventList > div > div {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+}
+
+.contextEventList b {
+  overflow-wrap: anywhere;
+  color: #2a4552;
+  font-size: calc(14.5px * var(--dv-font-scale, 1));
+}
+
+.contextEventList small {
+  color: #7a8b95;
+  font-size: calc(13.5px * var(--dv-font-scale, 1));
+}
+
+.contextRaw {
+  margin: 0 9px 9px;
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid #dbe6ea;
+  border-radius: 8px;
+  padding: 9px;
+  background: #132f3d;
+  color: #dfeef3;
+  font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .contextNote {
@@ -1094,4 +1286,26 @@
   color: #314955;
   font-size:calc(15px * var(--dv-font-scale, 1));
   padding: 3px 5px;
+}
+
+@media (max-width: 520px) {
+  .contextDetails {
+    grid-template-columns: 1fr;
+    max-height: min(60vh, 520px);
+  }
+  .contextWide,
+  .contextSection,
+  .contextNote {
+    grid-column: 1;
+  }
+  .contextSectionGrid {
+    grid-template-columns: 1fr;
+  }
+  .contextSection > summary {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .contextSection > summary small {
+    margin-left: 0;
+  }
 }

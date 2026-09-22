@@ -6,7 +6,7 @@ import {
   getColumnAnalysis, getDataset, getDatasetAccessContext, getDecision, getPreview, getProfile, getQuality, getVersions,
   predictModel, runAnova, runClustering, runPca, runRegression, transformDataset,
   trainModel, uploadDataset, getDatasetCatalog, combineDataset, getPipelines, savePipeline, validatePipeline, runPipeline,
-  runCorrelations, runStatisticalTest, getTestAdvice, getEngineInfo, runSql, recommendVisualizations, buildVisualization, runAutoML,
+  runCorrelations, runStatisticalTest, getTestAdvice, getEngineInfo, runSql, recommendVisualizations, buildVisualization, editVisualization, composeVisualizations, runAutoML,
   runForecast, runAnomalyDetection, getModelDiagnostics, explainModelPrediction, getAIAnalystCapabilities, runAIAnalysis, startAIAnalysisRun, streamAIAnalysisRun, cancelAIAnalysisRun,
   runNaturalLanguageQuery, getAIHistory, getAIHistoryItem, getReports, createReport, validateReport, downloadReport, getDashboard, getInsights, scanInsights, getInsightHistory, saveVisualization, getSavedVisualizations,
   getModelEngines, runModelBenchmark, runMLSafetyAudit, getAutoMLExperiments, getModelXAICapabilities, runModelPDP, runModelSHAP, runModelXAIAudit, runModelCounterfactuals,
@@ -20,7 +20,7 @@ import {
   getReviewSummary, getReviews, getReviewDetail, createReview, assignReview, transitionReview, addReviewComment, resolveReviewComment, getCollaborationNotifications, markCollaborationNotificationRead, getCertifications, certifyReview, revokeCertification,
   getCollaborationTeams, createCollaborationTeam, getCollaborationShares, createCollaborationShare, revokeCollaborationShare, getCollaborationDecisions, getReviewDiff, markAllCollaborationNotificationsRead, createCollaborationRealtimeTicket, collaborationWebSocketUrl,
   getConnectorCatalog, getConnectorOverview, getConnectorHealth, createDataConnector, testDataConnector, discoverDataConnector, createConnectorSource, deleteConnectorSource, previewConnectorSource, refreshConnectorSource, saveConnectorSchedule, getRefreshRuns,
-  getReliabilitySummary, getDataContracts, saveDataContract, deleteDataContract, runDataContract, getContractRuns, getLineageGraph, getImpactAnalysis, getPublicationGate,
+  getReliabilitySummary, getDataContracts, saveDataContract, deleteDataContract, runDataContract, getContractRuns, getLineageGraph, getImpactAnalysis, getPublicationGate, getDataCatalogAssets, getDataCatalogSummary, saveDataCatalogAsset,
   getOperationalOverview, getOperationalUsage, getOperationalTelemetry, getSREStatus, emitSREAlerts, getEvaluationSuites, createEvaluationSuite, getEvaluationSuite, addEvaluationCase, runEvaluationSuite, getEvaluationRun,
   getActionSummary, getActionDestinations, createActionDestination, deleteActionDestination, getActionRules, saveActionRule, deleteActionRule, dispatchActionEvent, getActionRuns, getActionRun, approveActionRun, rejectActionRun, replayActionRun, testActionDestination,
 } from '../lib/api';
@@ -31,6 +31,7 @@ import { ResponsibleAIView } from '../components/ResponsibleAIView';
 import { ModelRegistryView } from '../components/ModelRegistryView';
 import { FeatureServingView } from '../components/FeatureServingView';
 import { ComplianceCenter } from '../components/ComplianceCenter';
+import { RegulatoryCompliancePanel } from '../components/RegulatoryCompliancePanel';
 
 type AnyObj = Record<string, any>;
 type View = 'identity' | 'actions' | 'operations' | 'reliability' | 'sources' | 'home' | 'data' | 'stats' | 'tests' | 'quality' | 'prepare' | 'visual' | 'sql' | 'notebook' | 'regression' | 'anova' | 'pca' | 'cluster' | 'model' | 'registry' | 'serving' | 'forecast' | 'anomaly' | 'xai' | 'responsible' | 'predict' | 'ai' | 'insights' | 'inbox' | 'semantic' | 'decision' | 'trust' | 'dashboard' | 'report' | 'review' | 'governance' | 'ai-settings' | 'plugins' | 'compliance';
@@ -249,6 +250,17 @@ useEffect(()=>{
 
 
   useEffect(() => {
+    const selectedColumnProfile = result?.profile?.columns?.find(
+      (column: AnyObj) => column.name === selectedColumn,
+    );
+    const activeArea = areaForView(view);
+    const operationState = {
+      busy,
+      training,
+      automlRunning,
+      predicting,
+    };
+
     assistantEventBus.setContext({
       workspaceId: enterpriseBadge?.workspace?.id || undefined,
       organizationId: enterpriseBadge?.workspace?.organization_id || undefined,
@@ -265,15 +277,27 @@ useEffect(()=>{
             type: "column",
             id: selectedColumn,
             label: selectedColumn,
+            metadata: {
+              dtype: selectedColumnProfile?.dtype,
+              missing: selectedColumnProfile?.missing,
+              unique: selectedColumnProfile?.unique,
+            },
           }
         : null,
       uiState: {
+        areaKey: activeArea.key,
+        areaLabel: activeArea.label,
+        workspaceName: enterpriseBadge?.workspace?.name ?? (enterpriseBadge ? "Entreprise" : "Analyse locale"),
+        workspaceRole: enterpriseBadge?.workspace?.role ?? (enterpriseBadge ? "member" : "local"),
+        userDisplayName: enterpriseBadge?.user?.display_name ?? enterpriseBadge?.user?.email ?? "Utilisateur local",
         target,
         algorithm,
         busy,
         training,
         automlRunning,
         predicting,
+        operationState,
+        datasetId: result?.dataset?.id,
         datasetName: result?.dataset?.name,
         datasetVersion: result?.dataset?.version,
         datasetCreatedAt: result?.dataset?.created_at,
@@ -302,6 +326,18 @@ useEffect(()=>{
             dtype: column.dtype,
           })) ?? [],
         temporalCoverage: result?.profile?.temporal ?? { detected: false, primary: null, columns: [] },
+        accessMode: result?.access?.mode ?? (enterpriseBadge ? "enterprise" : "local"),
+        accessGoverned: Boolean(result?.access?.governed),
+        accessRole: result?.access?.role ?? enterpriseBadge?.workspace?.role,
+        accessPolicyCount: result?.access?.policy_count ?? 0,
+        accessPolicyIds: result?.access?.policy_ids ?? [],
+        modelTask: model?.task,
+        modelAlgorithm: model?.algorithm,
+        modelPrimaryMetric: model?.primary_metric,
+        modelExperimentId: model?.experiment_id,
+        modelFeatureCount: Array.isArray(model?.features) ? model.features.length : undefined,
+        trustScore: trustSummary?.overall_score,
+        trustGrade: trustSummary?.grade,
         accessibilityMode: uiMode,
         uiZoom,
       },
@@ -328,6 +364,21 @@ useEffect(()=>{
     result?.quality?.issues_count,
     enterpriseBadge?.workspace?.id,
     enterpriseBadge?.workspace?.organization_id,
+    enterpriseBadge?.workspace?.name,
+    enterpriseBadge?.workspace?.role,
+    enterpriseBadge?.user?.display_name,
+    enterpriseBadge?.user?.email,
+    result?.access?.mode,
+    result?.access?.governed,
+    result?.access?.role,
+    result?.access?.policy_count,
+    model?.task,
+    model?.algorithm,
+    model?.primary_metric,
+    model?.experiment_id,
+    model?.features?.length,
+    trustSummary?.overall_score,
+    trustSummary?.grade,
     uiMode,
     uiZoom,
   ]);
@@ -426,7 +477,7 @@ return <main className="app-shell professional-shell">
       <aside className="sidebar pro-sidebar">
         <div className="workspace-label"><span>WORKSPACE</span><b>{enterpriseBadge?.workspace?.name??'Analyse locale'}</b><small>{enterpriseBadge?`${enterpriseBadge.workspace?.role??'member'} · ${enterpriseBadge.user?.display_name??'utilisateur'}`:'Workflow orienté objectifs'}</small></div>
         <nav className="area-nav">{areaConfig.map(area=><button key={area.key} className={activeArea.key===area.key?'area-item active':'area-item'} title={area.label} aria-label={area.label} onClick={()=>setView(area.defaultView)}><span>{area.icon}</span><div><b>{area.label}</b><small>{area.key==='overview'?'Synthèse & insights':area.key==='data'?'Préparer & comprendre':area.key==='analyze'?'Explorer & tester':area.key==='model'?'Prédire & expliquer':area.key==='decide'?'Sémantique & décisions':area.key==='publish'?'Dashboards & rapports':area.key==='collaborate'?'Revue & approbation':'Fiabilité, sources, SLO & sécurité'}</small></div></button>)}</nav>
-        <label className="upload-side pro-upload">{busy?'Analyse en cours…':'↥  Importer des données'}<input type="file" accept=".csv,.xlsx,.json,.parquet,.txt" onChange={e=>onFile(e.target.files?.[0])}/></label>
+        <label className="upload-side pro-upload">{busy?'Analyse en cours…':'↥  Importer des données'}<input type="file" accept=".csv,.xlsx,.json,.parquet,.txt,.zip" onChange={e=>onFile(e.target.files?.[0])}/></label>
         {result&&<div className="dataset-mini"><span>CONTEXTE ACTIF</span><b title={result.dataset.name}>{result.dataset.name}</b><small>v{result.dataset.version??1} · {result.profile.rows} lignes · {result.profile.columns_count} variables</small>{result.access?.governed&&<small className="governed-mini">◈ {result.access.role} · {result.access.policy_count??0} politique(s) · tenant-aware</small>}<div className="dataset-mini-actions"><button onClick={()=>setView('semantic')}>Sémantique</button><button onClick={()=>setView('trust')}>Trust</button></div></div>}
       </aside>
       <section className="content pro-content">
@@ -481,7 +532,7 @@ function HomeView({ result, busy, onFile, setView }: { result: AnyObj | null; bu
   const [loading,setLoading]=useState(false);
   useEffect(()=>{let cancelled=false;if(!result){setDashboard(null);return;}setLoading(true);getDashboard(result.dataset.id).then(d=>{if(!cancelled)setDashboard(d);}).catch(()=>{if(!cancelled)setDashboard(null);}).finally(()=>{if(!cancelled)setLoading(false);});return()=>{cancelled=true;};},[result?.dataset?.id]);
   if(!result) return <div className="home-view">
-    <section className="hero"><div className="hero-copy"><span className="eyebrow">DATA ANALYSIS · STATISTICS · MACHINE LEARNING</span><h1>DataVision</h1><h2>De la donnée brute à une décision vérifiable.</h2><p>Importez un dataset. DataVision profile, contrôle la qualité, recommande les analyses et exécute les calculs avec des moteurs déterministes.</p><div className="hero-actions"><label className="primary-btn">{busy ? 'Analyse en cours…' : 'Importer un dataset'}<input type="file" accept=".csv,.xlsx,.json,.parquet,.txt" onChange={e => onFile(e.target.files?.[0])}/></label></div></div><div className="hero-visual"><span className="bar b1"/><span className="bar b2"/><span className="bar b3"/><span className="bar b4"/><span className="line l1"/><span className="line l2"/><span className="data-orb">AI</span></div></section>
+    <section className="hero"><div className="hero-copy"><span className="eyebrow">DATA ANALYSIS · STATISTICS · MACHINE LEARNING</span><h1>DataVision</h1><h2>De la donnée brute à une décision vérifiable.</h2><p>Importez un dataset. DataVision profile, contrôle la qualité, recommande les analyses et exécute les calculs avec des moteurs déterministes.</p><div className="hero-actions"><label className="primary-btn">{busy ? 'Analyse en cours…' : 'Importer un dataset'}<input type="file" accept=".csv,.xlsx,.json,.parquet,.txt,.zip" onChange={e => onFile(e.target.files?.[0])}/></label></div></div><div className="hero-visual"><span className="bar b1"/><span className="bar b2"/><span className="bar b3"/><span className="bar b4"/><span className="line l1"/><span className="line l2"/><span className="data-orb">AI</span></div></section>
     <div className="feature-strip"><button onClick={() => setView('stats')}><span className="feature-icon red">▤</span><div><b>Analyse statistique</b><p>Descriptif, tests, régression et ANOVA.</p></div></button><button onClick={() => setView('visual')}><span className="feature-icon green">▥</span><div><b>Visual Analytics</b><p>Graphiques adaptés aux variables et aux objectifs.</p></div></button><button onClick={() => setView('model')}><span className="feature-icon orange">◆</span><div><b>Machine Learning</b><p>AutoML, validation, XAI et prédiction.</p></div></button></div>
     <div className="workflow"><span>CONNECTER</span><i>→</i><span>COMPRENDRE</span><i>→</i><span>PRÉPARER</span><i>→</i><span>ANALYSER</span><i>→</i><span>MODÉLISER</span><i>→</i><strong>DÉCIDER</strong></div>
   </div>;
@@ -839,28 +890,50 @@ function StatisticalLab({ result, setError }: { result:AnyObj|null; setError:(s:
 }
 
 function VisualizationStudio({ result, setError }: { result:AnyObj|null; setError:(s:string)=>void }) {
-  const cols=result?.profile?.columns??[]; const displayCols=cols.filter((c:AnyObj)=>!isLikelyIdentifier(c,Number(result?.profile?.rows??0))); const [chartType,setChartType]=useState('auto'); const [x,setX]=useState(''); const [y,setY]=useState(''); const [aggregation,setAggregation]=useState('none'); const [viz,setViz]=useState<AnyObj|null>(null); const [recs,setRecs]=useState<AnyObj[]>([]); const [busy,setBusy]=useState(false); const [saved,setSaved]=useState('');
-  useEffect(()=>{if(result){setX((displayCols[0]??cols[0])?.name??'');setY((displayCols[1]??cols[1])?.name??'');setViz(null);setRecs([]);}},[result?.dataset?.id]);
+  const cols=result?.profile?.columns??[];
+  const displayCols=cols.filter((c:AnyObj)=>!isLikelyIdentifier(c,Number(result?.profile?.rows??0)));
+  const numericCols=(displayCols.length?displayCols:cols).filter((c:AnyObj)=>isNumeric(c));
+  const [chartType,setChartType]=useState('auto'); const [x,setX]=useState(''); const [y,setY]=useState('');
+  const [color,setColor]=useState(''); const [size,setSize]=useState(''); const [aggregation,setAggregation]=useState('none');
+  const [viz,setViz]=useState<AnyObj|null>(null); const [recs,setRecs]=useState<AnyObj[]>([]); const [composition,setComposition]=useState<AnyObj|null>(null);
+  const [instruction,setInstruction]=useState(''); const [editInfo,setEditInfo]=useState<AnyObj|null>(null); const [busy,setBusy]=useState(false); const [saved,setSaved]=useState('');
+  useEffect(()=>{if(result){setX((displayCols[0]??cols[0])?.name??'');setY((displayCols[1]??cols[1])?.name??'');setColor('');setSize((numericCols[2]??numericCols[0])?.name??'');setViz(null);setComposition(null);setRecs([]);setEditInfo(null);}},[result?.dataset?.id]);
   if(!result) return <EmptyState title="Visualization Studio" text="Chargez un dataset pour concevoir des visualisations interactives."/>;
-  async function build(){setBusy(true);setError('');try{setViz(await buildVisualization(result!.dataset.id,{chart_type:chartType,x,y:y||null,aggregation,bins:20}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
-  async function recommend(){setBusy(true);setError('');try{const r=await recommendVisualizations(result!.dataset.id,[x,y].filter(Boolean));setRecs(r.recommendations??[]);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
+  const selectable=displayCols.length?displayCols:cols;
+  async function build(){setBusy(true);setError('');setSaved('');try{const payload:AnyObj={chart_type:chartType,x:x||null,y:y||null,color:color||null,size:size||null,aggregation,bins:20};if(['pca','cluster','heatmap'].includes(chartType))payload.columns=numericCols.slice(0,10).map((c:AnyObj)=>c.name);setViz(await buildVisualization(result!.dataset.id,payload));setComposition(null);setEditInfo(null);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
+  async function recommend(){setBusy(true);setError('');try{const r=await recommendVisualizations(result!.dataset.id,[x,y,color,size].filter(Boolean));setRecs(r.recommendations??[]);}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
+  async function compose(){setBusy(true);setError('');try{setComposition(await composeVisualizations(result!.dataset.id,{columns:[x,y,color,size].filter(Boolean),intent:'overview',max_views:4}));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
+  async function editCurrent(){if(!viz||!instruction.trim())return;setBusy(true);setError('');try{const r=await editVisualization(result!.dataset.id,viz,instruction.trim());setViz(r.visualization);setEditInfo(r);setInstruction('');}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
   async function pin(){const current=viz;if(!current)return;setBusy(true);setError('');setSaved('');try{await saveVisualization(result!.dataset.id,current.title??'Visualisation DataVision',current);setSaved('Visualisation ajoutée aux rapports.');}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false);}}
-  function applyRec(r:AnyObj){setChartType(r.type);setX(r.x??x);setY(r.y??'');setAggregation(r.aggregation??'none');}
-  return <div className="page"><div className="page-title"><div><span className="eyebrow">VISUALIZATION STUDIO</span><h1>Visualisation intelligente</h1><p>Construisez des graphiques à partir de résultats réellement agrégés par le backend.</p></div><span className="module-state implemented">implémenté</span></div>
-    <div className="viz-layout"><Panel title="Configuration"><div className="analysis-config"><label>Type<select value={chartType} onChange={e=>setChartType(e.target.value)}><option value="auto">Auto</option><option value="histogram">Histogramme</option><option value="density">Densité</option><option value="scatter">Nuage de points</option><option value="box">Boxplot</option><option value="bar">Barres</option><option value="line">Courbe</option><option value="area">Aire</option><option value="heatmap">Heatmap corrélations</option></select></label><label>Axe X<select value={x} onChange={e=>setX(e.target.value)}>{(displayCols.length?displayCols:cols).map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><label>Axe Y<select value={y} onChange={e=>setY(e.target.value)}><option value="">— aucun —</option>{(displayCols.length?displayCols:cols).filter((c:AnyObj)=>c.name!==x).map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><label>Agrégation<select value={aggregation} onChange={e=>setAggregation(e.target.value)}><option value="none">Aucune</option><option value="count">Count</option><option value="mean">Moyenne</option><option value="sum">Somme</option><option value="median">Médiane</option><option value="min">Minimum</option><option value="max">Maximum</option></select></label><div className="button-row"><RunButton busy={busy} label="Générer" busyLabel="Calcul…" onClick={build}/><button className="secondary-btn" disabled={busy} onClick={recommend}>✦ Recommander</button></div></div></Panel>
-      <Panel title="Smart Visualization"><div className="recommendation-list">{recs.length?recs.map((r,i)=><button key={i} onClick={()=>applyRec(r)}><b>{r.type}</b><span>{r.reason}</span><small>{[r.x,r.y].filter(Boolean).join(' × ')}</small></button>):<div className="quiet-empty">Cliquez sur « Recommander » pour obtenir des choix adaptés aux variables.</div>}</div></Panel></div>
-    <Panel title={viz?.title??'Aperçu du graphique'} action={viz?<button className="secondary-btn" disabled={busy} onClick={pin}>＋ Ajouter au rapport</button>:undefined}>{!viz?<div className="viz-placeholder">Sélectionnez vos variables puis générez le graphique.</div>:<><VizRenderer viz={viz}/>{saved&&<div className="success-box compact-success">✓ {saved}</div>}</>}</Panel>
+  function applyRec(r:AnyObj){setChartType(r.type);setX(r.x??x);setY(r.y??'');setColor(r.color??'');setSize(r.size??size);setAggregation(r.aggregation??'none');}
+  return <div className="page"><div className="page-title"><div><span className="eyebrow">VISUAL ANALYTICS · NL→VIZ</span><h1>Visualisation intelligente</h1><p>Recommandations scorées, nouveaux graphiques, composition multi-vues et édition conversationnelle d’un graphique existant.</p></div><span className="module-state implemented">v2.69</span></div>
+    <div className="viz-layout"><Panel title="Configuration"><div className="analysis-config"><label>Type<select value={chartType} onChange={e=>setChartType(e.target.value)}><option value="auto">Auto</option><option value="histogram">Histogramme</option><option value="density">Densité</option><option value="scatter">Nuage de points</option><option value="bubble">Bulles</option><option value="box">Boxplot</option><option value="violin">Violin</option><option value="bar">Barres</option><option value="line">Courbe</option><option value="area">Aire</option><option value="heatmap">Heatmap corrélations</option><option value="treemap">Treemap</option><option value="sankey">Sankey</option><option value="map">Carte de points</option><option value="pca">Projection PCA</option><option value="cluster">Projection clusters</option></select></label><label>Axe X<select value={x} onChange={e=>setX(e.target.value)}>{selectable.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><label>Axe Y<select value={y} onChange={e=>setY(e.target.value)}><option value="">— aucun —</option>{selectable.filter((c:AnyObj)=>c.name!==x).map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><label>Couleur / groupe<select value={color} onChange={e=>setColor(e.target.value)}><option value="">— aucune —</option>{selectable.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><label>Taille / poids<select value={size} onChange={e=>setSize(e.target.value)}><option value="">— aucune —</option>{numericCols.map((c:AnyObj)=><option key={c.name}>{c.name}</option>)}</select></label><label>Agrégation<select value={aggregation} onChange={e=>setAggregation(e.target.value)}><option value="none">Automatique / aucune</option><option value="count">Count</option><option value="mean">Moyenne</option><option value="sum">Somme</option><option value="median">Médiane</option><option value="min">Minimum</option><option value="max">Maximum</option></select></label><div className="button-row"><RunButton busy={busy} label="Générer" busyLabel="Calcul…" onClick={build}/><button className="secondary-btn" disabled={busy} onClick={recommend}>✦ Recommander</button><button className="secondary-btn" disabled={busy} onClick={compose}>▦ Composer 4 vues</button></div></div></Panel>
+      <Panel title="Smart Visualization"><div className="recommendation-list">{recs.length?recs.map((r,i)=><button key={i} onClick={()=>applyRec(r)}><div className="viz-rec-head"><b>{r.type}</b><em className={`viz-confidence ${r.confidence}`}>{r.score}/100 · {r.confidence}</em></div><span>{r.reason}</span><small>{[r.x,r.y,r.size].filter(Boolean).join(' × ')||'sélection automatique'}</small></button>):<div className="quiet-empty">Cliquez sur « Recommander » pour classer les graphiques selon le type, la cardinalité et la sémantique des variables.</div>}</div></Panel></div>
+    {composition&&<Panel title={composition.title??'Composition analytique'} action={<span className="quiet">{composition.view_count} vues · {composition.layout}</span>}><div className="viz-composition-grid">{(composition.views??[]).map((v:AnyObj,i:number)=><article key={i} className="viz-composition-card"><header><div><b>{v.visualization?.title}</b><small>{v.reason}</small></div><span>{v.score}/100</span></header><VizRenderer viz={v.visualization}/></article>)}</div></Panel>}
+    <Panel title={viz?.title??'Aperçu du graphique'} action={viz?<button className="secondary-btn" disabled={busy} onClick={pin}>＋ Ajouter au rapport</button>:undefined}>{!viz?<div className="viz-placeholder">Sélectionnez vos variables puis générez le graphique.</div>:<><VizRenderer viz={viz}/><div className="viz-conversation"><label>Modifier ce graphique en langage naturel<textarea value={instruction} onChange={e=>setInstruction(e.target.value)} placeholder={'Exemples : « transforme en violin », « moyenne par Région », « x=CA, y=Marge », « couleur=Segment », « titre=Performance régionale »'}/></label><button className="primary-btn" disabled={busy||!instruction.trim()} onClick={editCurrent}>✦ Appliquer la modification</button></div>{editInfo&&<div className="viz-edit-summary"><b>{editInfo.applied?'Modification appliquée':'Aucun changement détecté'}</b><span>{(editInfo.changes??[]).map((c:AnyObj)=>`${c.field}: ${c.from??'—'} → ${c.to??'—'}`).join(' · ')||'Le graphique a été reconstruit avec la configuration existante.'}</span></div>}{saved&&<div className="success-box compact-success">✓ {saved}</div>}</>}</Panel>
   </div>;
 }
 
+function BubblePlot({points,xLabel,yLabel}:{points:AnyObj[];xLabel:string;yLabel:string}) { const clean=(points??[]).filter(p=>Number.isFinite(Number(p.x))&&Number.isFinite(Number(p.y))); if(!clean.length)return <div className="quiet-empty">Aucun point.</div>; const xs=clean.map(p=>Number(p.x)),ys=clean.map(p=>Number(p.y)),xmin=Math.min(...xs),xmax=Math.max(...xs),ymin=Math.min(...ys),ymax=Math.max(...ys),sx=(v:number)=>45+(v-xmin)/Math.max(xmax-xmin,1e-9)*510,sy=(v:number)=>225-(v-ymin)/Math.max(ymax-ymin,1e-9)*170; return <div className="svg-chart"><svg viewBox="0 0 600 270" role="img"><line x1="45" y1="225" x2="555" y2="225" className="axis"/><line x1="45" y1="55" x2="45" y2="225" className="axis"/>{clean.map((p,i)=><circle key={i} cx={sx(Number(p.x))} cy={sy(Number(p.y))} r={Math.max(3,Math.min(18,Number(p.radius)||5))} className={`cluster-dot c${i%6}`}><title>{`${xLabel}: ${formatNumber(p.x)} · ${yLabel}: ${formatNumber(p.y)}${p.size!=null?` · taille: ${formatNumber(p.size)}`:''}`}</title></circle>)}<text x="300" y="260" className="axis-label">{xLabel}</text><text x="13" y="145" className="axis-label" transform="rotate(-90 13 145)">{yLabel}</text></svg></div>; }
+function ViolinPlot({groups}:{groups:AnyObj[]}) { if(!groups?.length)return <div className="quiet-empty">Aucune distribution.</div>; const values=groups.flatMap(g=>(g.density??[]).map((d:AnyObj)=>Number(d.value))).filter(Number.isFinite); const min=Math.min(...values),max=Math.max(...values),sy=(v:number)=>225-(v-min)/Math.max(max-min,1e-9)*170; const width=540/Math.max(groups.length,1); return <div className="svg-chart tall"><svg viewBox="0 0 620 285">{groups.map((g:AnyObj,i:number)=>{const cx=50+width*(i+.5),pts=g.density??[];const left=pts.map((d:AnyObj)=>`${cx-Number(d.density)*Math.min(34,width*.35)},${sy(Number(d.value))}`);const right=[...pts].reverse().map((d:AnyObj)=>`${cx+Number(d.density)*Math.min(34,width*.35)},${sy(Number(d.value))}`);return <g key={i}><polygon points={[...left,...right].join(' ')} className="violin-shape"/><line x1={cx-10} x2={cx+10} y1={sy(Number(g.median))} y2={sy(Number(g.median))} className="median-svg"/><text x={cx} y="258" className="tick">{String(g.group).slice(0,14)}</text><title>{`${g.group} · n=${g.n}`}</title></g>})}<line x1="35" y1="225" x2="585" y2="225" className="axis"/></svg></div>; }
+function TreeMapView({rows}:{rows:AnyObj[]}) { const clean=(rows??[]).filter(r=>Number(r.value)>0); const total=clean.reduce((a,r)=>a+Number(r.value),0)||1; return <div className="treemap-view">{clean.slice(0,30).map((r,i)=><div key={i} className={`treemap-cell t${i%6}`} style={{flexGrow:Math.max(.2,Number(r.value)/total*20),flexBasis:`${Math.max(12,Number(r.value)/total*100)}%`}}><b>{String(r.label)}</b><span>{formatNumber(r.value,2)}</span></div>)}</div>; }
+function SankeyView({links}:{links:AnyObj[]}) { const clean=(links??[]).slice(0,30); if(!clean.length)return <div className="quiet-empty">Aucun flux.</div>; const sources=[...new Set(clean.map(x=>String(x.source)))].slice(0,12),targets=[...new Set(clean.map(x=>String(x.target)))].slice(0,12); const sy=(name:string,list:string[])=>45+list.indexOf(name)/Math.max(list.length-1,1)*170; const max=Math.max(...clean.map(x=>Number(x.value)||0),1); return <div className="svg-chart"><svg viewBox="0 0 620 270">{clean.filter(x=>sources.includes(String(x.source))&&targets.includes(String(x.target))).map((l,i)=><path key={i} d={`M 155 ${sy(String(l.source),sources)} C 300 ${sy(String(l.source),sources)}, 320 ${sy(String(l.target),targets)}, 465 ${sy(String(l.target),targets)}`} className="sankey-link" style={{strokeWidth:Math.max(1,Number(l.value)/max*12)}}><title>{`${l.source} → ${l.target}: ${formatNumber(l.value)}`}</title></path>)}{sources.map((n,i)=><text key={`s${i}`} x="145" y={sy(n,sources)+4} className="sankey-label source">{n.slice(0,18)}</text>)}{targets.map((n,i)=><text key={`t${i}`} x="475" y={sy(n,targets)+4} className="sankey-label target">{n.slice(0,18)}</text>)}</svg></div>; }
+function GeoPointView({points}:{points:AnyObj[]}) { const clean=(points??[]).filter(p=>Number.isFinite(Number(p.x))&&Number.isFinite(Number(p.y))); if(!clean.length)return <div className="quiet-empty">Aucun point géographique.</div>; return <div className="geo-point-view"><div className="geo-note">Projection simplifiée des coordonnées · utilisez une couche cartographique dédiée pour une analyse géographique de précision.</div><BubblePlot points={clean.map(p=>({...p,radius:5}))} xLabel="Longitude" yLabel="Latitude"/></div>; }
 function VizRenderer({viz}:{viz:AnyObj}) {
   if(viz.type==='histogram') return <Histogram bins={viz.data}/>;
   if(viz.type==='density') return <XYLineChart rows={viz.data} xKey="x" yKey="density" xLabel={viz.x} yLabel="Densité"/>;
   if(viz.type==='scatter') return <ScatterPlot points={viz.data} xLabel={viz.x} yLabel={viz.y}/>;
+  if(viz.type==='bubble') return <BubblePlot points={viz.data} xLabel={viz.x} yLabel={viz.y}/>;
+  if(viz.type==='map') return <GeoPointView points={viz.data}/>;
   if(viz.type==='box') return <GroupBoxplots groups={viz.data.map((d:AnyObj)=>({...d,boxplot:d,group:d.group}))} factor1="group"/>;
+  if(viz.type==='violin') return <ViolinPlot groups={viz.data}/>;
   if(viz.type==='bar') return <BarChart rows={viz.data} valueKey="value" labelKey="label"/>;
+  if(viz.type==='treemap') return <TreeMapView rows={viz.data}/>;
+  if(viz.type==='sankey') return <SankeyView links={viz.data}/>;
   if(viz.type==='line'||viz.type==='area') return <CategoryLineChart rows={viz.data} area={viz.type==='area'} valueLabel={viz.value_label}/>;
   if(viz.type==='heatmap') return <CorrelationHeatmap matrix={viz.data} columns={viz.columns}/>;
+  if(viz.type==='pca') return <><ScatterPlot points={viz.data} xLabel={`PC1 (${formatNumber(viz.explained_variance_pct?.[0],1)}%)`} yLabel={`PC2 (${formatNumber(viz.explained_variance_pct?.[1],1)}%)`}/><div className="viz-meta-line">Variables : {(viz.features??[]).join(', ')}</div></>;
+  if(viz.type==='cluster') return <><ClusterScatter points={viz.data}/><div className="viz-meta-line">K={viz.k} · {(viz.features??[]).join(', ')}</div></>;
   return <pre className="result-json">{JSON.stringify(viz,null,2)}</pre>;
 }
 
@@ -1986,6 +2059,12 @@ function ReliabilityLineageCenter({result,setError,setView}:{result:AnyObj|null;
   const [contracts,setContracts]=useState<AnyObj[]>([]);
   const [runs,setRuns]=useState<AnyObj[]>([]);
   const [lineage,setLineage]=useState<AnyObj>({nodes:[],edges:[]});
+  const [catalogAssets,setCatalogAssets]=useState<AnyObj[]>([]);
+  const [catalogSummary,setCatalogSummary]=useState<AnyObj|null>(null);
+  const [catalogQuery,setCatalogQuery]=useState('');
+  const [catalogType,setCatalogType]=useState('');
+  const [catalogSelected,setCatalogSelected]=useState<AnyObj|null>(null);
+  const [catalogDraft,setCatalogDraft]=useState<AnyObj>({title:'',description:'',business_domain:'',owner_user_id:'',steward_user_id:'',tags:'',certification_status:'unreviewed'});
   const [gate,setGate]=useState<AnyObj|null>(null);
   const [impact,setImpact]=useState<AnyObj|null>(null);
   const [selectedRun,setSelectedRun]=useState<AnyObj|null>(null);
@@ -2007,10 +2086,10 @@ function ReliabilityLineageCenter({result,setError,setView}:{result:AnyObj|null;
     if(!t||!ws)return;
     setBusy(true);
     try{
-      const [s,c,r,l]=await Promise.all([
-        getReliabilitySummary(t,ws,activeDatasetId||undefined),getDataContracts(t,ws,activeDatasetId||undefined),getContractRuns(t,ws,undefined,activeDatasetId||undefined),getLineageGraph(t,ws,activeDatasetId||undefined)
+      const [s,c,r,l,cat,catSummary]=await Promise.all([
+        getReliabilitySummary(t,ws,activeDatasetId||undefined),getDataContracts(t,ws,activeDatasetId||undefined),getContractRuns(t,ws,undefined,activeDatasetId||undefined),getLineageGraph(t,ws,activeDatasetId||undefined),getDataCatalogAssets(t,ws),getDataCatalogSummary(t,ws)
       ]);
-      setSummary(s);setContracts(c.contracts??[]);setRuns(r.runs??[]);setLineage(l);
+      setSummary(s);setContracts(c.contracts??[]);setRuns(r.runs??[]);setLineage(l);setCatalogAssets(cat.assets??[]);setCatalogSummary(catSummary);
       if(activeDatasetId){try{setGate(await getPublicationGate(t,ws,activeDatasetId));}catch{setGate(null)}}else setGate(null);
     }catch(e:unknown){setError(e instanceof Error?e.message:String(e));}
     finally{setBusy(false)}
@@ -2051,10 +2130,13 @@ function ReliabilityLineageCenter({result,setError,setView}:{result:AnyObj|null;
   async function runContract(c:AnyObj){setBusy(true);try{const r=await runDataContract(token,workspaceId,c.id,activeDatasetId||c.dataset_id);setSelectedRun(r.run);setNotice(`Contrat exécuté · ${r.run.status} · score ${r.run.score}/100`);await load();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
   async function removeContract(c:AnyObj){if(!confirm(`Supprimer le contrat « ${c.name} » ?`))return;setBusy(true);try{await deleteDataContract(token,workspaceId,c.id);await load();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
   async function inspectImpact(n:AnyObj){setBusy(true);try{setImpact(await getImpactAnalysis(token,workspaceId,n.type,n.resource_id,8));}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
+  function editCatalogAsset(asset:AnyObj){setCatalogSelected(asset);setCatalogDraft({title:asset.title??'',description:asset.description??'',business_domain:asset.business_domain??'',owner_user_id:asset.owner_user_id??'',steward_user_id:asset.steward_user_id??'',tags:(asset.tags??[]).join(', '),certification_status:asset.certification_status??'unreviewed'});}
+  async function saveCatalogMetadata(){if(!catalogSelected)return;setBusy(true);try{await saveDataCatalogAsset(token,workspaceId,catalogSelected.resource_type,catalogSelected.resource_id,{...catalogDraft,tags:String(catalogDraft.tags||'').split(',').map((x:string)=>x.trim()).filter(Boolean),glossary:catalogSelected.glossary??{}});setNotice('Documentation métier enregistrée dans le Data Catalog.');setCatalogSelected(null);await load();}catch(e:unknown){setError(e instanceof Error?e.message:String(e));}finally{setBusy(false)}}
 
   if(!token||!session)return <div className="page reliability-page"><div className="page-title"><div><span className="eyebrow">DATA RELIABILITY · CONTRACTS · LINEAGE</span><h1>Fiabilité & Lineage</h1><p>Définissez ce qu'une donnée fiable signifie, détectez les ruptures et mesurez l'impact avant publication.</p></div><span className="module-state implemented">v2.8</span></div><div className="collab-auth-empty"><span>◫</span><div><h3>Session Entreprise requise</h3><p>Les contrats et le lineage sont isolés par workspace et s'appuient sur la gouvernance tenant-aware.</p></div><button className="primary-btn" onClick={()=>setView('governance')}>Ouvrir Gouvernance</button></div></div>;
 
   const status=summary?.contract_status??{}; const nodes=lineage?.nodes??[]; const sources=nodes.filter((n:AnyObj)=>n.type==='source'); const datasets=nodes.filter((n:AnyObj)=>n.type==='dataset'); const outputs=nodes.filter((n:AnyObj)=>!['source','dataset'].includes(n.type));
+  const catalogFiltered=catalogAssets.filter((a:AnyObj)=>(!catalogType||a.resource_type===catalogType)&&(!catalogQuery||[a.title,a.technical_name,a.description,a.business_domain,...(a.tags??[])].join(' ').toLowerCase().includes(catalogQuery.toLowerCase())));
   return <div className="page reliability-page">
     <div className="page-title"><div><span className="eyebrow">DATA RELIABILITY & LINEAGE · V2.8</span><h1>Fiabilité & Lineage</h1><p>Data contracts exécutables, dérive de distribution, lineage de bout en bout, analyse d'impact et gate de publication.</p></div><div className="reliability-head-actions"><label>Workspace<select value={workspaceId} onChange={e=>changeWorkspace(e.target.value)}>{(session.workspaces??[]).map((w:AnyObj)=><option key={w.id} value={w.id}>{w.name} · {w.role}</option>)}</select></label><button className="secondary-btn" onClick={()=>load()} disabled={busy}>↻ Actualiser</button>{activeDatasetId&&canManage&&<button className="primary-btn" onClick={recommendedRules}>+ Contrat recommandé</button>}</div></div>
     {notice&&<div className="source-notice"><span>✓</span><p>{notice}</p><button onClick={()=>setNotice('')}>×</button></div>}
@@ -2070,6 +2152,8 @@ function ReliabilityLineageCenter({result,setError,setView}:{result:AnyObj|null;
     </div>
 
     {selectedRun&&<Panel title={`Résultat du contrat · ${selectedRun.status}`} action={<button className="text-btn" onClick={()=>setSelectedRun(null)}>Fermer</button>}><div className="contract-run-summary"><Stat label="Score" value={`${selectedRun.score}/100`}/><Stat label="Pass" value={selectedRun.checks_passed}/><Stat label="Fail" value={selectedRun.checks_failed}/><Stat label="Bloquants" value={selectedRun.blocking_failures}/></div><div className="contract-checks">{(selectedRun.results??[]).map((r:AnyObj)=><div key={r.rule_id} className={r.status}><span>{r.status==='pass'?'✓':'!'}</span><div><b>{r.label}</b><p>{r.message}</p></div><small>{r.severity}{r.blocking?' · block':''}</small></div>)}</div></Panel>}
+
+    <section className="lineage-shell"><div className="reliability-section-head"><div><span>DATA CATALOG · V2.68</span><h3>Discovery & documentation métier</h3></div><small>{catalogSummary?.assets??catalogAssets.length} actifs · {catalogSummary?.certified??0} certifié(s)</small></div><div className="catalog-discovery-toolbar"><input value={catalogQuery} onChange={e=>setCatalogQuery(e.target.value)} placeholder="Rechercher dataset, domaine, tag, rapport…"/><select value={catalogType} onChange={e=>setCatalogType(e.target.value)}><option value="">Tous les types</option>{Array.from(new Set(catalogAssets.map((a:AnyObj)=>a.resource_type))).sort().map((t:any)=><option key={String(t)} value={String(t)}>{String(t)}</option>)}</select></div><div className="catalog-summary-strip"><Stat label="Documentés" value={catalogSummary?.documented??0}/><Stat label="Owner/Steward" value={catalogSummary?.owned??0}/><Stat label="Taggés" value={catalogSummary?.tagged??0}/><Stat label="Résultats" value={catalogFiltered.length}/></div><div className="catalog-asset-list">{catalogFiltered.slice(0,80).map((a:AnyObj)=><article key={a.id}><div><span className="catalog-type-pill">{a.resource_type}</span><b>{a.title}</b><small>{a.business_domain||'Domaine non documenté'} · ↑{a.lineage?.upstream??0} ↓{a.lineage?.downstream??0}</small><p>{a.description||'Ajoutez une description métier, un owner et des tags.'}</p><div className="catalog-tags">{(a.tags??[]).slice(0,6).map((tag:string)=><i key={tag}>{tag}</i>)}</div></div><div className="catalog-asset-actions"><span className={`catalog-cert ${a.certification_status}`}>{a.certification_status}</span>{canManage&&<button className="secondary-btn" onClick={()=>editCatalogAsset(a)}>Documenter</button>}<button className="text-btn" onClick={()=>inspectImpact({type:a.resource_type,resource_id:a.resource_id})}>Impact</button></div></article>)}{!catalogFiltered.length&&<div className="quiet-empty">Aucun actif ne correspond à cette recherche.</div>}</div>{catalogSelected&&<div className="catalog-editor"><div className="reliability-section-head"><div><span>DOCUMENTATION MÉTIER</span><h3>{catalogSelected.technical_name}</h3></div><button className="text-btn" onClick={()=>setCatalogSelected(null)}>Fermer</button></div><div className="catalog-editor-grid"><label>Titre métier<input value={catalogDraft.title} onChange={e=>setCatalogDraft((d:AnyObj)=>({...d,title:e.target.value}))}/></label><label>Domaine<input value={catalogDraft.business_domain} onChange={e=>setCatalogDraft((d:AnyObj)=>({...d,business_domain:e.target.value}))}/></label><label>Owner<input value={catalogDraft.owner_user_id} onChange={e=>setCatalogDraft((d:AnyObj)=>({...d,owner_user_id:e.target.value}))} placeholder="user id ou équipe"/></label><label>Steward<input value={catalogDraft.steward_user_id} onChange={e=>setCatalogDraft((d:AnyObj)=>({...d,steward_user_id:e.target.value}))}/></label><label>Tags<input value={catalogDraft.tags} onChange={e=>setCatalogDraft((d:AnyObj)=>({...d,tags:e.target.value}))} placeholder="finance, ventes, certifié"/></label><label>Statut<select value={catalogDraft.certification_status} onChange={e=>setCatalogDraft((d:AnyObj)=>({...d,certification_status:e.target.value}))}><option value="unreviewed">Non revu</option><option value="draft">Brouillon</option><option value="certified">Certifié</option><option value="deprecated">Déprécié</option></select></label><label className="catalog-editor-description">Description<textarea value={catalogDraft.description} onChange={e=>setCatalogDraft((d:AnyObj)=>({...d,description:e.target.value}))} rows={4}/></label></div><button className="primary-btn" onClick={saveCatalogMetadata} disabled={busy}>Enregistrer la documentation</button></div>}</section>
 
     <section className="lineage-shell"><div className="reliability-section-head"><div><span>END-TO-END LINEAGE</span><h3>Source → Dataset → Analyse → Modèle → Dashboard → Rapport</h3></div><small>{lineage?.node_count??0} nœuds · {lineage?.edge_count??0} liens</small></div><div className="lineage-flow"><div className="lineage-column"><span>SOURCES</span>{sources.map((n:AnyObj)=><button key={n.id} onClick={()=>inspectImpact(n)}><i>DB</i><div><b>{n.label}</b><small>source</small></div></button>)}</div><div className="lineage-arrow">→</div><div className="lineage-column"><span>DATASETS</span>{datasets.slice(0,12).map((n:AnyObj)=><button key={n.id} onClick={()=>inspectImpact(n)}><i>v{n.version??'•'}</i><div><b>{n.label}</b><small>{String(n.resource_id).slice(0,8)}</small></div></button>)}</div><div className="lineage-arrow">→</div><div className="lineage-column"><span>CONSOMMATEURS</span>{outputs.slice(0,18).map((n:AnyObj)=><button key={n.id} onClick={()=>inspectImpact(n)}><i>{n.type==='model'?'ML':n.type==='dashboard'?'BI':n.type==='report'?'RP':n.type==='metric'?'KPI':'AN'}</i><div><b>{n.label}</b><small>{n.type}</small></div></button>)}</div></div></section>
 
@@ -2726,6 +2810,7 @@ function GovernanceCenter({ result, setError }: { result:AnyObj|null; setError:(
     <Panel title="Posture Entreprise · v2.58" action={<div className="button-row"><span className={`control-plane-status ${Number(entrepriseReadiness?.score??0)>=80?'pass':Number(entrepriseReadiness?.score??0)>=50?'warn':'fail'}`}>{entrepriseReadiness?.score??0}%</span><button className="secondary-btn" onClick={enforcePrivateAI} disabled={busy||entrepriseReadiness?.private_ai?.strict_private_ai===true}>Forcer Private AI</button></div>}>
       {entrepriseReadiness?<><div className="control-plane-grid"><div className="control-list">{(entrepriseReadiness.checks??[]).map((c:AnyObj)=><article key={c.id} className={`control-item ${c.status}`}><span>{c.status==='pass'?'✓':c.status==='fail'?'×':'!'}</span><div><b>{c.label}</b><small>{c.detail}</small></div></article>)}</div><div className="control-plane-side"><h4>Déploiement</h4><div className="role-matrix"><div><b>{entrepriseReadiness.deployment?.profile??'—'}</b><span>Profil de déploiement</span><small>Egress externe : {entrepriseReadiness.deployment?.external_egress_policy??'—'}</small></div><div><b>{entrepriseReadiness.private_ai?.privacy_mode??'—'}</b><span>Private AI</span><small>IA externe : {entrepriseReadiness.private_ai?.allow_external_ai?'autorisée':'bloquée'}</small></div><div><b>{entrepriseReadiness.scim?.active_tokens??0} / {entrepriseReadiness.scim?.groups??0}</b><span>SCIM jetons / groupes</span><small>Users + Groups 2.0</small></div><div><b>{entrepriseReadiness.kms?.provider??'local'}</b><span>KMS / HSM</span><small>{entrepriseReadiness.kms?.external_kms?'Clé externe':'Clé locale'} · HSM {entrepriseReadiness.kms?.hsm_backed?'oui':'non'}</small></div><div><b>{entrepriseReadiness.session_device_policy?.idle_timeout_minutes??'—'} min</b><span>Session / appareil</span><small>{entrepriseReadiness.session_device_policy?.max_active_sessions??'—'} session(s) max · appareil géré {entrepriseReadiness.session_device_policy?.require_managed_device?'requis':'optionnel'}</small></div></div></div></div><div className="publication-readiness"><b>Socle Entreprise : {entrepriseReadiness.ready?'prêt':'à compléter'}</b><span>SSO/MFA · SCIM Users/Groups · KMS/HSM · sessions/appareils · Private AI · OpenTelemetry · Helm/Kubernetes.</span></div></>:<div className="quiet-empty">Posture Entreprise indisponible pour ce workspace.</div>}
     </Panel>
+    <RegulatoryCompliancePanel token={token} workspaceId={workspaceId} setError={setError}/>
     <Panel title="Governance Control Plane" action={<div className="button-row"><span className={`control-plane-status ${controlPlane?.control_status??'unknown'}`}>{controlPlane?.control_status??'—'}</span>{result&&<button className="secondary-btn" onClick={captureGovernance} disabled={busy}>Capturer un snapshot</button>}</div>}>
       <div className="control-plane-summary"><div><span>Couverture des contrôles</span><b>{controlPlane?.control_coverage_percent??0}%</b><small>Critères déterministes configurés / sains</small></div><div><span>Audit digest</span><b>{String(controlPlane?.audit_digest_sha256??'—').slice(0,16)}</b><small>SHA-256 des événements récents</small></div><div><span>Lineage</span><b>{controlPlane?.summary?.lineage?.nodes??0} / {controlPlane?.summary?.lineage?.edges??0}</b><small>nœuds / relations</small></div><div><span>IA</span><b>{controlPlane?.ai?.settings?.planner_mode??'—'}</b><small>{controlPlane?.ai?.settings?.privacy_mode??'—'}</small></div></div>
       <div className="control-plane-grid"><div className="control-list">{(controlPlane?.controls??[]).map((c:AnyObj)=><article key={c.id} className={`control-item ${c.status}`}><span>{c.status==='pass'?'✓':c.status==='fail'?'×':'!'}</span><div><b>{c.name}</b><small>{c.evidence}</small></div></article>)}{!controlPlane&&<div className="quiet-empty">Control Plane indisponible.</div>}</div><div className="control-plane-side"><h4>Matrice d'accès effective</h4>{(controlPlane?.dataset?.role_matrix??[]).length?<div className="role-matrix">{(controlPlane?.dataset?.role_matrix??[]).map((r:AnyObj)=><div key={r.role}><b>{r.role}</b><span>{r.allowed_column_count}/{r.total_column_count} colonnes</span><small>{r.row_filter_count} filtre(s) ligne · {r.policy_count} politique(s)</small></div>)}</div>:<div className="quiet-empty">Liez et activez un dataset pour calculer la matrice.</div>}<h4>Snapshots</h4><div className="governance-snapshots">{governanceSnapshots.slice(0,5).map((x:AnyObj)=><div key={x.id}><b>{x.control_coverage_percent??'—'}%</b><span>{x.control_status}</span><small>{x.created_at?new Date(x.created_at).toLocaleString('fr-FR'):''} · {String(x.sha256??'').slice(0,10)}</small></div>)}{!governanceSnapshots.length&&<div className="quiet-empty">Aucun snapshot capturé.</div>}</div></div></div>

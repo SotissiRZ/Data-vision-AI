@@ -4,15 +4,15 @@ fullnameOverride: ""
 images:
   api:
     repository: datavision-api
-    tag: "2.62.0"
+    tag: "2.69.0"
     pullPolicy: IfNotPresent
   web:
     repository: datavision-web
-    tag: "2.62.0"
+    tag: "2.69.0"
     pullPolicy: IfNotPresent
   sandbox:
     repository: datavision-sandbox
-    tag: "2.62.0"
+    tag: "2.69.0"
     pullPolicy: IfNotPresent
   otelCollector:
     repository: otel/opentelemetry-collector-contrib
@@ -48,6 +48,8 @@ config:
   deploymentProfile: onprem
   externalEgressPolicy: explicit_opt_in
   notebookSandboxUrl: http://datavision-sandbox:8090
+  notebookKernelMaxSessions: 32
+  notebookKernelTtlSeconds: 3600
   antivirusMode: required
   clamavHost: clamav.example.internal
   secretKmsProvider: vault_transit
@@ -85,6 +87,7 @@ secrets:
   backupObjectStoreSessionToken: ""
   redisPassword: ""
   multiClusterFailoverWebhookSecret: ""
+  releaseRollbackWebhookSecret: ""
 
 persistence:
   enabled: true
@@ -242,3 +245,52 @@ multiCluster:
   backupMaxAgeHours: 26
   failoverWebhookUrl: ""
   failoverWebhookTimeoutSeconds: 10
+
+# v2.63 — operational security & supply chain
+operationalSecurity:
+  secretRotation:
+    enabled: false
+    schedule: "17 4 * * *"
+    defaultDays: 90
+    generatedBytes: 32
+    successfulJobsHistoryLimit: 3
+    failedJobsHistoryLimit: 3
+  releaseRollback:
+    enabled: false
+    executor: plan_only # plan_only | webhook
+    webhookUrl: ""
+    webhookTimeoutSeconds: 10
+    confirmationTtlMinutes: 10
+
+# v2.64 — admission, runtime security & continuous compliance
+runtimeSecurity:
+  podSecurityContext:
+    enabled: true
+    runAsNonRoot: true
+    seccompProfile: RuntimeDefault
+  containerSecurityContext:
+    enabled: true
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    dropAllCapabilities: true
+  admission:
+    # ClusterPolicy is cluster-scoped and therefore opt-in.
+    enabled: false
+    provider: kyverno
+    verifyImages: false
+    imageReferences:
+      - ghcr.io/example/datavision-*
+    keylessIssuer: https://token.actions.githubusercontent.com
+    keylessSubject: https://github.com/example/datavision/.github/workflows/release.yml@refs/tags/*
+  runtimeDetection:
+    enabled: false
+    provider: falco
+    shipFalcoRules: true
+  networkPolicy:
+    enabled: false
+
+continuousCompliance:
+  enabled: false
+  schedule: "23 */6 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3

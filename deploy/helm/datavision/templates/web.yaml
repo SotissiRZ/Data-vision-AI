@@ -13,6 +13,12 @@ spec:
     metadata:
       labels: {app.kubernetes.io/component: web, app.kubernetes.io/instance: {{ .Release.Name }}}
     spec:
+      automountServiceAccountToken: false
+      {{- if .Values.runtimeSecurity.podSecurityContext.enabled }}
+      securityContext:
+        runAsNonRoot: {{ .Values.runtimeSecurity.podSecurityContext.runAsNonRoot }}
+        seccompProfile: {type: {{ .Values.runtimeSecurity.podSecurityContext.seccompProfile }}}
+      {{- end }}
       {{- if .Values.availability.topologySpread.enabled }}
       topologySpreadConstraints:
         - maxSkew: 1
@@ -25,6 +31,13 @@ spec:
         - name: web
           image: "{{ .Values.images.web.repository }}:{{ .Values.images.web.tag }}"
           imagePullPolicy: {{ .Values.images.web.pullPolicy }}
+          {{- if .Values.runtimeSecurity.containerSecurityContext.enabled }}
+          securityContext:
+            allowPrivilegeEscalation: {{ .Values.runtimeSecurity.containerSecurityContext.allowPrivilegeEscalation }}
+            readOnlyRootFilesystem: {{ .Values.runtimeSecurity.containerSecurityContext.readOnlyRootFilesystem }}
+            capabilities:
+              drop: {{ if .Values.runtimeSecurity.containerSecurityContext.dropAllCapabilities }}["ALL"]{{ else }}[]{{ end }}
+          {{- end }}
           ports: [{containerPort: 3005}]
           envFrom: [{configMapRef: {name: {{ include "datavision.fullname" . }}-config}}]
           startupProbe:
@@ -40,6 +53,12 @@ spec:
             periodSeconds: 20
             failureThreshold: {{ .Values.probes.web.livenessFailureThreshold }}
           resources: {{- toYaml .Values.resources.web | nindent 12 }}
+          volumeMounts:
+            - {name: tmp, mountPath: /tmp}
+            - {name: next-cache, mountPath: /app/.next/cache}
+      volumes:
+        - {name: tmp, emptyDir: {}}
+        - {name: next-cache, emptyDir: {}}
 ---
 apiVersion: v1
 kind: Service

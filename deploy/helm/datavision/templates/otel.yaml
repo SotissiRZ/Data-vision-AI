@@ -56,10 +56,23 @@ spec:
     metadata:
       labels: {app.kubernetes.io/component: otel, app.kubernetes.io/instance: {{ .Release.Name }}}
     spec:
+      automountServiceAccountToken: false
+      {{- if .Values.runtimeSecurity.podSecurityContext.enabled }}
+      securityContext:
+        runAsNonRoot: {{ .Values.runtimeSecurity.podSecurityContext.runAsNonRoot }}
+        seccompProfile: {type: {{ .Values.runtimeSecurity.podSecurityContext.seccompProfile }}}
+      {{- end }}
       containers:
         - name: otel-collector
           image: "{{ .Values.images.otelCollector.repository }}:{{ .Values.images.otelCollector.tag }}"
           args: ["--config=/etc/otelcol-contrib/config.yaml"]
+          {{- if .Values.runtimeSecurity.containerSecurityContext.enabled }}
+          securityContext:
+            allowPrivilegeEscalation: {{ .Values.runtimeSecurity.containerSecurityContext.allowPrivilegeEscalation }}
+            readOnlyRootFilesystem: {{ .Values.runtimeSecurity.containerSecurityContext.readOnlyRootFilesystem }}
+            capabilities:
+              drop: {{ if .Values.runtimeSecurity.containerSecurityContext.dropAllCapabilities }}["ALL"]{{ else }}[]{{ end }}
+          {{- end }}
           envFrom: [{secretRef: {name: {{ include "datavision.secretName" . }}}}]
           ports: [{containerPort: 4317}, {containerPort: 4318}, {containerPort: 9464}]
           volumeMounts: [{name: config, mountPath: /etc/otelcol-contrib, readOnly: true}]

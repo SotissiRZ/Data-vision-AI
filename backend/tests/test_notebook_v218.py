@@ -114,7 +114,8 @@ def test_python_cell_uses_sandbox_contract(tmp_path, monkeypatch):
 
     called = {}
 
-    def fake_execute_sandboxed(*, language, code, dataframe):
+    def fake_execute_sandboxed(*, session_id, language, code, dataframe):
+        called["session_id"] = session_id
         called["language"] = language
         called["code"] = code
         called["rows"] = len(dataframe)
@@ -133,9 +134,16 @@ def test_python_cell_uses_sandbox_contract(tmp_path, monkeypatch):
             "artifacts": [],
             "elapsed_ms": 12.5,
             "error_type": None,
+            "kernel_created": True,
+            "kernel": {
+                "session_id": session_id,
+                "generation": "g-test",
+                "execution_count": 1,
+                "persistent": True,
+            },
         }
 
-    monkeypatch.setattr(service, "execute_sandboxed", fake_execute_sandboxed)
+    monkeypatch.setattr(service, "execute_sandboxed_session", fake_execute_sandboxed)
 
     run = client.post(
         f"/api/v1/notebooks/{notebook['id']}/cells/{python_cell['id']}/run"
@@ -145,7 +153,8 @@ def test_python_cell_uses_sandbox_contract(tmp_path, monkeypatch):
     assert payload["status"] == "succeeded"
     assert called["language"] == "python"
     assert called["rows"] == 3
-    assert payload["provenance"]["execution_boundary"] == "isolated sandbox service"
+    assert payload["provenance"]["execution_boundary"] == "isolated persistent sandbox kernel"
+    assert payload["provenance"]["kernel"]["persistent"] is True
 
 
 def test_notebook_assistant_execution_requires_confirmation():

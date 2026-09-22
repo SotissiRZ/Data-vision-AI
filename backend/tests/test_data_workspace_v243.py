@@ -113,7 +113,7 @@ def test_run_all_executes_reproducible_notebook(tmp_path, monkeypatch):
     dataset_id = _upload_dataset()
     notebook = _create_notebook(dataset_id)
 
-    def fake_execute_sandboxed(*, language, code, dataframe):
+    def fake_execute_sandboxed(*, session_id, language, code, dataframe):
         return {
             "status": "succeeded",
             "engine": language,
@@ -125,7 +125,7 @@ def test_run_all_executes_reproducible_notebook(tmp_path, monkeypatch):
             "error_type": None,
         }
 
-    monkeypatch.setattr(service, "execute_sandboxed", fake_execute_sandboxed)
+    monkeypatch.setattr(service, "execute_sandboxed_session", fake_execute_sandboxed)
 
     response = client.post(
         f"/api/v1/notebooks/{notebook['id']}/run",
@@ -152,7 +152,7 @@ def test_artifact_can_be_promoted_to_governed_dataset_version(tmp_path, monkeypa
     python_cell = next(cell for cell in notebook["cells"] if cell["language"] == "python")
     artifact_bytes = b"region,score\nNord,0.8\nSud,0.6\n"
 
-    def fake_execute_sandboxed(*, language, code, dataframe):
+    def fake_execute_sandboxed(*, session_id, language, code, dataframe):
         return {
             "status": "succeeded",
             "engine": language,
@@ -171,7 +171,7 @@ def test_artifact_can_be_promoted_to_governed_dataset_version(tmp_path, monkeypa
             "error_type": None,
         }
 
-    monkeypatch.setattr(service, "execute_sandboxed", fake_execute_sandboxed)
+    monkeypatch.setattr(service, "execute_sandboxed_session", fake_execute_sandboxed)
     run = client.post(
         f"/api/v1/notebooks/{notebook['id']}/cells/{python_cell['id']}/run"
     )
@@ -205,7 +205,7 @@ def test_r_cell_uses_csv_sandbox_contract(tmp_path, monkeypatch):
     r_cell = next(cell for cell in notebook["cells"] if cell["language"] == "r")
     called = {}
 
-    def fake_execute_sandboxed(*, language, code, dataframe):
+    def fake_execute_sandboxed(*, session_id, language, code, dataframe):
         called["language"] = language
         called["rows"] = len(dataframe)
         return {
@@ -219,14 +219,14 @@ def test_r_cell_uses_csv_sandbox_contract(tmp_path, monkeypatch):
             "error_type": None,
         }
 
-    monkeypatch.setattr(service, "execute_sandboxed", fake_execute_sandboxed)
+    monkeypatch.setattr(service, "execute_sandboxed_session", fake_execute_sandboxed)
     response = client.post(
         f"/api/v1/notebooks/{notebook['id']}/cells/{r_cell['id']}/run"
     )
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "succeeded"
     assert called == {"language": "r", "rows": 3}
-    assert response.json()["provenance"]["execution_boundary"] == "isolated sandbox service"
+    assert response.json()["provenance"]["execution_boundary"] == "isolated persistent sandbox kernel"
 
 def test_sql_workspace_remains_read_only(tmp_path, monkeypatch):
     _use_sqlite_metadata(tmp_path, monkeypatch)

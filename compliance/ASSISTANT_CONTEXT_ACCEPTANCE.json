@@ -1,0 +1,84 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.69.0",
+  "gate": "assistant_complete_context",
+  "status": "pass",
+  "items": [
+    {
+      "id": "scrollable_context_panel",
+      "name": "Le panneau Contexte actif reste consultable quelle que soit la hauteur de la fenêtre",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx",
+        "frontend/components/assistant/FloatingDataVisionAssistant.module.css"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_context_visibility_v2641.py"
+      ]
+    },
+    {
+      "id": "project_navigation_context",
+      "name": "Workspace, rôle, zone, vue et route sont exposés dans le contexte visible",
+      "evidence": [
+        "frontend/app/page.tsx",
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_context_visibility_v2641.py"
+      ]
+    },
+    {
+      "id": "dataset_quality_context",
+      "name": "Dataset, qualité, valeurs manquantes, doublons et typologie des variables sont visibles",
+      "evidence": [
+        "frontend/app/page.tsx",
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_context_visibility_v2641.py"
+      ]
+    },
+    {
+      "id": "analysis_model_context",
+      "name": "Cible, algorithme, modèle actif et paramètres d'analyse sont visibles",
+      "evidence": [
+        "frontend/app/page.tsx",
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx",
+        "frontend/lib/assistant/effects.ts"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_context_visibility_v2641.py"
+      ]
+    },
+    {
+      "id": "schema_events_context",
+      "name": "Le schéma complet et l'activité récente sont consultables par sections repliables",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_context_visibility_v2641.py"
+      ]
+    },
+    {
+      "id": "semantic_projection",
+      "name": "Le contexte sémantique enrichi atteint l'orchestrateur sans exposer les lignes brutes",
+      "evidence": [
+        "backend/app/assistant/privacy.py",
+        "backend/app/assistant/persistent_memory.py"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_context_visibility_v2641.py"
+      ]
+    },
+    {
+      "id": "complete_snapshot",
+      "name": "Un volet technique permet d'inspecter le snapshot complet réellement transmis",
+      "evidence": [
+        "frontend/components/assistant/FloatingDataVisionAssistant.tsx"
+      ],
+      "tests": [
+        "backend/tests/assistant/test_context_visibility_v2641.py"
+      ]
+    }
+  ]
+}

@@ -162,6 +162,194 @@ MIGRATIONS: tuple[Migration, ...] = (
                ON cluster_failover_events(workspace_id, created_at)""",
         ),
     ),
+    Migration(
+        version="2.63.0-001",
+        name="operational_security_supply_chain",
+        statements=(
+            """CREATE TABLE IF NOT EXISTS secret_rotation_events (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                secret_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                previous_version INTEGER,
+                new_version INTEGER,
+                due_at TEXT,
+                created_by TEXT,
+                created_at TEXT NOT NULL,
+                details_json TEXT
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_secret_rotation_workspace_created
+               ON secret_rotation_events(workspace_id, created_at)""",
+            """CREATE TABLE IF NOT EXISTS release_rollback_events (
+                id TEXT PRIMARY KEY,
+                current_version TEXT NOT NULL,
+                target_version TEXT NOT NULL,
+                status TEXT NOT NULL,
+                reason TEXT,
+                confirmation_token_hash TEXT NOT NULL,
+                expires_at TEXT NOT NULL,
+                executor_mode TEXT NOT NULL,
+                artifact_sha256 TEXT,
+                result_json TEXT,
+                created_by TEXT,
+                created_at TEXT NOT NULL,
+                confirmed_at TEXT
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_release_rollback_created
+               ON release_rollback_events(created_at)""",
+        ),
+    ),
+    Migration(
+        version="2.64.0-001",
+        name="runtime_security_continuous_compliance",
+        statements=(
+            """CREATE TABLE IF NOT EXISTS continuous_compliance_runs (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT,
+                status TEXT NOT NULL,
+                source TEXT NOT NULL,
+                control_count INTEGER NOT NULL,
+                drift_count INTEGER NOT NULL,
+                unknown_count INTEGER NOT NULL,
+                sha256 TEXT NOT NULL,
+                details_json TEXT NOT NULL,
+                created_by TEXT,
+                created_at TEXT NOT NULL
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_compliance_runs_workspace_created
+               ON continuous_compliance_runs(workspace_id, created_at)""",
+            """CREATE TABLE IF NOT EXISTS runtime_security_events (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT,
+                source TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                rule TEXT NOT NULL,
+                details_json TEXT,
+                created_by TEXT,
+                created_at TEXT NOT NULL
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_runtime_security_workspace_created
+               ON runtime_security_events(workspace_id, created_at)""",
+            """CREATE TABLE IF NOT EXISTS compliance_evidence_packs (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT,
+                status TEXT NOT NULL,
+                sha256 TEXT NOT NULL,
+                path TEXT NOT NULL,
+                summary_json TEXT,
+                created_by TEXT,
+                created_at TEXT NOT NULL
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_evidence_packs_workspace_created
+               ON compliance_evidence_packs(workspace_id, created_at)""",
+        ),
+    ),
+
+    Migration(
+        version="2.65.0-001",
+        name="regulatory_compliance_posture",
+        statements=(
+            """CREATE TABLE IF NOT EXISTS regulatory_posture_snapshots (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                framework_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                score REAL NOT NULL,
+                sha256 TEXT NOT NULL,
+                details_json TEXT NOT NULL,
+                created_by TEXT,
+                created_at TEXT NOT NULL
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_regulatory_posture_workspace_created
+               ON regulatory_posture_snapshots(workspace_id, created_at)""",
+            """CREATE TABLE IF NOT EXISTS compliance_exceptions (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                control_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                compensating_controls_json TEXT,
+                owner TEXT,
+                expires_at TEXT NOT NULL,
+                requested_by TEXT,
+                reviewed_by TEXT,
+                review_note TEXT,
+                created_at TEXT NOT NULL,
+                reviewed_at TEXT
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_compliance_exceptions_workspace_control
+               ON compliance_exceptions(workspace_id, control_id, status)""",
+            """CREATE TABLE IF NOT EXISTS regulatory_evidence_exports (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                framework_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                sha256 TEXT NOT NULL,
+                path TEXT NOT NULL,
+                summary_json TEXT,
+                created_by TEXT,
+                created_at TEXT NOT NULL
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_regulatory_evidence_workspace_created
+               ON regulatory_evidence_exports(workspace_id, created_at)""",
+        ),
+    ),
+
+    Migration(
+        version="2.67.0-001",
+        name="persistent_notebook_runtime",
+        statements=(
+            """CREATE TABLE IF NOT EXISTS notebook_environments (
+                notebook_id TEXT PRIMARY KEY,
+                python_requirements_json TEXT NOT NULL,
+                r_requirements_json TEXT NOT NULL,
+                python_lock_json TEXT NOT NULL,
+                r_lock_json TEXT NOT NULL,
+                policy_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            """CREATE TABLE IF NOT EXISTS notebook_kernel_sessions (
+                notebook_id TEXT NOT NULL,
+                language TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                generation TEXT,
+                state_status TEXT NOT NULL,
+                execution_count INTEGER NOT NULL,
+                last_seen_at TEXT NOT NULL,
+                PRIMARY KEY(notebook_id, language)
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_notebook_kernel_sessions_state
+               ON notebook_kernel_sessions(state_status, last_seen_at)""",
+        ),
+    ),
+
+    Migration(
+        version="2.68.0-001",
+        name="data_catalog_discovery",
+        statements=(
+            """CREATE TABLE IF NOT EXISTS data_catalog_entries (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                resource_type TEXT NOT NULL,
+                resource_id TEXT NOT NULL,
+                title TEXT,
+                description TEXT,
+                business_domain TEXT,
+                owner_user_id TEXT,
+                steward_user_id TEXT,
+                tags_json TEXT,
+                glossary_json TEXT,
+                certification_status TEXT NOT NULL DEFAULT 'unreviewed',
+                created_by TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                UNIQUE(workspace_id, resource_type, resource_id)
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_data_catalog_workspace_type
+               ON data_catalog_entries(workspace_id, resource_type, updated_at)""",
+        ),
+    ),
 
 )
 

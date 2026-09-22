@@ -113,7 +113,7 @@ def connector_catalog() -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for spec in CONNECTOR_SPECS.values():
         item = asdict(spec)
-        item["options"] = list(spec.options)
+        item["options"] = list(spec.options) + ["retry_attempts", "retry_backoff_seconds"]
         item["driver_available"] = driver_available(spec.key)
         rows.append(item)
     return rows

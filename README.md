@@ -1,73 +1,13 @@
-# DataVision AI — v2.62.0
+# DataVision AI — v2.69.0
 
+## Nouveau dans v2.69.0 — Visual Analytics & NL→Viz avancé
 
-## Nouveau dans v2.62.0 — Observabilité distribuée & opérations multi-cluster
-
-- contexte distribué W3C `traceparent`, `X-Trace-ID` et `X-Request-ID` sur les requêtes API ;
-- recherche des événements de télémétrie par `trace_id` dans chaque workspace ;
-- pipeline OpenTelemetry traces avec export OTLP HTTP optionnel ;
-- `AlertmanagerConfig` Helm multi-canaux Slack, webhook et email, avec secrets externes ;
-- réplication cross-region vérifiée à distance par SHA-256 sans confondre upload et vérification ;
-- control plane multi-cluster persistant et état du cluster actif ;
-- bascule contrôlée en deux phases : plan, préflight, jeton temporaire, confirmation explicite ;
-- runbooks CLI exécutables et gate `DISTRIBUTED_OPS_ACCEPTANCE 8/8`.
-
-## Nouveau dans v2.59.0 — Résilience & exploitation HA
-- Probes **startup/readiness/liveness** distinctes, readiness sensible aux migrations.
-- **HPA**, **PodDisruptionBudget**, rolling update sans indisponibilité API/web et topology spread.
-- Migrations versionnées avec Job Helm pré-install/pré-upgrade.
-- Backup/restauration avec manifeste, SHA-256, rétention et CronJob Kubernetes.
-- Rotation Vault Transit opérable et journalisée.
-- Runbook DR avec RPO/RTO, validation et rollback.
-- Gate `RESILIENCE_ACCEPTANCE 8/8`.
-
-## Nouveau dans v2.58.0 — Hardening de production Entreprise
-- **KMS/HSM externe** via HashiCorp Vault Transit.
-- **SCIM Groups 2.0** avec membres et mapping de rôles.
-- Politiques session/appareil, appareils approuvés et révocation.
-- OpenTelemetry Collector, Helm/Kubernetes optionnel et Docker Compose conservé.
-- Gate `HARDENING_ACCEPTANCE 8/8`.
-
-
-## Nouveau dans v2.57.0 — Fenêtre d’assistant dynamique
-- Fenêtre flottante **redimensionnable** par poignée, ancrée en bas à droite.
-- Trois tailles accessibles immédiatement : **compacte**, **normale** et **agrandie**.
-- Bornes min/max et recalage automatique pour ne jamais sortir du viewport.
-- Taille choisie **mémorisée localement** entre les ouvertures.
-- Reflow interne via container query lorsque l’assistant devient étroit.
-- Respect de `prefers-reduced-motion` et animation désactivée pendant le drag.
-- Gate exécutable : `python scripts/assistant_window_acceptance.py --root . --check` (`6/6`).
-
-
-## Nouveau dans v2.56.0 — Plateforme Entreprise
-- Terminologie produit normalisée sur **Entreprise** tout en conservant les identifiants techniques historiques nécessaires à la compatibilité.
-- Provisioning **SCIM 2.0** avec jetons bruts affichés une seule fois et stockage SHA-256 uniquement.
-- Découverte SSO **OIDC par domaine email**, en complément du flux Authorization Code + PKCE existant.
-- **Private AI** exécutable : `local_only`, IA externe bloquée, aucune ligne brute ni valeur d’échantillon envoyée hors du workspace.
-- Profil **on-prem** et politique d’egress `explicit_opt_in` exposés dans la posture de sécurité.
-- Endpoint **Prometheus** workspace-scoped pour HTTP, erreurs, p95, jobs et consommation IA.
-- Cockpit **Posture Entreprise** dans Gouvernance & sécurité.
-- Gate exécutable : `python scripts/entreprise_acceptance.py --root . --check` (`8/8`).
-
-
-## Nouveau dans v2.55.0 — Governance & Control Plane
-- Control Plane consolidé : RBAC/RLS/CLS, audit, lineage, reliability, certifications, modèles et IA.
-- Matrice d’accès effective par rôle pour le dataset actif.
-- Snapshots de gouvernance hashés SHA-256 et auditables.
-- Publication readiness visible depuis Gouvernance & sécurité.
-
-## Nouveau dans v2.54.0 — Collaboration temps réel & partage gouverné
-
-- équipes persistantes par workspace et membres explicites ;
-- Review Center synchronisé par WebSocket avec ticket éphémère à usage unique ;
-- diff visuel entre snapshots de revues avec SHA-256 de changement ;
-- journal de décisions dérivé des événements append-only ;
-- partage ciblé membre/équipe, révocable, sans élévation RBAC/RLS/CLS ;
-- notifications internes actionnables et lecture globale ;
-- événements collaboration (`review_assigned`, `review_submitted`, `review_comment`, `review_mention`, `artifact_shared`, etc.) raccordés à Governed Actions pour notifications externes contrôlées ;
-- gate `COLLABORATION_ACCEPTANCE 8/8`.
-
-
+- recommandations de graphiques scorées avec confiance et justification ;
+- types réellement générables : violin, bubble, treemap, Sankey, carte de points, PCA et clusters ;
+- édition conversationnelle déterministe d'une visualisation existante ;
+- composition automatique multi-vues ;
+- contrat assistant aligné sur les nouveaux paramètres de visualisation ;
+- gate `VISUAL_ANALYTICS_ACCEPTANCE 8/8`.
 
 ## Correctif v2.53.3 — Lisibilité globale de toute la plateforme
 

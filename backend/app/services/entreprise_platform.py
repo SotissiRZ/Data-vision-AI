@@ -795,8 +795,10 @@ def entreprise_readiness(actor_id: str, workspace_id: str) -> dict[str, Any]:
     cfg = get_settings()
     from app.services.backup_service import replication_targets_status
     from app.services.multi_cluster import cluster_topology_status
+    from app.services.regulatory_compliance import posture as regulatory_posture
     replication = replication_targets_status()
     multi_cluster = cluster_topology_status(workspace_id)
+    regulatory = regulatory_posture(workspace_id)
     checks = [
         {"id": "tenant_isolation", "label": "Isolation tenant / RBAC", "status": "pass", "detail": "Workspace, RBAC, RLS et sécurité colonne actifs."},
         {"id": "sso", "label": "SSO OIDC", "status": "pass" if oidc_count else "warn", "detail": f"{oidc_count} fournisseur(s) OIDC actif(s)."},
@@ -816,11 +818,15 @@ def entreprise_readiness(actor_id: str, workspace_id: str) -> dict[str, Any]:
         {"id": "multizone_backup", "label": "Réplication backup multi-zone", "status": "pass" if replication.get("enabled") and replication.get("configured_targets", 0) >= 2 else "warn", "detail": f"{replication.get('configured_targets', 0)} cible(s) configurée(s) · réplication auto={'oui' if replication.get('enabled') else 'non'}."},
         {"id": "distributed_tracing", "label": "Observabilité distribuée", "status": "pass", "detail": "Traceparent W3C, X-Trace-ID, X-Request-ID et pipeline OTLP traces disponibles."},
         {"id": "multi_cluster", "label": "Continuité multi-cluster", "status": "pass" if multi_cluster.get("enabled") and multi_cluster.get("configured_clusters", 0) >= 2 else "warn", "detail": f"{multi_cluster.get('configured_clusters', 0)} cluster(s) · actif={multi_cluster.get('active_cluster_id') or 'non défini'} · failover={'activé' if multi_cluster.get('enabled') else 'désactivé'}."},
+        {"id": "admission_security", "label": "Admission & signatures d'images", "status": "pass" if cfg.admission_verify_images_enabled else "warn", "detail": f"Vérification des signatures={'activée' if cfg.admission_verify_images_enabled else 'désactivée'} · policy cluster-wide opt-in."},
+        {"id": "runtime_security", "label": "Sécurité runtime", "status": "pass" if cfg.runtime_security_seccomp_runtime_default and cfg.runtime_security_run_as_non_root and cfg.runtime_security_drop_all_capabilities and cfg.runtime_security_disallow_privilege_escalation else "warn", "detail": f"seccomp={'RuntimeDefault' if cfg.runtime_security_seccomp_runtime_default else 'non'} · non-root={'oui' if cfg.runtime_security_run_as_non_root else 'non'} · détection={'activée' if cfg.runtime_detection_enabled else 'désactivée'}."},
+        {"id": "continuous_compliance", "label": "Conformité continue", "status": "pass" if cfg.continuous_compliance_enabled else "warn", "detail": f"Scans périodiques={'activés' if cfg.continuous_compliance_enabled else 'désactivés'} · schedule={cfg.continuous_compliance_schedule}."},
+        {"id": "regulatory_posture", "label": "Posture réglementaire consolidée", "status": "pass" if regulatory.get("summary", {}).get("status") == "pass" else "warn", "detail": f"Conformité stricte={regulatory.get('summary', {}).get('compliant_percent', 0)}% · exceptions actives={regulatory.get('active_exception_count', 0)} · certification externe=non revendiquée."},
     ]
     pass_count = sum(1 for c in checks if c["status"] == "pass")
     return {
         "product": "DataVision AI",
-        "version": "2.62.0",
+        "version": "2.69.0",
         "edition": "Entreprise",
         "workspace_id": workspace_id,
         "organization_id": ws["organization_id"],
@@ -833,6 +839,7 @@ def entreprise_readiness(actor_id: str, workspace_id: str) -> dict[str, Any]:
         "kms": kms,
         "backup_replication": replication,
         "multi_cluster": multi_cluster,
+        "regulatory_compliance": regulatory,
         "checks": checks,
         "score": round(pass_count / len(checks) * 100),
         "ready": all(c["status"] != "fail" for c in checks),

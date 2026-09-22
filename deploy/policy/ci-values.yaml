@@ -1,0 +1,6 @@
+secrets:
+  create: false
+  existingSecret: datavision-ci-runtime-secrets
+monitoring:
+  prometheusRule:
+    enabled: true

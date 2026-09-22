@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-EXPECTED_VERSION = "2.60.0"
+EXPECTED_VERSION = "2.69.0"
 EXPECTED_CRYPTOGRAPHY = "cryptography==46.0.5"
 REQUIRED_FILES = (
     "VERSION",
@@ -34,6 +34,11 @@ REQUIRED_FILES = (
     "compliance/HARDENING_ACCEPTANCE.json",
     "compliance/RESILIENCE_ACCEPTANCE.json",
     "compliance/SRE_ACCEPTANCE.json",
+    "compliance/REGULATORY_COMPLIANCE_ACCEPTANCE.json",
+    "scripts/regulatory_compliance_acceptance.py",
+    "backend/app/services/regulatory_compliance.py",
+    "backend/tests/test_regulatory_compliance_v2650.py",
+    "frontend/components/RegulatoryCompliancePanel.tsx",
     "frontend/package.json",
     "frontend/next.config.mjs",
     "frontend/lib/assistant/orchestrator-adapter.ts",
@@ -112,6 +117,14 @@ REQUIRED_FILES = (
     "backend/app/assistant/agents.py",
     "frontend/lib/assistant/effects.ts",
     "frontend/e2e/mvp.spec.ts",
+    "frontend/e2e/production.spec.ts",
+    "scripts/production_acceptance.py",
+    "scripts/production_signoff.py",
+    "scripts/load_smoke.py",
+    "production-acceptance-windows.ps1",
+    "backend/tests/test_production_acceptance_v2660.py",
+    "docs/PRODUCTION_ACCEPTANCE_V266.md",
+    "docs/UAT_SIGNOFF_TEMPLATE.md",
 )
 
 
@@ -166,7 +179,7 @@ def check(root: Path) -> list[str]:
                 if not scripts.get(script):
                     errors.append(f"Missing frontend npm script: {script}")
 
-    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json", "compliance/SEMANTIC_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/XAI_ACCEPTANCE.json", "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json", "compliance/TYPOGRAPHY_ACCEPTANCE.json", "compliance/COLLABORATION_ACCEPTANCE.json", "compliance/ENTREPRISE_ACCEPTANCE.json", "compliance/ASSISTANT_WINDOW_ACCEPTANCE.json", "compliance/HARDENING_ACCEPTANCE.json", "compliance/RESILIENCE_ACCEPTANCE.json", "compliance/SRE_ACCEPTANCE.json"):
+    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json", "compliance/SEMANTIC_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/XAI_ACCEPTANCE.json", "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json", "compliance/TYPOGRAPHY_ACCEPTANCE.json", "compliance/COLLABORATION_ACCEPTANCE.json", "compliance/ENTREPRISE_ACCEPTANCE.json", "compliance/ASSISTANT_WINDOW_ACCEPTANCE.json", "compliance/HARDENING_ACCEPTANCE.json", "compliance/RESILIENCE_ACCEPTANCE.json", "compliance/SRE_ACCEPTANCE.json", "compliance/REGULATORY_COMPLIANCE_ACCEPTANCE.json"):
         path = root / rel
         if not path.is_file():
             continue

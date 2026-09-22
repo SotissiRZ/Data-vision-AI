@@ -13,10 +13,23 @@ spec:
     metadata:
       labels: {app.kubernetes.io/component: worker, app.kubernetes.io/instance: {{ .Release.Name }}}
     spec:
+      automountServiceAccountToken: false
+      {{- if .Values.runtimeSecurity.podSecurityContext.enabled }}
+      securityContext:
+        runAsNonRoot: {{ .Values.runtimeSecurity.podSecurityContext.runAsNonRoot }}
+        seccompProfile: {type: {{ .Values.runtimeSecurity.podSecurityContext.seccompProfile }}}
+      {{- end }}
       containers:
         - name: worker
           image: "{{ .Values.images.api.repository }}:{{ .Values.images.api.tag }}"
           imagePullPolicy: {{ .Values.images.api.pullPolicy }}
+          {{- if .Values.runtimeSecurity.containerSecurityContext.enabled }}
+          securityContext:
+            allowPrivilegeEscalation: {{ .Values.runtimeSecurity.containerSecurityContext.allowPrivilegeEscalation }}
+            readOnlyRootFilesystem: {{ .Values.runtimeSecurity.containerSecurityContext.readOnlyRootFilesystem }}
+            capabilities:
+              drop: {{ if .Values.runtimeSecurity.containerSecurityContext.dropAllCapabilities }}["ALL"]{{ else }}[]{{ end }}
+          {{- end }}
           command: ["python", "-m", "app.worker"]
           envFrom:
             - configMapRef: {name: {{ include "datavision.fullname" . }}-config}
@@ -32,6 +45,7 @@ spec:
           resources: {{- toYaml .Values.resources.worker | nindent 12 }}
           volumeMounts:
             - {name: data, mountPath: /app/data}
+            - {name: tmp, mountPath: /tmp}
       volumes:
         - name: data
           {{- if .Values.persistence.enabled }}
@@ -39,3 +53,4 @@ spec:
           {{- else }}
           emptyDir: {}
           {{- end }}
+        - {name: tmp, emptyDir: {}}

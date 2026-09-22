@@ -144,13 +144,34 @@ class PersistentSessionMemoryStore(SessionMemoryStore):
             item.facts["screen"] = context.screen or context.route
             if context.uiState:
                 for key in (
+                    "areaKey",
+                    "areaLabel",
+                    "workspaceName",
+                    "workspaceRole",
                     "datasetName",
                     "datasetVersion",
+                    "datasetCreatedAt",
                     "rowCount",
                     "columnCount",
+                    "duplicateCount",
+                    "missingCells",
                     "qualityScore",
                     "qualityIssuesCount",
+                    "numericColumnCount",
+                    "categoricalColumnCount",
                     "temporalCoverage",
+                    "accessMode",
+                    "accessGoverned",
+                    "accessRole",
+                    "accessPolicyCount",
+                    "target",
+                    "algorithm",
+                    "modelTask",
+                    "modelAlgorithm",
+                    "modelPrimaryMetric",
+                    "modelFeatureCount",
+                    "trustScore",
+                    "trustGrade",
                 ):
                     if key in context.uiState:
                         item.facts[key] = context.uiState.get(key)

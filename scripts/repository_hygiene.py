@@ -17,6 +17,7 @@ ALLOWED_ROOT_FILES = {
     'docker-compose.yml',
     'install-windows.ps1',
     'preflight-windows.ps1',
+    'production-acceptance-windows.ps1',
     'rebuild-windows.ps1',
     'reset-docker.ps1',
     'start-datavision.ps1',

@@ -1,4 +1,40 @@
+# Roadmap d’exécution DataVision AI
+
+## Livré — v2.69.0 Visual Analytics & NL→Viz avancé
+
+- recommandations scorées et explicables ;
+- couverture homogène des visualisations avancées du CDC ;
+- édition conversationnelle de visualisations existantes ;
+- compositions multi-graphiques automatiques ;
+- assistant et Visualization Studio alignés sur le même moteur backend.
+
+Prochain jalon : v2.70 — AutoML Forecasting + Anomaly unifié.
+
 # Roadmap d’exécution
+
+## Livré — v2.68.0 Connecteurs, Data Catalog & Lineage
+
+- import ZIP natif multi-datasets sécurisé ;
+- retries/backoff exponentiels configurables pour les connecteurs ;
+- discovery/catalogue unifié des actifs data ;
+- documentation métier, ownership, stewardship, tags et certification ;
+- lineage cross-system depuis le système source jusqu'aux consommateurs ;
+- gate `CATALOG_LINEAGE_ACCEPTANCE 8/8`.
+
+La prochaine priorité est **v2.69 — Visual Analytics & NL→Viz avancé** : couverture homogène de la bibliothèque de graphiques, édition conversationnelle et compositions multi-visuelles.
+
+## Livré — v2.63.0 Sécurité opérationnelle & supply chain
+
+- SBOM CycloneDX/SPDX indexés et provenance in-toto/SLSA ;
+- signatures keyless Sigstore/Cosign des artefacts et images ;
+- images GHCR avec provenance/SBOM BuildKit ;
+- policy-as-code Rego bloquante sur les manifests Kubernetes ;
+- rotation automatique bornée aux secrets explicitement générés ;
+- rollback de release en deux phases et drill non destructif ;
+- CronJob Kubernetes de rotation désactivé par défaut ;
+- gate `SUPPLY_CHAIN_ACCEPTANCE 8/8`.
+
+La prochaine priorité est **v2.64 — Admission, runtime security & conformité continue** : admission policies signées, vérification d’images à l’entrée du cluster, profils seccomp/AppArmor, détection runtime et evidence packs de conformité.
 
 ## Livré — v2.62.0 Observabilité distribuée & opérations multi-cluster
 
@@ -10,8 +46,6 @@
 - bascule contrôlée en deux phases avec préflight et jeton temporaire ;
 - runbooks SRE exécutables ;
 - gate `DISTRIBUTED_OPS_ACCEPTANCE 8/8`.
-
-La prochaine priorité est **v2.63 — Sécurité opérationnelle & supply chain** : SBOM/signature d'images, attestations de provenance, policy-as-code de déploiement, rotation automatisée des secrets et exercices de rollback de release.
 
 ## Livré — v2.60.0 Exploitation avancée & SRE
 
@@ -213,3 +247,32 @@ Reste à compléter : OpenTelemetry/Prometheus externe, coût provider-native co
 - SLA et observabilité avancée.
 
 Complété en v2.55.0 : Governance Control Plane, matrice RBAC/RLS/CLS effective, snapshots et readiness de publication.
+
+## v2.64 — Admission, runtime security & conformité continue — livré
+
+- admission Kyverno cluster-wide opt-in ;
+- vérification d'images signées Sigstore/Cosign configurable ;
+- contexte runtime non-root / seccomp RuntimeDefault / drop ALL / no privilege escalation ;
+- règles Falco packagées sans imposer l'installation de Falco ;
+- scans de conformité avec distinction entre configuration déclarée et observation réelle ;
+- journal d'événements runtime ;
+- evidence packs SHA-256 ;
+- CronJob de conformité et contrôle de dérive ;
+- politique Rego étendue aux garde-fous runtime.
+
+## v2.65 — Conformité réglementaire automatisée & posture consolidée — livré
+
+- catalogue de contrôles et mappings NIST/ISO/SOC 2 ;
+- historique de posture, exceptions gouvernées, evidence packs et remédiation proposal-only.
+
+## v2.66 — Production Acceptance & E2E — livré
+
+- frontend typecheck/build bloquants en CI ;
+- Docker Compose config + stack candidate réelle ;
+- Helm lint/render + policy-as-code ;
+- Playwright smoke/MVP/production ;
+- smoke de charge p95/error rate ;
+- registre de preuves et sign-off cible sans faux positif ;
+- runner Windows reproductible pour Docker Desktop.
+
+Prochain jalon : v2.67 — Notebook Runtime persistant Python/R, kernels et environnements par projet.
