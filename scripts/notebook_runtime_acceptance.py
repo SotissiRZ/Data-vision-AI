@@ -12,7 +12,7 @@ CHECKS = [
     ("backend_session_contract", "backend/app/services/notebook_sandbox.py", ["execute_sandboxed_session", "open_kernel_session", "restart_kernel_session"]),
     ("environment_locking", "backend/app/services/notebook_service.py", ["notebook_environments", "sync_notebook_environment", "python_lock_json"]),
     ("kernel_api", "backend/app/api/routes/notebooks.py", ["/kernels", "/environment/sync", "KernelRestartAllRequest"]),
-    ("notebook_runtime_ui", "frontend/components/NotebookStudio.tsx", ["Runtime persistant", "Redémarrer + reconstruire", "Environnement & packages"]),
+    ("notebook_runtime_ui", "frontend/components/NotebookStudio.tsx", ["Runtime persistant", "Redémarrer + reconstruire", "Environnement workspace", "Overlay notebook & packages"]),
     ("persistent_runtime_tests", "backend/tests/test_notebook_persistent_v267.py", ["preserves_namespace", "same_persistent_session", "environment_lock"]),
 ]
 

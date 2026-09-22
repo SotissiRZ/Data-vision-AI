@@ -39,6 +39,8 @@ try {
   npm run test:e2e:smoke
   npm run test:e2e:mvp
   npm run test:e2e:production
+npm run test:e2e:accessibility
+npm run test:e2e:release-candidate
   Pop-Location
   Record-Evidence "e2e" "pass" "local-windows" "Playwright smoke, MVP and production suites passed"
 

@@ -46,3 +46,6 @@ sqlalchemy-redshift==1.0.0
 jsonschema==4.26.0
 
 webauthn>=2.2,<3
+google-cloud-kms==3.16.0
+azure-identity==1.25.3
+azure-keyvault-keys==4.11.2

@@ -1,0 +1,43 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.80.0",
+  "acceptance": "release_candidate_ready",
+  "external_signoff": "pending",
+  "passed": 8,
+  "total": 8,
+  "checks": [
+    {
+      "id": "version_freeze",
+      "ok": true
+    },
+    {
+      "id": "windows_version_alignment",
+      "ok": true
+    },
+    {
+      "id": "config_doctor",
+      "ok": true
+    },
+    {
+      "id": "upgrade_path",
+      "ok": true
+    },
+    {
+      "id": "stable_compose_state",
+      "ok": true
+    },
+    {
+      "id": "migration_marker",
+      "ok": true
+    },
+    {
+      "id": "release_workflow_complete",
+      "ok": true
+    },
+    {
+      "id": "reproducible_archive_contract",
+      "ok": true
+    }
+  ],
+  "runtime_test": "pass"
+}

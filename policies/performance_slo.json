@@ -1,0 +1,45 @@
+{
+  "schema": "datavision.performance-slo-policy/v1",
+  "policy_version": "2026.09",
+  "profiles": {
+    "local_smoke": {
+      "label": "Local engineering smoke",
+      "execution_context": "local",
+      "min_samples": 5,
+      "max_age_hours": 168,
+      "budgets": [
+        {"metric": "metadata_query_p95_ms", "operator": "<=", "threshold": 120.0, "unit": "ms"},
+        {"metric": "dataframe_groupby_p95_ms", "operator": "<=", "threshold": 350.0, "unit": "ms"},
+        {"metric": "json_roundtrip_p95_ms", "operator": "<=", "threshold": 80.0, "unit": "ms"},
+        {"metric": "benchmark_error_rate_pct", "operator": "<=", "threshold": 0.0, "unit": "%"},
+        {"metric": "benchmark_throughput_ops", "operator": ">=", "threshold": 5.0, "unit": "ops/s"}
+      ]
+    },
+    "production_standard": {
+      "label": "Production target load/SLO evidence",
+      "execution_context": "production",
+      "min_requests": 500,
+      "min_duration_seconds": 30,
+      "min_concurrency": 5,
+      "max_age_hours": 168,
+      "budgets": [
+        {"metric": "request_p50_ms", "operator": "<=", "threshold": 300.0, "unit": "ms"},
+        {"metric": "request_p95_ms", "operator": "<=", "threshold": 750.0, "unit": "ms"},
+        {"metric": "request_p99_ms", "operator": "<=", "threshold": 1500.0, "unit": "ms"},
+        {"metric": "error_rate_pct", "operator": "<=", "threshold": 1.0, "unit": "%"},
+        {"metric": "throughput_rps", "operator": ">=", "threshold": 20.0, "unit": "req/s"}
+      ]
+    }
+  },
+  "operational_slo": {
+    "api_availability_pct": 99.0,
+    "api_p95_latency_ms": 750.0,
+    "job_success_pct": 95.0,
+    "refresh_success_pct": 95.0
+  },
+  "notes": [
+    "Local smoke evidence validates the benchmark harness and regression budgets; it is not production capacity evidence.",
+    "Production compliance requires imported evidence generated against a non-local target with the production_standard profile.",
+    "Thresholds are engineering defaults and may be tightened per deployment; evidence never invents unmeasured production results."
+  ]
+}

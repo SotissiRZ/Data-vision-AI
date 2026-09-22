@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 
-EXPECTED_VERSION = "2.76.0"
+EXPECTED_VERSION = "2.80.0"
 EXPECTED_CRYPTOGRAPHY = "cryptography==46.0.5"
 REQUIRED_FILES = (
     "VERSION",
@@ -41,6 +41,32 @@ REQUIRED_FILES = (
     "compliance/I18N_ACCESSIBILITY_ACCEPTANCE.json",
     "compliance/CLOUD_CDC_ACCEPTANCE.json",
     "compliance/WORKSPACE_ENVIRONMENT_ACCEPTANCE.json",
+    "compliance/PERFORMANCE_SLO_ACCEPTANCE.json",
+    "compliance/CDC_GAP_CLOSURE_ACCEPTANCE.json",
+    "compliance/RELEASE_CANDIDATE_ACCEPTANCE.json",
+    "compliance/RELEASE_INSTALLATION_ACCEPTANCE.json",
+    "scripts/release_installation_acceptance.py",
+    "scripts/config_doctor.py",
+    "backend/tests/test_release_installation_v280.py",
+    "docs/RELEASE_CANDIDATE_V2800.md",
+    "docs/UPGRADE_V2790_TO_V2800.md",
+    "policies/release_candidate.json",
+    "upgrade-windows.ps1",
+    "scripts/release_candidate_acceptance.py",
+    "backend/tests/test_release_candidate_hardening_v279.py",
+    "frontend/e2e/release-candidate.spec.ts",
+    "docs/RELEASE_CANDIDATE_HARDENING_V2790.md",
+    "scripts/cdc_gap_closure_acceptance.py",
+    "docs/CDC_GAP_CLOSURE_V2780.md",
+    "backend/app/services/product_plans.py",
+    "backend/app/services/causal_inference.py",
+    "backend/tests/test_cdc_gap_closure_v278.py",
+    "scripts/performance_slo_acceptance.py",
+    "scripts/performance_benchmark.py",
+    "policies/performance_slo.json",
+    "backend/app/services/performance_evidence.py",
+    "backend/tests/test_performance_slo_v277.py",
+    "docs/PERFORMANCE_SLO_EVIDENCE_V2770.md",
     "scripts/workspace_environment_acceptance.py",
     "backend/app/services/workspace_environment.py",
     "backend/tests/test_workspace_environment_v276.py",
@@ -208,7 +234,7 @@ def check(root: Path) -> list[str]:
                 if not scripts.get(script):
                     errors.append(f"Missing frontend npm script: {script}")
 
-    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json", "compliance/SEMANTIC_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/XAI_ACCEPTANCE.json", "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json", "compliance/TYPOGRAPHY_ACCEPTANCE.json", "compliance/COLLABORATION_ACCEPTANCE.json", "compliance/ENTREPRISE_ACCEPTANCE.json", "compliance/ASSISTANT_WINDOW_ACCEPTANCE.json", "compliance/HARDENING_ACCEPTANCE.json", "compliance/RESILIENCE_ACCEPTANCE.json", "compliance/SRE_ACCEPTANCE.json", "compliance/REGULATORY_COMPLIANCE_ACCEPTANCE.json", "compliance/QUALITY_REMEDIATION_ACCEPTANCE.json", "compliance/STORYTELLING_ACCEPTANCE.json", "compliance/MODEL_GATEWAY_ACCEPTANCE.json", "compliance/I18N_ACCESSIBILITY_ACCEPTANCE.json", "compliance/CLOUD_CDC_ACCEPTANCE.json", "compliance/WORKSPACE_ENVIRONMENT_ACCEPTANCE.json"):
+    for rel in ("compliance/CDC_COVERAGE_MATRIX.json", "compliance/PRODUCTION_ACCEPTANCE.json", "compliance/MVP_ACCEPTANCE.json", "compliance/PREPARATION_ACCEPTANCE.json", "compliance/WORKSPACE_ACCEPTANCE.json", "compliance/ASSISTANT_ACCEPTANCE.json", "compliance/ASSISTANT_MULTIMODAL_ACCEPTANCE.json", "compliance/MULTI_AGENT_ACCEPTANCE.json", "compliance/SEMANTIC_ACCEPTANCE.json", "compliance/INSIGHT_ACCEPTANCE.json", "compliance/REPORT_ACCEPTANCE.json", "compliance/AUTOML_ACCEPTANCE.json", "compliance/ML_SAFETY_ACCEPTANCE.json", "compliance/XAI_ACCEPTANCE.json", "compliance/FORECASTING_ANOMALY_ACCEPTANCE.json", "compliance/TYPOGRAPHY_ACCEPTANCE.json", "compliance/COLLABORATION_ACCEPTANCE.json", "compliance/ENTREPRISE_ACCEPTANCE.json", "compliance/ASSISTANT_WINDOW_ACCEPTANCE.json", "compliance/HARDENING_ACCEPTANCE.json", "compliance/RESILIENCE_ACCEPTANCE.json", "compliance/SRE_ACCEPTANCE.json", "compliance/REGULATORY_COMPLIANCE_ACCEPTANCE.json", "compliance/QUALITY_REMEDIATION_ACCEPTANCE.json", "compliance/STORYTELLING_ACCEPTANCE.json", "compliance/MODEL_GATEWAY_ACCEPTANCE.json", "compliance/I18N_ACCESSIBILITY_ACCEPTANCE.json", "compliance/CLOUD_CDC_ACCEPTANCE.json", "compliance/WORKSPACE_ENVIRONMENT_ACCEPTANCE.json", "compliance/PERFORMANCE_SLO_ACCEPTANCE.json", "compliance/CDC_GAP_CLOSURE_ACCEPTANCE.json", "compliance/RELEASE_CANDIDATE_ACCEPTANCE.json", "compliance/RELEASE_INSTALLATION_ACCEPTANCE.json"):
         path = root / rel
         if not path.is_file():
             continue

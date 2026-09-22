@@ -6,6 +6,7 @@ from app.core.config import get_settings
 from app.services.job_service import QUEUE_KEY, run_job, submit_job, enqueue_due_retries
 from app.services.metadata_store import init_metadata_store, fetch_one, fetch_all
 from app.services.connector_service import claim_due_schedules, get_source
+from app.services.proactive_intelligence import claim_due_scan_schedules
 from app.services.governed_actions import process_due_runs
 from app.services.model_registry import LOCAL_ACTOR, LOCAL_WORKSPACE, claim_due_monitor_schedules
 
@@ -27,6 +28,27 @@ def _enqueue_due_refreshes() -> None:
         except Exception as exc:
             print(f"Refresh scheduler error for {schedule.get('source_id')}: {exc}", flush=True)
 
+
+
+def _enqueue_due_proactive_scans() -> None:
+    for schedule in claim_due_scan_schedules(limit=20):
+        try:
+            workspace_id = schedule.get("workspace_id")
+            ws = fetch_one("SELECT organization_id FROM workspaces WHERE id=:id", {"id": workspace_id}) if workspace_id else None
+            submit_job(
+                user_id=schedule.get("created_by") or "system-proactive",
+                organization_id=ws.get("organization_id") if ws else None,
+                workspace_id=workspace_id,
+                job_type="proactive_scan",
+                dataset_id=schedule["dataset_id"],
+                payload={
+                    "watch_ids": schedule.get("watch_ids") or [],
+                    "auto_configure": bool(schedule.get("auto_configure", True)),
+                    "trigger": "scheduled",
+                },
+            )
+        except Exception as exc:
+            print(f"Proactive scheduler error for {schedule.get('dataset_id')}: {exc}", flush=True)
 
 
 def _enqueue_due_model_monitors() -> None:
@@ -98,6 +120,7 @@ def main():
             now = time.monotonic()
             if now >= next_scheduler_check:
                 _enqueue_due_refreshes()
+                _enqueue_due_proactive_scans()
                 _enqueue_due_model_monitors()
                 enqueue_due_retries()
                 process_due_runs()

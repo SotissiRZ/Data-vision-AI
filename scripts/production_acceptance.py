@@ -24,7 +24,7 @@ CHECKS = [
     (
         "deployed_e2e",
         ".github/workflows/ci.yml",
-        ["e2e:", "test:e2e:smoke", "test:e2e:mvp", "test:e2e:production"],
+        ["e2e:", "test:e2e:smoke", "test:e2e:mvp", "test:e2e:production", "test:e2e:accessibility", "test:e2e:release-candidate"],
     ),
     (
         "load_smoke",
@@ -44,7 +44,7 @@ CHECKS = [
     (
         "target_runner",
         "production-acceptance-windows.ps1",
-        ["docker compose up", "test:e2e:production", "load_smoke.py", "production_signoff.py"],
+        ["docker compose up", "test:e2e:production", "test:e2e:accessibility", "test:e2e:release-candidate", "load_smoke.py", "production_signoff.py"],
     ),
 ]
 

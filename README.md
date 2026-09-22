@@ -1,4 +1,48 @@
-# DataVision AI — v2.76.0
+# DataVision AI — v2.80.0
+
+
+## Nouveau dans v2.80.0 — Release Candidate
+
+- gel fonctionnel : aucune nouvelle surface métier après ce jalon sans réouverture explicite du RC ;
+- scripts Windows d'installation, rebuild, démarrage et préflight alignés dynamiquement sur `VERSION` ;
+- nouveau `upgrade-windows.ps1` avec sauvegarde avant migration et sans suppression des volumes ;
+- `config_doctor.py` pour contrôler la configuration avant installation/déploiement ;
+- workflow Release aligné sur tous les gates V2.71→V2.80 et les E2E accessibilité/RC ;
+- gate `RELEASE_INSTALLATION_ACCEPTANCE` pour vérifier installation, upgrade, migration et packaging ;
+- archive source reproductible et vérifiable conservée comme artefact canonique du RC ;
+- frontières externes UAT/infrastructure toujours explicites : aucune auto-certification.
+
+## Nouveau dans v2.79.0 — Hardening & End-to-End Validation
+
+- headers de sécurité API + frontend ;
+- migrations ordonnées et idempotentes ;
+- backup/restore drill vérifié ;
+- sign-off production SHA-256 strict ;
+- exécution CI de tous les gates récents ;
+- E2E Release Candidate ;
+- séparation explicite entre readiness technique et preuves externes/UAT.
+
+## Nouveau dans v2.78.0 — CDC Gap Closure
+
+- plans `Starter`, `Pro` et `Entreprise` exécutoires avec entitlements et quotas persistants ;
+- quotas runtime sur workspaces, membres, datasets, connecteurs, notebooks, jobs et tours Assistant ;
+- KMS cloud natif AWS KMS, Google Cloud KMS et Azure Key Vault avec envelope encryption AES-256-GCM ;
+- estimation ATE observationnelle par propensity score/IPW avec balance, recouvrement, bootstrap et garde-fou causal explicite ;
+- scans proactifs planifiés, persistés et claimés sans double exécution par les workers ;
+- §46 Security, §66 Product Plans et §70 V2 fermés ;
+- gate `CDC_GAP_CLOSURE_ACCEPTANCE` 8/8 ;
+- couverture CDC portée à 97,3 % sans auto-certifier l’UAT ou l’infrastructure cible.
+
+## Nouveau dans v2.77.0 — Performance & SLO Evidence
+
+- budgets de performance/SLO versionnés en policy-as-code ;
+- benchmark local reproductible de non-régression sans faux claim production ;
+- runner de charge HTTP externe concurrent pour infrastructure cible ;
+- p50/p95/p99, débit, taux d’erreur, volume et environnement du runner capturés ;
+- preuves externes vérifiées par SHA-256 puis évaluées contre la politique gouvernée ;
+- ledger de preuves isolé par workspace et statuts `not_evidenced/passed/failed/stale` ;
+- cockpit Operational Intelligence enrichi ;
+- gate `PERFORMANCE_SLO_ACCEPTANCE` 8/8 et CDC §59 fermé.
 
 ## Nouveau dans v2.76.0 — Workspace Environments & Reproducibility
 

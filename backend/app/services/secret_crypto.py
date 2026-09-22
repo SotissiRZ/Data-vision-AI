@@ -16,6 +16,7 @@ from app.core.config import get_settings
 _PREFIX = "dvkms1"  # compatibility contract for local envelope v1
 _PREFIX_LOCAL = _PREFIX
 _PREFIX_EXTERNAL = "dvkms2"
+_PREFIX_CLOUD = "dvkms3"
 
 
 def _b64e(value: bytes) -> str:
@@ -137,6 +138,138 @@ def _vault_decrypt(encoded: str, *, aad: str) -> str:
         raise RuntimeError("Échec du déchiffrement via Vault Transit") from exc
 
 
+def _cloud_provider_configured(provider: str) -> bool:
+    settings = get_settings()
+    if provider == "aws_kms":
+        return bool(settings.aws_kms_key_id.strip())
+    if provider == "gcp_kms":
+        return bool(settings.gcp_kms_key_name.strip())
+    if provider == "azure_key_vault":
+        return bool(settings.azure_key_vault_key_id.strip())
+    return False
+
+
+def _cloud_wrap_key(provider: str, dek: bytes, *, aad: str) -> tuple[bytes, str]:
+    settings = get_settings()
+    if provider == "aws_kms":
+        import boto3
+        kwargs: dict[str, Any] = {}
+        if settings.aws_kms_region.strip():
+            kwargs["region_name"] = settings.aws_kms_region.strip()
+        if settings.aws_kms_endpoint_url.strip():
+            kwargs["endpoint_url"] = settings.aws_kms_endpoint_url.strip()
+        client = boto3.client("kms", **kwargs)
+        response = client.encrypt(
+            KeyId=settings.aws_kms_key_id.strip(),
+            Plaintext=dek,
+            EncryptionContext={"datavision_aad": aad},
+        )
+        return bytes(response["CiphertextBlob"]), str(response.get("KeyId") or settings.aws_kms_key_id)
+    if provider == "gcp_kms":
+        try:
+            from google.cloud import kms_v1
+        except Exception as exc:
+            raise RuntimeError("google-cloud-kms est requis pour SECRET_KMS_PROVIDER=gcp_kms") from exc
+        client = kms_v1.KeyManagementServiceClient()
+        name = settings.gcp_kms_key_name.strip()
+        response = client.encrypt(
+            request={
+                "name": name,
+                "plaintext": dek,
+                "additional_authenticated_data": aad.encode("utf-8"),
+            }
+        )
+        return bytes(response.ciphertext), name
+    if provider == "azure_key_vault":
+        try:
+            from azure.identity import DefaultAzureCredential
+            from azure.keyvault.keys.crypto import CryptographyClient, KeyWrapAlgorithm
+        except Exception as exc:
+            raise RuntimeError("azure-identity et azure-keyvault-keys sont requis pour SECRET_KMS_PROVIDER=azure_key_vault") from exc
+        key_id = settings.azure_key_vault_key_id.strip()
+        client = CryptographyClient(key_id, credential=DefaultAzureCredential())
+        wrapped = client.wrap_key(KeyWrapAlgorithm.rsa_oaep_256, dek)
+        return bytes(wrapped.encrypted_key), key_id
+    raise RuntimeError(f"Fournisseur KMS cloud non supporté : {provider}")
+
+
+def _cloud_unwrap_key(provider: str, wrapped: bytes, *, aad: str, key_ref: str) -> bytes:
+    settings = get_settings()
+    if provider == "aws_kms":
+        import boto3
+        kwargs: dict[str, Any] = {}
+        if settings.aws_kms_region.strip():
+            kwargs["region_name"] = settings.aws_kms_region.strip()
+        if settings.aws_kms_endpoint_url.strip():
+            kwargs["endpoint_url"] = settings.aws_kms_endpoint_url.strip()
+        client = boto3.client("kms", **kwargs)
+        response = client.decrypt(
+            CiphertextBlob=wrapped,
+            KeyId=key_ref or settings.aws_kms_key_id.strip(),
+            EncryptionContext={"datavision_aad": aad},
+        )
+        return bytes(response["Plaintext"])
+    if provider == "gcp_kms":
+        try:
+            from google.cloud import kms_v1
+        except Exception as exc:
+            raise RuntimeError("google-cloud-kms est requis pour déchiffrer ce secret") from exc
+        client = kms_v1.KeyManagementServiceClient()
+        response = client.decrypt(
+            request={
+                "name": key_ref or settings.gcp_kms_key_name.strip(),
+                "ciphertext": wrapped,
+                "additional_authenticated_data": aad.encode("utf-8"),
+            }
+        )
+        return bytes(response.plaintext)
+    if provider == "azure_key_vault":
+        try:
+            from azure.identity import DefaultAzureCredential
+            from azure.keyvault.keys.crypto import CryptographyClient, KeyWrapAlgorithm
+        except Exception as exc:
+            raise RuntimeError("azure-identity et azure-keyvault-keys sont requis pour déchiffrer ce secret") from exc
+        client = CryptographyClient(key_ref or settings.azure_key_vault_key_id.strip(), credential=DefaultAzureCredential())
+        result = client.unwrap_key(KeyWrapAlgorithm.rsa_oaep_256, wrapped)
+        return bytes(result.key)
+    raise RuntimeError(f"Fournisseur KMS cloud non supporté : {provider}")
+
+
+def _cloud_encrypt(value: str, *, provider: str, aad: str) -> str:
+    if not _cloud_provider_configured(provider):
+        raise RuntimeError(f"KMS cloud {provider} sélectionné mais configuration incomplète")
+    dek = AESGCM.generate_key(bit_length=256)
+    nonce = os.urandom(12)
+    ciphertext = AESGCM(dek).encrypt(nonce, value.encode("utf-8"), aad.encode("utf-8"))
+    wrapped, key_ref = _cloud_wrap_key(provider, dek, aad=aad)
+    payload = {
+        "provider": provider,
+        "key_ref": key_ref,
+        "wrapped_key": _b64e(wrapped),
+        "nonce": _b64e(nonce),
+        "ciphertext": _b64e(ciphertext),
+    }
+    return f"{_PREFIX_CLOUD}:{provider}:{_b64e(json.dumps(payload, separators=(',', ':')).encode('utf-8'))}"
+
+
+def _cloud_decrypt(provider: str, encoded: str, *, aad: str) -> str:
+    try:
+        payload = json.loads(_b64d(encoded).decode("utf-8"))
+        if str(payload.get("provider")) != provider:
+            raise ValueError("provider mismatch")
+        wrapped = _b64d(str(payload["wrapped_key"]))
+        nonce = _b64d(str(payload["nonce"]))
+        ciphertext = _b64d(str(payload["ciphertext"]))
+        key_ref = str(payload.get("key_ref") or "")
+    except Exception as exc:
+        raise RuntimeError("Ciphertext KMS cloud DataVision invalide") from exc
+    dek = _cloud_unwrap_key(provider, wrapped, aad=aad, key_ref=key_ref)
+    try:
+        return AESGCM(dek).decrypt(nonce, ciphertext, aad.encode("utf-8")).decode("utf-8")
+    except Exception as exc:
+        raise RuntimeError("Échec du déchiffrement de l'enveloppe KMS cloud") from exc
+
+
 def encrypt_secret(value: str, *, aad: str = "datavision-secret") -> str:
     if not value:
         return ""
@@ -144,6 +277,8 @@ def encrypt_secret(value: str, *, aad: str = "datavision-secret") -> str:
     provider = str(settings.secret_kms_provider or "local").strip().lower()
     if provider == "vault_transit":
         return _vault_encrypt(value, aad=aad)
+    if provider in {"aws_kms", "gcp_kms", "azure_key_vault"}:
+        return _cloud_encrypt(value, provider=provider, aad=aad)
     if provider != "local":
         raise RuntimeError(f"Fournisseur KMS non supporté : {provider}")
     key_id = settings.secret_kms_key_id or "primary"
@@ -156,6 +291,11 @@ def encrypt_secret(value: str, *, aad: str = "datavision-secret") -> str:
 def decrypt_secret(value: str | None, *, aad: str = "datavision-secret") -> str:
     if not value:
         return ""
+    if value.startswith(_PREFIX_CLOUD + ":"):
+        parts = value.split(":", 2)
+        if len(parts) != 3 or parts[1] not in {"aws_kms", "gcp_kms", "azure_key_vault"}:
+            raise RuntimeError("Ciphertext KMS cloud DataVision invalide")
+        return _cloud_decrypt(parts[1], parts[2], aad=aad)
     if value.startswith(_PREFIX_EXTERNAL + ":"):
         parts = value.split(":", 2)
         if len(parts) != 3 or parts[1] != "vault_transit":
@@ -202,6 +342,25 @@ def kms_status() -> dict[str, Any]:
             "external_kms": True,
             "hsm_capable": True,
             "hsm_backed": bool(settings.vault_transit_hsm_backed),
+            "legacy_fernet_decrypt": True,
+            "production_ready": configured,
+        }
+    if provider in {"aws_kms", "gcp_kms", "azure_key_vault"}:
+        configured = _cloud_provider_configured(provider)
+        key_ref = {
+            "aws_kms": settings.aws_kms_key_id,
+            "gcp_kms": settings.gcp_kms_key_name,
+            "azure_key_vault": settings.azure_key_vault_key_id,
+        }[provider]
+        return {
+            "scheme": "AES-256-GCM cloud KMS envelope v1",
+            "provider": provider,
+            "key_id": key_ref,
+            "dedicated_key": configured,
+            "material_source": "external_cloud_kms",
+            "external_kms": True,
+            "hsm_capable": True,
+            "hsm_backed": None,
             "legacy_fernet_decrypt": True,
             "production_ready": configured,
         }

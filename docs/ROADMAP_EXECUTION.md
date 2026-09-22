@@ -1,5 +1,60 @@
 # Roadmap d’exécution DataVision AI
 
+## Livré — v2.80.0 Release Candidate
+
+- gel fonctionnel déclaré et versionné ;
+- installation Windows alignée dynamiquement sur le fichier `VERSION` ;
+- chemin d'upgrade v2.79 → v2.80 avec sauvegarde avant migration et conservation des volumes ;
+- doctor de configuration pour détecter secrets placeholders et paramètres invalides ;
+- migration marker RC `2.80.0-001` ;
+- workflow Release aligné sur l'intégralité des gates récents et des E2E RC/accessibilité ;
+- gate `RELEASE_INSTALLATION_ACCEPTANCE` 8/8 ;
+- packaging reproductible + vérification SHA-256 conservés comme condition de release.
+
+Prochain jalon : **v3.0.0 — Production Stable**, uniquement après réception et vérification des preuves externes cibles/UAT requises.
+
+## Livré — v2.79.0 Hardening & End-to-End Validation
+
+- headers de sécurité API/frontend et HSTS conditionnel côté API ;
+- migrations ordonnées par version et idempotence contrôlée ;
+- backup/restore drill vérifié comme scénario critique ;
+- sign-off production durci par SHA-256 et revalidation des pièces jointes ;
+- waivers interdits dans le sign-off strict par défaut ;
+- CI rendue exhaustive sur tous les gates récents ;
+- E2E Release Candidate et accessibilité ajoutés au pipeline ;
+- gate `RELEASE_CANDIDATE_ACCEPTANCE` 8/8 ;
+- CDC maintenu honnêtement à 97,3 % : les preuves cible/UAT restent externes.
+
+Prochain jalon : **v2.80 — Release Candidate** : gel fonctionnel, packaging final, check d'installation/upgrade et préparation des preuves externes de sign-off.
+
+## Livré — v2.78.0 CDC Gap Closure
+
+- plans produit et quotas runtime persistants ;
+- entitlements sur les capacités Enterprise sensibles ;
+- KMS cloud natif AWS KMS / Google Cloud KMS / Azure Key Vault ;
+- causalité observationnelle gouvernée avec `causal_claim_allowed=false` ;
+- scheduler proactif persistant et claim sûr multi-worker ;
+- gate `CDC_GAP_CLOSURE_ACCEPTANCE` 8/8 ;
+- CDC porté à 97,3 % : 71 implemented, 4 partial, 0 missing.
+
+Les gaps restants ne sont pas masqués : §2 est une frontière de parité d’écosystème, tandis que §71/§74 nécessitent des preuves de cible et une UAT signée; §75 dépend de ces clôtures.
+
+Prochain jalon : **v2.79 — Hardening & End-to-End Validation** : stress des parcours critiques, matrice E2E de release candidate, sécurité/résilience et préparation du sign-off externe.
+
+## Livré — v2.77.0 Performance & SLO Evidence
+
+- policy-as-code versionnée pour les budgets performance/SLO ;
+- benchmark local de non-régression ;
+- runner de charge externe concurrent pour cible HTTPS réelle ;
+- p50/p95/p99, débit, erreurs et volume mesurés ;
+- validation SHA-256 et contraintes minimales de charge ;
+- ledger de preuves par workspace et séparation stricte local/production ;
+- cockpit Operational Intelligence enrichi ;
+- gate `PERFORMANCE_SLO_ACCEPTANCE` 8/8 ;
+- CDC §59 fermé.
+
+Prochain jalon : **v2.78 — CDC Gap Closure** : fermer les gaps restants P0/P1/P2 techniquement automatisables, puis préparer le Release Candidate sans falsifier les preuves externes d'UAT/déploiement.
+
 ## Livré — v2.76.0 Workspace Environments & Reproducibility
 
 - manifests Python/R gouvernés par workspace ;

@@ -1001,6 +1001,15 @@ export async function getOperationalTelemetry(token:string, workspace_id:string,
 export async function getSREStatus(token:string, workspace_id:string, hours=24) {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/sre?hours=${hours}`, { headers:enterpriseHeaders(token) }), 'Posture SRE indisponible');
 }
+export async function getPerformanceEvidence(token:string, workspace_id:string) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/performance`, { headers:enterpriseHeaders(token) }), 'Preuves de performance indisponibles');
+}
+export async function runLocalPerformanceBenchmark(token:string, workspace_id:string, payload:{profile?:string;rows?:number;samples?:number}={}) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/performance/benchmark`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify(payload) }), 'Benchmark de performance impossible');
+}
+export async function importPerformanceEvidence(token:string, workspace_id:string, evidence:Record<string,unknown>) {
+  return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/performance/evidence`, { method:'POST', headers:enterpriseHeaders(token), body:JSON.stringify({evidence}) }), 'Import de preuve performance impossible');
+}
 export async function emitSREAlerts(token:string, workspace_id:string, hours=24) {
   return parse<any>(await apiFetch(`${API}/workspaces/${workspace_id}/operational/sre/emit?hours=${hours}`, { method:'POST', headers:enterpriseHeaders(token) }), 'Évaluation SRE impossible');
 }

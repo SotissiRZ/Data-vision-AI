@@ -35,6 +35,13 @@ from app.services.operational_intelligence import (
     create_evaluation_suite, list_evaluation_suites, get_evaluation_suite, add_evaluation_case,
     run_evaluation_suite, list_evaluation_runs, get_evaluation_run,
 )
+from app.services.product_plans import (
+    plan_catalog, organization_plan, assign_organization_plan, workspace_plan_status,
+    assert_feature as assert_plan_feature, consume_daily_quota,
+)
+from app.services.performance_evidence import (
+    performance_evidence_status, run_local_benchmark, import_external_evidence, list_performance_evidence,
+)
 from app.services.sre_operations import (
     sre_status, capture_sre_snapshot, emit_sre_alerts, list_sre_snapshots,
     list_sre_alert_routes, save_sre_alert_route, delete_sre_alert_route,
@@ -188,6 +195,18 @@ class ChaosDrillRequest(BaseModel):
     intensity: int = Field(default=5, ge=1, le=20)
 
 
+
+
+class PerformanceBenchmarkRequest(BaseModel):
+    profile: str = Field(default="local_smoke", pattern="^[a-z0-9_-]{2,80}$")
+    rows: int = Field(default=20000, ge=1000, le=100000)
+    samples: int = Field(default=8, ge=1, le=50)
+
+
+class PerformanceEvidenceImportRequest(BaseModel):
+    evidence: dict[str, Any]
+
+
 class FailoverPlanRequest(BaseModel):
     target_cluster_id: str = Field(min_length=1, max_length=120)
     reason: str = Field(default="operational failover", min_length=3, max_length=1000)
@@ -324,6 +343,10 @@ class ComplianceExceptionDecisionRequest(BaseModel):
 class WorkspaceCreateRequest(BaseModel):
     organization_id: str
     name: str = Field(min_length=1, max_length=160)
+
+
+class ProductPlanAssignmentRequest(BaseModel):
+    plan_id: str = Field(pattern="^(starter|pro|entreprise)$")
 
 
 class ScimTokenRequest(BaseModel):
@@ -1073,6 +1096,7 @@ def scim_tokens_list(organization_id: str, user=Depends(current_user)):
 @router.post("/organizations/{organization_id}/scim/tokens")
 def scim_token_create(organization_id: str, req: ScimTokenRequest, user=Depends(current_user)):
     try:
+        assert_plan_feature(req.workspace_id, "enterprise_identity")
         return create_scim_token(user["id"], organization_id, req.workspace_id, name=req.name, default_role=req.default_role)
     except Exception as exc:
         _handle(exc)
@@ -1236,6 +1260,45 @@ def workspace_prometheus_metrics(workspace_id: str, hours: int = Query(default=2
         _handle(exc)
 
 
+@router.get("/plans/catalog")
+def product_plan_catalog(user=Depends(current_user)):
+    return {"plans": plan_catalog()}
+
+
+@router.get("/organizations/{organization_id}/plan")
+def organization_product_plan(organization_id: str, user=Depends(current_user)):
+    membership = fetch_one(
+        "SELECT role FROM organization_members WHERE organization_id=:org AND user_id=:user",
+        {"org": organization_id, "user": user["id"]},
+    )
+    if not membership:
+        raise HTTPException(status_code=403, detail="Accès à l'organisation refusé")
+    return {"plan": organization_plan(organization_id)}
+
+
+@router.put("/organizations/{organization_id}/plan")
+def organization_product_plan_assign(organization_id: str, req: ProductPlanAssignmentRequest, user=Depends(current_user)):
+    membership = fetch_one(
+        "SELECT role FROM organization_members WHERE organization_id=:org AND user_id=:user",
+        {"org": organization_id, "user": user["id"]},
+    )
+    if not membership or membership.get("role") not in {"owner", "admin"}:
+        raise HTTPException(status_code=403, detail="Rôle owner/admin requis pour modifier le plan")
+    plan = assign_organization_plan(organization_id, req.plan_id, actor_user_id=user["id"])
+    record_event(
+        "product_plan.assign", user_id=user["id"], organization_id=organization_id,
+        resource_type="organization_plan", resource_id=organization_id, payload={"plan_id": req.plan_id},
+    )
+    return {"plan": plan}
+
+
+@router.get("/workspaces/{workspace_id}/plan")
+def workspace_product_plan(workspace_id: str, user=Depends(current_user)):
+    if not workspace_role(user["id"], workspace_id):
+        raise HTTPException(status_code=403, detail="Accès au workspace refusé")
+    return {"plan": workspace_plan_status(workspace_id)}
+
+
 @router.post("/workspaces")
 def workspace_create(req: WorkspaceCreateRequest, user=Depends(current_user)):
     try:
@@ -1259,6 +1322,7 @@ def workspace_oidc_list(workspace_id: str, user=Depends(current_user)):
 def workspace_oidc_create(workspace_id: str, req: OIDCProviderRequest, user=Depends(current_user)):
     try:
         _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        assert_plan_feature(workspace_id, "enterprise_identity")
         item = create_oidc_provider(user["id"], workspace_id, **req.model_dump())
         record_event("identity.oidc_provider_create", user_id=user["id"], workspace_id=workspace_id, resource_type="oidc_provider", resource_id=item["id"], payload={"name": item["name"], "issuer": item["issuer"]})
         return {"provider": item}
@@ -1549,6 +1613,9 @@ def jobs_submit(req: JobSubmitRequest, user=Depends(current_user)):
         if req.workspace_id:
             perm = "model:run" if req.job_type == "automl" else "analysis:run"
             _workspace_permission(user["id"], req.workspace_id, perm)
+            if req.job_type == "automl":
+                assert_plan_feature(req.workspace_id, "automl")
+            consume_daily_quota(req.workspace_id, "jobs", amount=1)
         job = submit_job(user_id=user["id"], organization_id=req.organization_id, workspace_id=req.workspace_id, job_type=req.job_type, dataset_id=req.dataset_id, payload=req.payload, max_retries=req.max_retries, retry_backoff_seconds=req.retry_backoff_seconds)
         record_event("job.submit", user_id=user["id"], organization_id=req.organization_id, workspace_id=req.workspace_id, resource_type="job", resource_id=job["id"], payload={"job_type": req.job_type, "dataset_id": req.dataset_id})
         return {"job": job}
@@ -1790,6 +1857,48 @@ def operational_chaos_list(workspace_id: str, limit: int = Query(default=25, ge=
     try:
         _workspace_permission(user["id"], workspace_id, "observability:read")
         return {"drills": list_chaos_drills(workspace_id, limit=limit)}
+    except Exception as exc:
+        _handle(exc)
+
+
+
+
+@router.get("/workspaces/{workspace_id}/operational/performance")
+def operational_performance_status(workspace_id: str, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return performance_evidence_status(workspace_id)
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/operational/performance/benchmark")
+def operational_performance_benchmark(workspace_id: str, req: PerformanceBenchmarkRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        result = run_local_benchmark(user["id"], workspace_id, profile=req.profile, rows=req.rows, samples=req.samples)
+        record_event("performance.benchmark.local", user_id=user["id"], workspace_id=workspace_id, resource_type="performance_evidence", resource_id=result["id"], payload={"profile": result.get("profile"), "status": result.get("status"), "sha256": result.get("artifact_sha256")})
+        return {"evidence": result, "status": performance_evidence_status(workspace_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.post("/workspaces/{workspace_id}/operational/performance/evidence")
+def operational_performance_evidence_import(workspace_id: str, req: PerformanceEvidenceImportRequest, user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "workspace:manage")
+        result = import_external_evidence(user["id"], workspace_id, req.evidence)
+        record_event("performance.evidence.import", user_id=user["id"], workspace_id=workspace_id, resource_type="performance_evidence", resource_id=result["id"], payload={"profile": result.get("profile"), "status": result.get("status"), "target": result.get("target"), "sha256": result.get("artifact_sha256")})
+        return {"evidence": result, "status": performance_evidence_status(workspace_id)}
+    except Exception as exc:
+        _handle(exc)
+
+
+@router.get("/workspaces/{workspace_id}/operational/performance/runs")
+def operational_performance_runs(workspace_id: str, limit: int = Query(default=50, ge=1, le=200), user=Depends(current_user)):
+    try:
+        _workspace_permission(user["id"], workspace_id, "observability:read")
+        return {"runs": list_performance_evidence(workspace_id, limit=limit)}
     except Exception as exc:
         _handle(exc)
 
@@ -2200,6 +2309,7 @@ def actions_destinations_list(workspace_id: str, user=Depends(current_user)):
 def actions_destinations_create(workspace_id: str, req: ActionDestinationRequest, user=Depends(current_user)):
     try:
         _workspace_permission(user["id"], workspace_id, "actions:manage")
+        assert_plan_feature(workspace_id, "governed_actions")
         dest = create_destination(user["id"], workspace_id, **req.model_dump())
         record_event("action.destination.create", user_id=user["id"], workspace_id=workspace_id, resource_type="action_destination", resource_id=dest["id"], payload={"name":req.name})
         return {"destination": dest}
@@ -2242,6 +2352,7 @@ def actions_rules_list(workspace_id: str, user=Depends(current_user)):
 def actions_rules_save(workspace_id: str, req: ActionRuleRequest, user=Depends(current_user)):
     try:
         _workspace_permission(user["id"], workspace_id, "actions:manage")
+        assert_plan_feature(workspace_id, "governed_actions")
         rule = save_action_rule(user["id"], workspace_id, **req.model_dump())
         record_event("action.rule.save", user_id=user["id"], workspace_id=workspace_id, resource_type="action_rule", resource_id=rule["id"], payload={"event_type":rule["event_type"],"approval_mode":rule["approval_mode"]})
         return {"rule": rule}

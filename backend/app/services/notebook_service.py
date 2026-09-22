@@ -33,6 +33,7 @@ from app.services.notebook_sandbox import (
     sandbox_health,
     sandbox_packages,
 )
+from app.services.product_plans import assert_feature, assert_workspace_resource_quota
 from app.services.workspace_environment import (
     merge_requirements,
     workspace_environment_snapshot,
@@ -651,6 +652,9 @@ def create_notebook(
 ) -> dict[str, Any]:
     _ensure_tables()
     scope_type, scope_id, actor = _scope(require_run=True)
+    if scope_type == "workspace":
+        assert_feature(scope_id, "notebooks")
+        assert_workspace_resource_quota(scope_id, "notebooks")
     now = utcnow()
     notebook_id = str(uuid.uuid4())
     dataset_version = None

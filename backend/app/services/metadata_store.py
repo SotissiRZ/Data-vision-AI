@@ -128,6 +128,59 @@ SCHEMA_SQL = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS performance_evidence_runs (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        profile TEXT NOT NULL,
+        source TEXT NOT NULL,
+        execution_context TEXT NOT NULL,
+        target TEXT,
+        status TEXT NOT NULL,
+        artifact_sha256 TEXT NOT NULL,
+        payload_json TEXT NOT NULL,
+        created_by TEXT,
+        created_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS organization_plan_assignments (
+        organization_id TEXT PRIMARY KEY,
+        plan_id TEXT NOT NULL,
+        updated_by TEXT,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS plan_usage_daily (
+        workspace_id TEXT NOT NULL,
+        metric TEXT NOT NULL,
+        usage_date TEXT NOT NULL,
+        amount INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY(workspace_id, metric, usage_date)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS proactive_scan_schedules (
+        dataset_id TEXT PRIMARY KEY,
+        workspace_id TEXT,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        interval_minutes INTEGER NOT NULL DEFAULT 1440,
+        next_run_at TEXT NOT NULL,
+        last_run_at TEXT,
+        last_status TEXT,
+        watch_ids_json TEXT NOT NULL DEFAULT '[]',
+        auto_configure INTEGER NOT NULL DEFAULT 1,
+        created_by TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+    )
+    """,
+    """
+    CREATE INDEX IF NOT EXISTS idx_performance_evidence_workspace_created
+    ON performance_evidence_runs(workspace_id, created_at)
+    """,
+    """
     CREATE TABLE IF NOT EXISTS workspace_members (
         workspace_id TEXT NOT NULL,
         user_id TEXT NOT NULL,

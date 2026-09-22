@@ -22,6 +22,7 @@ ALLOWED_ROOT_FILES = {
     'reset-docker.ps1',
     'start-datavision.ps1',
     'stop-datavision.ps1',
+    'upgrade-windows.ps1',
 }
 LEGACY_PATTERNS = ('MERGE_MANIFEST_V', 'MIGRATION_FROM_')
 

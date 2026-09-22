@@ -46,6 +46,7 @@ from app.services.semantic_layer import (
 from app.services.trust_center import trust_center
 from app.services.decision_lab import model_what_if, sensitivity_curve, optimize_scenarios
 from app.services.root_cause import root_cause_analysis
+from app.services.causal_inference import estimate_ate
 from app.services.feature_store import (
     create_feature_set, get_feature_set, list_feature_sets,
     materialize_feature_set, model_feature_contract,
@@ -79,6 +80,7 @@ from app.services.proactive_intelligence import (
     list_watches as proactive_list_watches, save_watch as proactive_save_watch, delete_watch as proactive_delete_watch,
     auto_configure_watches as proactive_auto_configure, scan as proactive_scan, list_alerts as proactive_list_alerts,
     update_alert_status as proactive_update_alert_status, proactive_summary,
+    save_scan_schedule as proactive_save_scan_schedule, get_scan_schedule as proactive_get_scan_schedule,
 )
 
 router = APIRouter(prefix="/datasets", tags=["datasets"])
@@ -573,6 +575,15 @@ class RootCauseRequest(BaseModel):
     top_n: int = Field(default=8, ge=1, le=20)
 
 
+class CausalATERequest(BaseModel):
+    treatment: str
+    outcome: str
+    covariates: list[str] = Field(min_length=1, max_length=100)
+    trim: float = Field(default=0.05, ge=0.0, lt=0.5)
+    bootstrap_samples: int = Field(default=200, ge=20, le=2000)
+    random_state: int = Field(default=42, ge=0, le=2_147_483_647)
+
+
 class ScenarioOptimizeRequest(BaseModel):
     base_row: dict
     controls: dict[str, dict]
@@ -607,6 +618,13 @@ class ProactiveAutoRequest(BaseModel):
 
 class ProactiveScanRequest(BaseModel):
     watch_ids: list[str] = []
+    auto_configure: bool = True
+
+
+class ProactiveScheduleRequest(BaseModel):
+    enabled: bool = True
+    interval_minutes: int = Field(default=1440, ge=15, le=43200)
+    watch_ids: list[str] = Field(default_factory=list, max_length=200)
     auto_configure: bool = True
 
 
@@ -1995,6 +2013,35 @@ def dataset_proactive_watch_delete(dataset_id: str, watch_id: str):
         raise HTTPException(status_code=404, detail="Surveillance introuvable") from exc
 
 
+@router.get("/{dataset_id}/proactive/schedule")
+def dataset_proactive_schedule_get(dataset_id: str):
+    try:
+        get_meta(dataset_id)
+        return {"schedule": proactive_get_scan_schedule(dataset_id)}
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+
+
+@router.put("/{dataset_id}/proactive/schedule")
+def dataset_proactive_schedule_save(dataset_id: str, body: ProactiveScheduleRequest):
+    try:
+        get_meta(dataset_id)
+        actor_id, workspace_id = _registry_identity("analysis:run")
+        schedule = proactive_save_scan_schedule(
+            dataset_id,
+            workspace_id=None if workspace_id == LOCAL_WORKSPACE else workspace_id,
+            actor_id=actor_id,
+            enabled=body.enabled,
+            interval_minutes=body.interval_minutes,
+            watch_ids=body.watch_ids,
+            auto_configure=body.auto_configure,
+        )
+        return {"schedule": schedule}
+    except (FileNotFoundError, ValueError, PermissionError) as exc:
+        code = 403 if isinstance(exc, PermissionError) else 404 if isinstance(exc, FileNotFoundError) else 400
+        raise HTTPException(status_code=code, detail=str(exc)) from exc
+
+
 @router.post("/{dataset_id}/proactive/scan")
 def dataset_proactive_scan(dataset_id: str, body: ProactiveScanRequest):
     try:
@@ -2041,6 +2088,33 @@ def dataset_trust_center(dataset_id: str):
         return trust_center(dataset_id, load_dataframe(dataset_id))
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404 if isinstance(exc, FileNotFoundError) else 400, detail=str(exc)) from exc
+
+
+@router.post("/{dataset_id}/causal/ate")
+def dataset_causal_ate(dataset_id: str, body: CausalATERequest):
+    try:
+        meta = get_meta(dataset_id)
+        result = estimate_ate(
+            load_dataframe(dataset_id),
+            treatment=body.treatment,
+            outcome=body.outcome,
+            covariates=body.covariates,
+            trim=body.trim,
+            bootstrap_samples=body.bootstrap_samples,
+            random_state=body.random_state,
+        )
+        result["provenance"] = {
+            "dataset_id": dataset_id,
+            "dataset_version": meta.get("version"),
+            "root_id": meta.get("root_id") or meta.get("id"),
+            "calculation_engine": "observational_causal_ipw_v1",
+            "numeric_engine": "scikit-learn + numpy",
+        }
+        return result
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Dataset introuvable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/{dataset_id}/root-cause")

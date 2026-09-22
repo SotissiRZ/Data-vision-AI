@@ -1,5 +1,48 @@
 # Changelog
 
+## 2.80.0 — Release Candidate
+
+- gel fonctionnel et policy RC versionnée ;
+- correction des dérives de version dans les scripts Windows ;
+- ajout d'un upgrade Windows sauvegardé, migré et vérifié sans `down -v` ;
+- ajout d'un doctor de configuration local/production ;
+- workflow Release rendu exhaustif sur les gates récents et les E2E accessibilité/RC ;
+- migration marker `2.80.0-001` ;
+- gate `RELEASE_INSTALLATION_ACCEPTANCE` 8/8 ;
+- maintien explicite des preuves externes UAT/cible en attente.
+
+## 2.79.0 — Hardening & End-to-End Validation
+
+- sécurité HTTP durcie sur API et frontend ;
+- ordre des migrations indépendant de l'ordre de déclaration ;
+- migration marker 2.79 et validation idempotente ;
+- backup/restore drill dans la matrice RC ;
+- sign-off de production avec hash des preuves et pièces jointes revérifiées ;
+- waivers refusés par défaut en sign-off strict ;
+- CI complétée avec tous les gates v2.71→v2.79 ;
+- E2E accessibilité + release candidate exécutés en CI ;
+- gate `RELEASE_CANDIDATE_ACCEPTANCE` 8/8.
+
+## 2.78.0 — CDC Gap Closure
+
+- Plans produit Starter/Pro/Entreprise avec affectation organisation, entitlements et quotas exécutoires.
+- Ledger de consommation quotidienne pour jobs et tours Assistant.
+- KMS cloud natif AWS/GCP/Azure avec chiffrement par enveloppe AES-256-GCM.
+- Estimation causale observationnelle ATE/IPW avec diagnostics et garde-fou anti-surinterprétation.
+- Scheduler proactif persistant avec claim conditionnel côté worker.
+- CDC §46, §66 et §70 passés à implemented.
+- Gate `CDC_GAP_CLOSURE_ACCEPTANCE 8/8`; CDC à 97,3 % sans falsifier les preuves externes.
+
+## 2.77.0 — Performance & SLO Evidence
+
+- Ajout d'une policy de budgets performance/SLO versionnée.
+- Benchmark local de non-régression séparé explicitement des preuves production.
+- Runner de charge HTTP externe avec concurrence, durée/volume minimums et métriques p50/p95/p99.
+- Validation d'intégrité SHA-256, cible HTTPS non locale et budgets gouvernés à l'import.
+- Ledger de preuves par workspace et API Operational Intelligence dédiée.
+- Cockpit performance enrichi et gate `PERFORMANCE_SLO_ACCEPTANCE 8/8`.
+- CDC §59 passé à implemented sans inventer de résultat production non mesuré.
+
 ## 2.76.0 — Workspace Environments & Reproducibility
 
 - Nouveau ledger d'environnements Python/R au niveau workspace avec policy de sécurité persistée.

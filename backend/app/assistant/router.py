@@ -51,6 +51,7 @@ from app.services.tenant_access import current_access_context, require_workspace
 from app.core.config import get_settings
 from app.services.auth_service import has_permission
 from app.services.audit_service import record_event
+from app.services.product_plans import assert_feature as assert_plan_feature, consume_daily_quota, QuotaExceeded, EntitlementDenied
 from .project_memory import (
     clear_unpinned as clear_project_memory_unpinned,
     duplicate_entry as duplicate_project_memory_entry,
@@ -118,7 +119,7 @@ def assistant_health():
     return {
         "status": "ok",
         "component": "conversational_voice_agent",
-        "version": "2.46.0",
+        "version": "2.49.0",
         "tool_count": len(executable),
         "declared_tool_count": len(declared),
         "unavailable_tools": unavailable,
@@ -491,6 +492,15 @@ def assistant_workflows():
 @router.post("/turn", response_model=AgentTurnResponse)
 async def run_agent_turn(request: AgentTurnRequest):
     safe_refresh_runtime_plugins()
+    access = current_access_context()
+    if access is not None:
+        try:
+            assert_plan_feature(access.workspace_id, "ai_assistant")
+            consume_daily_quota(access.workspace_id, "assistant_turns", amount=1)
+        except QuotaExceeded as exc:
+            raise HTTPException(status_code=429, detail=str(exc)) from exc
+        except EntitlementDenied as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     response = agent_orchestrator.run_turn(request)
 
     await realtime_hub.publish(
@@ -723,6 +733,11 @@ def update_assistant_ai_settings(payload: AssistantAISettings):
 @router.post("/settings/providers")
 def create_assistant_model_provider(payload: ProviderProfileInput):
     scope_type, scope_id, actor_id = _assistant_settings_scope(True)
+    if scope_type == "workspace" and payload.location == "external":
+        try:
+            assert_plan_feature(scope_id, "external_model_gateway")
+        except EntitlementDenied as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     try:
         profile = save_provider_profile(
             scope_type,
@@ -741,6 +756,11 @@ def update_assistant_model_provider(
     payload: ProviderProfileInput,
 ):
     scope_type, scope_id, actor_id = _assistant_settings_scope(True)
+    if scope_type == "workspace" and payload.location == "external":
+        try:
+            assert_plan_feature(scope_id, "external_model_gateway")
+        except EntitlementDenied as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
     try:
         profile = save_provider_profile(
             scope_type,

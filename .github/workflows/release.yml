@@ -51,6 +51,16 @@ jobs:
       - run: python scripts/supply_chain_acceptance.py --root . --check
       - run: python scripts/runtime_security_acceptance.py --root . --check
       - run: python scripts/regulatory_compliance_acceptance.py --root . --check
+      - run: python scripts/quality_remediation_acceptance.py --root . --check
+      - run: python scripts/storytelling_acceptance.py --root . --check
+      - run: python scripts/model_gateway_acceptance.py --root . --check
+      - run: python scripts/i18n_accessibility_acceptance.py --root . --check
+      - run: python scripts/cloud_cdc_acceptance.py --root . --check
+      - run: python scripts/workspace_environment_acceptance.py --root . --check
+      - run: python scripts/performance_slo_acceptance.py --root . --check
+      - run: python scripts/cdc_gap_closure_acceptance.py --root . --check
+      - run: python scripts/release_candidate_acceptance.py --root . --check
+      - run: python scripts/release_installation_acceptance.py --root . --check
       - run: python scripts/production_acceptance.py --root . --check
       - run: python scripts/notebook_runtime_acceptance.py --root . --check
       - run: python scripts/catalog_lineage_acceptance.py --root . --check
@@ -89,6 +99,8 @@ jobs:
           npm run test:e2e:smoke
           npm run test:e2e:mvp
           npm run test:e2e:production
+          npm run test:e2e:accessibility
+          npm run test:e2e:release-candidate
       - name: Release candidate load smoke
         run: python scripts/load_smoke.py --url http://127.0.0.1:3005/api/health --requests 120 --concurrency 12 --json-out /tmp/production-load.json
       - name: Stop release candidate stack

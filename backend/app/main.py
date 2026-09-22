@@ -29,7 +29,7 @@ from app.services.upload_security import antivirus_status
 from app.services.secret_crypto import kms_status
 from app.services.schema_migrations import migration_status
 
-app = FastAPI(title=settings.app_name, version="2.69.0", docs_url="/docs", redoc_url="/redoc")
+app = FastAPI(title=settings.app_name, version="2.80.0", docs_url="/docs", redoc_url="/redoc")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
@@ -38,6 +38,27 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-DataVision-Governed", "X-DataVision-Role", "X-DataVision-Workspace", "X-Request-ID", "X-Trace-ID", "Traceparent"],
 )
+
+
+@app.middleware("http")
+async def security_response_headers(request: Request, call_next):
+    """Apply conservative browser hardening headers at the API boundary.
+
+    HSTS is emitted only when the effective request is HTTPS so local HTTP development
+    remains usable. The frontend applies the same baseline through Next.js headers.
+    """
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "no-referrer")
+    response.headers.setdefault("Permissions-Policy", "camera=(), geolocation=(), microphone=(), payment=(), usb=()")
+    response.headers.setdefault("Cross-Origin-Resource-Policy", "same-site")
+    forwarded_proto = (request.headers.get("x-forwarded-proto") or "").split(",", 1)[0].strip().lower()
+    if request.url.scheme == "https" or forwarded_proto == "https":
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+    if request.url.path.startswith("/api/v1/auth"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
 
 
 @app.middleware("http")
@@ -286,7 +307,7 @@ def health_live():
     return {
         "status": "alive",
         "product": settings.app_name,
-        "version": "2.69.0",
+        "version": "2.80.0",
     }
 
 
@@ -295,10 +316,10 @@ def health_startup():
     try:
         migrations = migration_status()
         ok = bool(migrations.get("ready"))
-        payload = {"status": "started" if ok else "migrations_pending", "ready": ok, "version": "2.69.0", "schema_migrations": migrations}
+        payload = {"status": "started" if ok else "migrations_pending", "ready": ok, "version": "2.80.0", "schema_migrations": migrations}
         return payload if ok else JSONResponse(status_code=503, content=payload)
     except Exception as exc:
-        return JSONResponse(status_code=503, content={"status": "startup_failed", "ready": False, "version": "2.69.0", "error": type(exc).__name__})
+        return JSONResponse(status_code=503, content={"status": "startup_failed", "ready": False, "version": "2.80.0", "error": type(exc).__name__})
 
 
 @app.get("/health/ready")
@@ -369,7 +390,7 @@ def health_ready():
         "status": "ready" if ready else "not_ready",
         "ready": ready,
         "product": settings.app_name,
-        "version": "2.69.0",
+        "version": "2.80.0",
         "components": components,
     }
     if ready:
@@ -382,7 +403,7 @@ def health():
     return {
         "status": "ok",
         "product": settings.app_name,
-        "version": "2.69.0",
+        "version": "2.80.0",
     }
 
 
@@ -451,6 +472,7 @@ def capabilities():
             "floating_voice_assistant", "semantic_context_engine", "assistant_tool_registry",
             "assistant_action_lifecycle", "assistant_plan_validation", "assistant_turn_resume",
             "assistant_model_gateway", "assistant_privacy_routing",
+            "native_anthropic_gateway", "native_gemini_gateway",
             "governed_plugin_registry", "mcp_http_plugins", "http_json_plugins",
             "dynamic_json_schema_tools", "tenant_scoped_plugin_tools", "plugin_secret_vault_references",
             "plugin_ssrf_guard", "plugin_execution_audit", "plugin_response_size_limits",
@@ -477,18 +499,16 @@ def capabilities():
             "production_health_live_ready", "docker_compose_healthchecks",
             "github_actions_ci", "playwright_e2e", "dependency_security_scans",
             "cyclonedx_sbom_release", "reproducible_release_packaging",
-            "cdc_compliance_matrix", "cdc_evidence_validation", "production_acceptance_center",
+            "cdc_compliance_matrix", "cdc_evidence_validation", "production_acceptance_center", "product_plan_entitlements", "runtime_plan_quotas", "native_cloud_kms_envelope", "observational_causal_inference", "scheduled_proactive_scans", "kubernetes_enterprise",
         ],
         "partial": [
-            "scheduled_proactive_scans", "shap", "nlq", "running_job_preemptive_cancellation",
-            "model_artifact_policy_snapshot", "database_native_rls", "provider_token_cost_instrumentation", "external_kms_key_management",
+            "shap", "nlq", "running_job_preemptive_cancellation",
+            "model_artifact_policy_snapshot", "database_native_rls", "provider_token_cost_instrumentation",
             "assistant_gis_execution", "assistant_pptx_export", "assistant_shap_provider",
             "external_cloud_model_serving",
         ],
         "planned": [
             "persistent_notebook_kernels",
-            "kubernetes_enterprise",
-            "native_anthropic_gateway", "native_gemini_gateway",
             "full_i18n", "wcag_external_audit",
         ],
     }

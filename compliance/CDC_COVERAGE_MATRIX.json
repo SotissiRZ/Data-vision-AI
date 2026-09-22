@@ -1,6 +1,6 @@
 {
   "cdc_version": "1.0 — August 2026",
-  "product_version": "2.76.0",
+  "product_version": "2.80.0",
   "status_model": {
     "implemented": 1.0,
     "partial": 0.5,
@@ -651,7 +651,7 @@
     {
       "section": 46,
       "title": "Security",
-      "status": "partial",
+      "status": "implemented",
       "priority": "P1",
       "evidence": [
         "backend/app/services/auth_service.py",
@@ -662,15 +662,17 @@
         "backend/app/services/secret_crypto.py",
         "backend/app/api/routes/enterprise.py",
         "backend/app/api/routes/datasets.py",
-        "docker-compose.yml"
+        "docker-compose.yml",
+        "backend/app/core/config.py",
+        ".env.example",
+        "backend/tests/test_cdc_gap_closure_v278.py"
       ],
       "tests": [
         "backend/tests/test_security_p0_v231.py",
-        "backend/tests/test_security_contract_v231.py"
+        "backend/tests/test_security_contract_v231.py",
+        "backend/tests/test_cdc_gap_closure_v278.py"
       ],
-      "gaps": [
-        "MFA WebAuthn, scan antivirus ClamAV et chiffrement AES-256-GCM dédié sont implémentés. Un KMS/HSM cloud externe reste optionnel et non intégré nativement."
-      ]
+      "gaps": []
     },
     {
       "section": 47,
@@ -828,18 +830,18 @@
     {
       "section": 59,
       "title": "Performance",
-      "status": "partial",
+      "status": "implemented",
       "priority": "P1",
       "evidence": [
-        "backend/app/services/ai_analysis_runtime.py",
-        "docs/AI_ANALYST_PERFORMANCE_V2280.md"
+        "policies/performance_slo.json",
+        "backend/app/services/performance_evidence.py",
+        "scripts/performance_benchmark.py",
+        "docs/PERFORMANCE_SLO_EVIDENCE_V2770.md"
       ],
       "tests": [
-        "backend/tests/test_ai_runtime_v228.py"
+        "backend/tests/test_performance_slo_v277.py"
       ],
-      "gaps": [
-        "Benchmarks charge/latence à grande échelle et objectifs SLO complets restent à exécuter en environnement production."
-      ]
+      "gaps": []
     },
     {
       "section": 60,
@@ -926,15 +928,20 @@
     {
       "section": 66,
       "title": "Product Plans",
-      "status": "partial",
+      "status": "implemented",
       "priority": "P2",
       "evidence": [
-        "docs/PRODUCT_STRATEGY_2026.md"
+        "backend/app/services/product_plans.py",
+        "backend/app/api/routes/enterprise.py",
+        "backend/app/services/workspace_service.py",
+        "backend/app/services/connector_service.py",
+        "backend/app/services/notebook_service.py",
+        "backend/app/assistant/router.py"
       ],
-      "tests": [],
-      "gaps": [
-        "Entitlements/quotas commerciaux par plan non appliqués partout dans le runtime."
-      ]
+      "tests": [
+        "backend/tests/test_cdc_gap_closure_v278.py"
+      ],
+      "gaps": []
     },
     {
       "section": 67,
@@ -985,16 +992,21 @@
     {
       "section": 70,
       "title": "V2",
-      "status": "partial",
+      "status": "implemented",
       "priority": "P1",
       "evidence": [
-        "README.md",
-        "backend/app/main.py"
+        "backend/app/assistant/agents.py",
+        "backend/app/services/causal_inference.py",
+        "backend/app/services/proactive_intelligence.py",
+        "backend/app/worker.py",
+        "deploy/helm/datavision",
+        "backend/app/services/multi_cluster.py"
       ],
-      "tests": [],
-      "gaps": [
-        "Multi-agent avancé, cloud deployment Enterprise complet et certaines fonctions causales/proactives restent partiels."
-      ]
+      "tests": [
+        "backend/tests/assistant/test_multi_agent_v246.py",
+        "backend/tests/test_cdc_gap_closure_v278.py"
+      ],
+      "gaps": []
     },
     {
       "section": 71,
@@ -1008,14 +1020,22 @@
         "production-acceptance-windows.ps1",
         "scripts/load_smoke.py",
         "scripts/production_acceptance.py",
-        "scripts/production_signoff.py"
+        "scripts/production_signoff.py",
+        "scripts/release_candidate_acceptance.py",
+        "docs/RELEASE_CANDIDATE_HARDENING_V2790.md",
+        "frontend/e2e/release-candidate.spec.ts",
+        "scripts/release_installation_acceptance.py",
+        "compliance/RELEASE_INSTALLATION_ACCEPTANCE.json",
+        "docs/RELEASE_CANDIDATE_V2800.md"
       ],
       "tests": [
         "backend/tests/test_production_acceptance_v2660.py",
-        "frontend/e2e/production.spec.ts"
+        "frontend/e2e/production.spec.ts",
+        "backend/tests/test_release_candidate_hardening_v279.py",
+        "frontend/e2e/release-candidate.spec.ts"
       ],
       "gaps": [
-        "CI/E2E/charge/Helm sont désormais automatisés; l’exécution cible et l’acceptance utilisateur métier doivent encore être signées comme preuves externes."
+        "CI/E2E/charge/Helm/RC hardening sont automatisés et le sign-off vérifie désormais l’intégrité SHA-256; l’exécution cible et l’UAT métier doivent encore être signées comme preuves externes."
       ]
     },
     {
@@ -1057,13 +1077,19 @@
         "docs/UAT_SIGNOFF_TEMPLATE.md",
         "scripts/production_acceptance.py",
         "scripts/production_signoff.py",
-        "scripts/release.py"
+        "scripts/release.py",
+        "scripts/release_candidate_acceptance.py",
+        "docs/RELEASE_CANDIDATE_HARDENING_V2790.md",
+        "scripts/release_installation_acceptance.py",
+        "compliance/RELEASE_INSTALLATION_ACCEPTANCE.json",
+        "docs/RELEASE_CANDIDATE_V2800.md"
       ],
       "tests": [
-        "backend/tests/test_production_acceptance_v2660.py"
+        "backend/tests/test_production_acceptance_v2660.py",
+        "backend/tests/test_release_candidate_hardening_v279.py"
       ],
       "gaps": [
-        "La DoD technique est exécutable de bout en bout; le sign-off final reste conditionné aux preuves de l’environnement cible et à l’UAT signée."
+        "La DoD technique et le hardening Release Candidate sont exécutables de bout en bout; le sign-off final reste conditionné aux preuves réelles de l’environnement cible et à l’UAT signée."
       ]
     },
     {
@@ -1073,11 +1099,14 @@
       "priority": "P1",
       "evidence": [
         "README.md",
-        "docs/PRODUCT_STRATEGY_2026.md"
+        "docs/PRODUCT_STRATEGY_2026.md",
+        "scripts/release_installation_acceptance.py",
+        "compliance/RELEASE_INSTALLATION_ACCEPTANCE.json",
+        "docs/RELEASE_CANDIDATE_V2800.md"
       ],
       "tests": [],
       "gaps": [
-        "Vision largement matérialisée, mais les gaps P0/P1 empêchent de déclarer 100% du CDC."
+        "La vision produit et le hardening Release Candidate sont matérialisés; la déclaration finale reste conditionnée aux preuves externes §71/§74 et à la frontière de parité d’écosystème §2."
       ]
     }
   ]

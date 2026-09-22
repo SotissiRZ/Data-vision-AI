@@ -1,0 +1,43 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.80.0",
+  "acceptance": "technical_ready",
+  "external_signoff": "pending",
+  "passed": 8,
+  "total": 8,
+  "checks": [
+    {
+      "id": "security_headers",
+      "ok": true
+    },
+    {
+      "id": "strict_signoff_integrity",
+      "ok": true
+    },
+    {
+      "id": "ordered_idempotent_migrations",
+      "ok": true
+    },
+    {
+      "id": "backup_restore_drill",
+      "ok": true
+    },
+    {
+      "id": "full_gate_ci",
+      "ok": true
+    },
+    {
+      "id": "release_candidate_e2e",
+      "ok": true
+    },
+    {
+      "id": "external_boundary_preserved",
+      "ok": true
+    },
+    {
+      "id": "versioned_release_evidence",
+      "ok": true
+    }
+  ],
+  "runtime_test": "pass"
+}

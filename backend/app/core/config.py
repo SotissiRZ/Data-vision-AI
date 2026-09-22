@@ -47,7 +47,7 @@ class Settings(BaseSettings):
     secret_kms_key: str = ""
     secret_kms_key_id: str = "primary"
     secret_kms_previous_keys: str = "{}"
-    secret_kms_provider: str = "local"  # local | vault_transit
+    secret_kms_provider: str = "local"  # local | vault_transit | aws_kms | gcp_kms | azure_key_vault
     vault_addr: str = ""
     vault_token: str = ""
     vault_namespace: str = ""
@@ -55,6 +55,16 @@ class Settings(BaseSettings):
     vault_transit_key: str = "datavision"
     vault_transit_hsm_backed: bool = False
     vault_timeout_seconds: int = 5
+
+    # v2.78 native cloud KMS envelope providers
+    aws_kms_key_id: str = ""
+    aws_kms_region: str = ""
+    aws_kms_endpoint_url: str = ""
+    gcp_kms_key_name: str = ""
+    azure_key_vault_key_id: str = ""
+
+    # v2.78 commercial plan policy. Existing/self-hosted installs keep full capability unless assigned otherwise.
+    default_product_plan: str = "entreprise"  # starter | pro | entreprise
 
     # v2.58 session/device hardening
     session_idle_minutes: int = 480

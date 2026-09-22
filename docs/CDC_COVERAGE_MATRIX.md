@@ -1,9 +1,9 @@
 # Matrice de couverture CDC — DataVision AI
 
 - CDC: 1.0 — August 2026
-- Produit: 2.76.0
-- Couverture pondérée: **94.7%**
-- Implémenté: **67** / Partiel: **8** / Manquant: **0**
+- Produit: 2.80.0
+- Couverture pondérée: **97.3%**
+- Implémenté: **71** / Partiel: **4** / Manquant: **0**
 - Preuves absentes: **0**
 
 > Méthode: implemented=1, partial=0.5, missing=0. Le score mesure la couverture du CDC, pas une certification externe.
@@ -55,7 +55,7 @@
 | 43 | Data Catalog | implemented | P1 | — |
 | 44 | Lineage | implemented | P2 | — |
 | 45 | Governance | implemented | P2 | — |
-| 46 | Security | partial | P1 | MFA WebAuthn, scan antivirus ClamAV et chiffrement AES-256-GCM dédié sont implémentés. Un KMS/HSM cloud externe reste optionnel et non intégré nativement. |
+| 46 | Security | implemented | P1 | — |
 | 47 | AI Privacy | implemented | P2 | — |
 | 48 | Model Gateway | implemented | P1 | — |
 | 49 | MCP / Tool connectivity | implemented | P2 | — |
@@ -68,39 +68,35 @@
 | 56 | AI Observability | implemented | P2 | — |
 | 57 | Agent evaluation | implemented | P2 | — |
 | 58 | Testing | implemented | P2 | — |
-| 59 | Performance | partial | P1 | Benchmarks charge/latence à grande échelle et objectifs SLO complets restent à exécuter en environnement production. |
+| 59 | Performance | implemented | P1 | — |
 | 60 | UX/UI | implemented | P2 | — |
 | 61 | Command Palette | implemented | P2 | — |
 | 62 | AI Interaction | implemented | P2 | — |
 | 63 | Quick Commands | implemented | P2 | — |
 | 64 | Internationalisation | implemented | P1 | — |
 | 65 | Accessibilité | implemented | P1 | — |
-| 66 | Product Plans | partial | P2 | Entitlements/quotas commerciaux par plan non appliqués partout dans le runtime. |
+| 66 | Product Plans | implemented | P2 | — |
 | 67 | Roadmap | implemented | P2 | — |
 | 68 | MVP obligatoire | implemented | P0 | — |
 | 69 | V1 | implemented | P1 | — |
-| 70 | V2 | partial | P1 | Multi-agent avancé, cloud deployment Enterprise complet et certaines fonctions causales/proactives restent partiels. |
-| 71 | Critères d’acceptation | partial | P0 | CI/E2E/charge/Helm sont désormais automatisés; l’exécution cible et l’acceptance utilisateur métier doivent encore être signées comme preuves externes. |
+| 70 | V2 | implemented | P1 | — |
+| 71 | Critères d’acceptation | partial | P0 | CI/E2E/charge/Helm/RC hardening sont automatisés et le sign-off vérifie désormais l’intégrité SHA-256; l’exécution cible et l’UAT métier doivent encore être signées comme preuves externes. |
 | 72 | Règles impératives de développement | implemented | P0 | — |
 | 73 | Livrables | implemented | P1 | — |
-| 74 | Definition of Done | partial | P0 | La DoD technique est exécutable de bout en bout; le sign-off final reste conditionné aux preuves de l’environnement cible et à l’UAT signée. |
-| 75 | Vision finale | partial | P1 | Vision largement matérialisée, mais les gaps P0/P1 empêchent de déclarer 100% du CDC. |
+| 74 | Definition of Done | partial | P0 | La DoD technique et le hardening Release Candidate sont exécutables de bout en bout; le sign-off final reste conditionné aux preuves réelles de l’environnement cible et à l’UAT signée. |
+| 75 | Vision finale | partial | P1 | La vision produit et le hardening Release Candidate sont matérialisés; la déclaration finale reste conditionnée aux preuves externes §71/§74 et à la frontière de parité d’écosystème §2. |
 
 ## Gaps prioritaires
 
 ### P0
-- **§71 Critères d’acceptation** — CI/E2E/charge/Helm sont désormais automatisés; l’exécution cible et l’acceptance utilisateur métier doivent encore être signées comme preuves externes.
-- **§74 Definition of Done** — La DoD technique est exécutable de bout en bout; le sign-off final reste conditionné aux preuves de l’environnement cible et à l’UAT signée.
+- **§71 Critères d’acceptation** — CI/E2E/charge/Helm/RC hardening sont automatisés et le sign-off vérifie désormais l’intégrité SHA-256; l’exécution cible et l’UAT métier doivent encore être signées comme preuves externes.
+- **§74 Definition of Done** — La DoD technique et le hardening Release Candidate sont exécutables de bout en bout; le sign-off final reste conditionné aux preuves réelles de l’environnement cible et à l’UAT signée.
 
 ### P1
-- **§46 Security** — MFA WebAuthn, scan antivirus ClamAV et chiffrement AES-256-GCM dédié sont implémentés. Un KMS/HSM cloud externe reste optionnel et non intégré nativement.
-- **§59 Performance** — Benchmarks charge/latence à grande échelle et objectifs SLO complets restent à exécuter en environnement production.
-- **§70 V2** — Multi-agent avancé, cloud deployment Enterprise complet et certaines fonctions causales/proactives restent partiels.
-- **§75 Vision finale** — Vision largement matérialisée, mais les gaps P0/P1 empêchent de déclarer 100% du CDC.
+- **§75 Vision finale** — La vision produit et le hardening Release Candidate sont matérialisés; la déclaration finale reste conditionnée aux preuves externes §71/§74 et à la frontière de parité d’écosystème §2.
 
 ### P2
 - **§2 Préserver / dépasser R & Shiny** — Runtime Python/R persistant livré; l’équivalence complète avec l’écosystème Shiny/Jupyter externe reste hors du périmètre natif.
-- **§66 Product Plans** — Entitlements/quotas commerciaux par plan non appliqués partout dans le runtime.
 
 ## Preuves manquantes
 

@@ -653,3 +653,5 @@ html[dir="rtl"] .skip-link{left:auto;right:12px}
 html[dir="rtl"] .alert{border-left:1px solid #efb5aa;border-right:4px solid #cf5e4d}
 /* v2.75 — cloud connectors & governed CDC */
 .cdc-source-badge{display:inline-flex;align-items:center;padding:5px 8px;border:1px solid var(--line);border-radius:999px;font-size:calc(12px * var(--dv-font-scale,1));font-weight:900;letter-spacing:.04em;background:var(--surface-2);color:var(--text)}
+
+.performance-evidence-grid{display:grid;grid-template-columns:1fr;gap:14px;margin-bottom:14px}.performance-evidence-head{display:flex;align-items:flex-start;gap:9px;margin-bottom:12px}.performance-evidence-head>div{display:grid;gap:3px}.performance-evidence-head small{color:#64748b;line-height:1.45}.performance-budget-list{display:flex;gap:7px;flex-wrap:wrap;margin-top:10px}.performance-budget-list span{border:1px solid #dbe3ee;background:#f8fafc;border-radius:999px;padding:6px 9px;font-size:calc(13px * var(--dv-font-scale,1));color:#475569;font-weight:700}

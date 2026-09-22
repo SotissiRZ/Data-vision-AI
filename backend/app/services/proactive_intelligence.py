@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -382,3 +382,122 @@ def proactive_summary(dataset_id: str) -> dict[str, Any]:
         "status": "attention" if severity_counts["critical"] or severity_counts["high"] else "watch" if open_alerts else "clear",
         "engine": "deterministic_proactive_monitor_v1",
     }
+
+
+# v2.78 governed proactive scheduling -------------------------------------------------
+def save_scan_schedule(
+    dataset_id: str,
+    *,
+    workspace_id: str | None,
+    actor_id: str | None,
+    enabled: bool = True,
+    interval_minutes: int = 1440,
+    watch_ids: list[str] | None = None,
+    auto_configure: bool = True,
+) -> dict[str, Any]:
+    from app.services.metadata_store import execute, fetch_one, json_dumps, json_loads, utcnow
+
+    interval = max(15, min(int(interval_minutes), 43200))
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    next_run = (now_dt + timedelta(minutes=interval)).isoformat()
+    execute(
+        """INSERT INTO proactive_scan_schedules(
+            dataset_id,workspace_id,enabled,interval_minutes,next_run_at,last_run_at,last_status,
+            watch_ids_json,auto_configure,created_by,created_at,updated_at
+        ) VALUES(:dataset,:workspace,:enabled,:interval,:next_run,NULL,NULL,:watch_ids,:auto_configure,:actor,:created,:updated)
+        ON CONFLICT(dataset_id) DO UPDATE SET
+            workspace_id=excluded.workspace_id,enabled=excluded.enabled,interval_minutes=excluded.interval_minutes,
+            next_run_at=excluded.next_run_at,watch_ids_json=excluded.watch_ids_json,
+            auto_configure=excluded.auto_configure,updated_at=excluded.updated_at""",
+        {
+            "dataset": dataset_id,
+            "workspace": workspace_id,
+            "enabled": 1 if enabled else 0,
+            "interval": interval,
+            "next_run": next_run,
+            "watch_ids": json_dumps(list(watch_ids or [])),
+            "auto_configure": 1 if auto_configure else 0,
+            "actor": actor_id,
+            "created": now,
+            "updated": now,
+        },
+    )
+    row = fetch_one("SELECT * FROM proactive_scan_schedules WHERE dataset_id=:dataset", {"dataset": dataset_id})
+    if not row:
+        raise RuntimeError("Impossible de persister la planification proactive")
+    row["watch_ids"] = json_loads(row.pop("watch_ids_json"), [])
+    row["enabled"] = bool(row.get("enabled"))
+    row["auto_configure"] = bool(row.get("auto_configure"))
+    return row
+
+
+def get_scan_schedule(dataset_id: str) -> dict[str, Any] | None:
+    from app.services.metadata_store import fetch_one, json_loads
+
+    row = fetch_one("SELECT * FROM proactive_scan_schedules WHERE dataset_id=:dataset", {"dataset": dataset_id})
+    if not row:
+        return None
+    row["watch_ids"] = json_loads(row.pop("watch_ids_json"), [])
+    row["enabled"] = bool(row.get("enabled"))
+    row["auto_configure"] = bool(row.get("auto_configure"))
+    return row
+
+
+def claim_due_scan_schedules(limit: int = 20) -> list[dict[str, Any]]:
+    """Claim due schedules by moving next_run_at forward before enqueueing.
+
+    The conditional UPDATE makes competing workers fail closed: only the worker that still
+    sees the original due timestamp gets the schedule back.
+    """
+    from sqlalchemy import text
+    from app.services.metadata_store import connection, json_loads, utcnow
+
+    now_dt = datetime.now(timezone.utc)
+    now = now_dt.isoformat()
+    claimed: list[dict[str, Any]] = []
+    with connection() as conn:
+        rows = conn.execute(
+            text(
+                """SELECT * FROM proactive_scan_schedules
+                   WHERE enabled=1 AND next_run_at<=:now
+                   ORDER BY next_run_at ASC LIMIT :limit"""
+            ),
+            {"now": now, "limit": max(1, min(int(limit), 100))},
+        ).mappings().all()
+        for raw in rows:
+            row = dict(raw)
+            interval = max(15, int(row.get("interval_minutes") or 1440))
+            next_run = (now_dt + timedelta(minutes=interval)).isoformat()
+            result = conn.execute(
+                text(
+                    """UPDATE proactive_scan_schedules
+                       SET next_run_at=:next_run,last_run_at=:last_run,last_status='claimed',updated_at=:updated
+                       WHERE dataset_id=:dataset AND enabled=1 AND next_run_at=:expected"""
+                ),
+                {
+                    "next_run": next_run,
+                    "last_run": now,
+                    "updated": now,
+                    "dataset": row["dataset_id"],
+                    "expected": row["next_run_at"],
+                },
+            )
+            if int(result.rowcount or 0) == 1:
+                row["next_run_at"] = next_run
+                row["last_run_at"] = now
+                row["last_status"] = "claimed"
+                row["watch_ids"] = json_loads(row.pop("watch_ids_json"), [])
+                row["enabled"] = True
+                row["auto_configure"] = bool(row.get("auto_configure"))
+                claimed.append(row)
+    return claimed
+
+
+def mark_scan_schedule_result(dataset_id: str, status: str) -> None:
+    from app.services.metadata_store import execute, utcnow
+
+    execute(
+        "UPDATE proactive_scan_schedules SET last_status=:status,updated_at=:updated WHERE dataset_id=:dataset",
+        {"status": str(status)[:80], "updated": utcnow(), "dataset": dataset_id},
+    )

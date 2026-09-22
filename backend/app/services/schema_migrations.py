@@ -352,6 +352,29 @@ MIGRATIONS: tuple[Migration, ...] = (
     ),
 
     Migration(
+        version="2.77.0-001",
+        name="performance_slo_evidence",
+        statements=(
+            """CREATE TABLE IF NOT EXISTS performance_evidence_runs (
+                id TEXT PRIMARY KEY,
+                workspace_id TEXT NOT NULL,
+                profile TEXT NOT NULL,
+                source TEXT NOT NULL,
+                execution_context TEXT NOT NULL,
+                target TEXT,
+                status TEXT NOT NULL,
+                artifact_sha256 TEXT NOT NULL,
+                payload_json TEXT NOT NULL,
+                created_by TEXT,
+                created_at TEXT NOT NULL
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_performance_evidence_workspace_created
+               ON performance_evidence_runs(workspace_id, created_at)""",
+        ),
+    ),
+
+
+    Migration(
         version="2.68.0-001",
         name="data_catalog_discovery",
         statements=(
@@ -378,6 +401,57 @@ MIGRATIONS: tuple[Migration, ...] = (
         ),
     ),
 
+    Migration(
+        version="2.78.0-001",
+        name="cdc_gap_closure",
+        statements=(
+            """CREATE TABLE IF NOT EXISTS organization_plan_assignments (
+                organization_id TEXT PRIMARY KEY,
+                plan_id TEXT NOT NULL,
+                updated_by TEXT,
+                updated_at TEXT NOT NULL
+            )""",
+            """CREATE TABLE IF NOT EXISTS plan_usage_daily (
+                workspace_id TEXT NOT NULL,
+                metric TEXT NOT NULL,
+                usage_date TEXT NOT NULL,
+                amount INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY(workspace_id, metric, usage_date)
+            )""",
+            """CREATE TABLE IF NOT EXISTS proactive_scan_schedules (
+                dataset_id TEXT PRIMARY KEY,
+                workspace_id TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                interval_minutes INTEGER NOT NULL DEFAULT 1440,
+                next_run_at TEXT NOT NULL,
+                last_run_at TEXT,
+                last_status TEXT,
+                watch_ids_json TEXT NOT NULL DEFAULT '[]',
+                auto_configure INTEGER NOT NULL DEFAULT 1,
+                created_by TEXT,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )""",
+            """CREATE INDEX IF NOT EXISTS idx_plan_usage_workspace_date
+               ON plan_usage_daily(workspace_id, usage_date)""",
+            """CREATE INDEX IF NOT EXISTS idx_proactive_schedule_due
+               ON proactive_scan_schedules(enabled, next_run_at)""",
+        ),
+    ),
+
+    Migration(
+        version="2.79.0-001",
+        name="release_candidate_hardening_marker",
+        statements=(),
+    ),
+
+    Migration(
+        version="2.80.0-001",
+        name="release_candidate_freeze_marker",
+        statements=(),
+    ),
+
 )
 
 
@@ -399,9 +473,22 @@ def applied_versions(conn) -> set[str]:
     return {str(row[0]) for row in rows}
 
 
+def _migration_sort_key(migration: Migration) -> tuple[int, int, int, int]:
+    release, _, sequence = migration.version.partition("-")
+    parts = [int(part) for part in release.split(".")]
+    while len(parts) < 3:
+        parts.append(0)
+    return parts[0], parts[1], parts[2], int(sequence or 0)
+
+
+def ordered_migrations() -> tuple[Migration, ...]:
+    """Return migrations in release order even if declaration blocks are moved by backports."""
+    return tuple(sorted(MIGRATIONS, key=_migration_sort_key))
+
+
 def pending_migrations(conn) -> list[Migration]:
     applied = applied_versions(conn)
-    return [migration for migration in MIGRATIONS if migration.version not in applied]
+    return [migration for migration in ordered_migrations() if migration.version not in applied]
 
 
 def apply_pending_migrations(conn) -> list[str]:
@@ -426,9 +513,10 @@ def migration_status() -> dict:
     with engine.begin() as conn:
         ensure_migration_table(conn)
         applied = applied_versions(conn)
-        pending = [m.version for m in MIGRATIONS if m.version not in applied]
+        migrations = ordered_migrations()
+        pending = [m.version for m in migrations if m.version not in applied]
     return {
-        "current": MIGRATIONS[-1].version if MIGRATIONS else None,
+        "current": migrations[-1].version if migrations else None,
         "applied": sorted(applied),
         "pending": pending,
         "ready": not pending,

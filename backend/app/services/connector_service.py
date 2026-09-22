@@ -13,6 +13,7 @@ from sqlalchemy import text
 from app.core.config import get_settings
 from app.services.metadata_store import execute, fetch_all, fetch_one, json_dumps, json_loads, utcnow
 from app.services.secret_crypto import encrypt_secret, decrypt_secret
+from app.services.product_plans import assert_feature, assert_workspace_resource_quota
 from app.services.connector_backends import (
     CONNECTOR_SPECS,
     connector_catalog,
@@ -98,6 +99,14 @@ def create_connector(
 ) -> dict[str, Any]:
     if ssl_mode not in {"disable", "prefer", "require"}:
         raise ValueError("ssl_mode invalide")
+
+    # API calls have already crossed workspace membership authorization.  Direct legacy
+    # service consumers from pre-plan releases may still use an opaque workspace scope;
+    # preserve that contract while enforcing entitlements for every registered workspace.
+    from app.services.metadata_store import fetch_one as _fetch_plan_workspace
+    if _fetch_plan_workspace("SELECT id FROM workspaces WHERE id=:ws", {"ws": workspace_id}):
+        assert_feature(workspace_id, "connectors")
+        assert_workspace_resource_quota(workspace_id, "connectors")
 
     normalized = normalize_connector_payload(
         connector_type=connector_type,

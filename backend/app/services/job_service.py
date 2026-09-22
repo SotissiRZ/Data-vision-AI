@@ -165,7 +165,7 @@ def run_job(job_id: str) -> dict[str, Any]:
     from app.services.semantic_layer import get_semantic_model
     from app.services.forecasting import forecast_series
     from app.services.report_builder import build_report
-    from app.services.proactive_intelligence import scan as proactive_scan
+    from app.services.proactive_intelligence import scan as proactive_scan, mark_scan_schedule_result
     from app.services.connector_service import refresh_source as connector_refresh
     from app.services.auth_service import has_permission
     from app.services.governed_actions import execute_action_run
@@ -253,6 +253,8 @@ def run_job(job_id: str) -> dict[str, Any]:
             _update(job_id, progress=15)
             df = load_dataframe(dataset_id)
             result = proactive_scan(dataset_id, df, payload.get("watch_ids") or None, bool(payload.get("auto_configure", True)))
+            if str(payload.get("trigger") or "") == "scheduled":
+                mark_scan_schedule_result(dataset_id, "success")
         elif job["job_type"] == "connector_refresh":
             if not job.get("workspace_id"):
                 raise ValueError("workspace_id requis pour le refresh connecteur")

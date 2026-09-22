@@ -1,0 +1,12 @@
+{
+  "product": "DataVision AI",
+  "product_version": "2.80.0",
+  "stage": "release_candidate",
+  "feature_freeze": true,
+  "supported_direct_upgrade_from": ["2.79.x"],
+  "canonical_distribution": "reproducible-source-archive-v1",
+  "required_installation_gate": "RELEASE_INSTALLATION_ACCEPTANCE",
+  "required_external_signoff": ["target_infrastructure", "uat"],
+  "external_signoff_status": "pending",
+  "notes": "No production-stable claim is allowed until target infrastructure and UAT evidence are verified."
+}

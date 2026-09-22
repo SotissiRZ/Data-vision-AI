@@ -5,12 +5,14 @@ from typing import Any
 
 from app.services.auth_service import ROLES, has_permission, workspace_role, hash_password
 from app.services.metadata_store import execute, fetch_all, fetch_one, json_dumps, json_loads, slugify, utcnow
+from app.services.product_plans import assert_organization_workspace_quota, assert_workspace_resource_quota
 
 
 def create_workspace(user_id: str, organization_id: str, name: str) -> dict[str, Any]:
     org_member = fetch_one("SELECT role FROM organization_members WHERE organization_id=:org AND user_id=:user", {"org": organization_id, "user": user_id})
     if not org_member or org_member["role"] not in {"owner", "admin"}:
         raise PermissionError("Permission insuffisante pour créer un workspace.")
+    assert_organization_workspace_quota(organization_id)
     ws_id = str(uuid.uuid4())
     now = utcnow()
     base = slugify(name)
@@ -66,6 +68,8 @@ def upsert_member(actor_id: str, workspace_id: str, email: str, role: str, *, di
             if not existing_org:
                 execute("INSERT INTO organization_members(organization_id,user_id,role,created_at) VALUES(:org,:user,:role,:created)", {"org":ws["organization_id"],"user":uid,"role":role,"created":now})
     existing = fetch_one("SELECT user_id FROM workspace_members WHERE workspace_id=:ws AND user_id=:user", {"ws": workspace_id, "user": user["id"]})
+    if not existing:
+        assert_workspace_resource_quota(workspace_id, "members")
     if existing:
         execute("UPDATE workspace_members SET role=:role WHERE workspace_id=:ws AND user_id=:user", {"role": role, "ws": workspace_id, "user": user["id"]})
     else:
@@ -78,6 +82,7 @@ def bind_dataset(actor_id: str, workspace_id: str, dataset_id: str) -> dict[str,
         raise PermissionError("Permission insuffisante pour lier un dataset.")
     existing = fetch_one("SELECT dataset_id FROM workspace_datasets WHERE workspace_id=:ws AND dataset_id=:ds", {"ws": workspace_id, "ds": dataset_id})
     if not existing:
+        assert_workspace_resource_quota(workspace_id, "datasets")
         execute("INSERT INTO workspace_datasets(workspace_id,dataset_id,bound_by,created_at) VALUES(:ws,:ds,:user,:created)", {"ws": workspace_id, "ds": dataset_id, "user": actor_id, "created": utcnow()})
     return {"workspace_id": workspace_id, "dataset_id": dataset_id, "bound": True}
 
